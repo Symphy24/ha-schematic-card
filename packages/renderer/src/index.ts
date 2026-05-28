@@ -40,6 +40,7 @@ export function renderSchematicSvg(payload: SchematicPayload, options: RenderOpt
 
   setStringAttr(svg, "class", className);
   setStringAttr(svg, "viewBox", `0 0 ${payload.viewport.width} ${payload.viewport.height}`);
+  setStringAttr(svg, "preserveAspectRatio", "xMidYMid meet");
   setNumberAttr(svg, "width", payload.viewport.width);
   setNumberAttr(svg, "height", payload.viewport.height);
 

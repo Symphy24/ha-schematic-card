@@ -59,6 +59,23 @@ describe("ha-schematic-card", () => {
     expect(card.shadowRoot?.querySelector("svg")).not.toBeNull();
   });
 
+  it("renders the SVG in the responsive schematic container", async () => {
+    const card = createCard();
+
+    card.setConfig({
+      type: "custom:ha-schematic-card",
+      payload: encodePayload(payload)
+    });
+    await card.updateComplete;
+
+    const container = card.shadowRoot?.querySelector(".svg-container");
+    const svg = container?.querySelector("svg");
+
+    expect(container).not.toBeNull();
+    expect(svg?.getAttribute("class")).toBe("ha-schematic-card-svg");
+    expect(svg?.getAttribute("viewBox")).toBe("0 0 100 80");
+  });
+
   it("shows an error when payload is missing", async () => {
     const card = createCard();
 
