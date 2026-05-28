@@ -12,7 +12,9 @@ payload: hsc1....
 
 The card decodes payloads through `@ha-schematic-card/codec` and renders safe SVG through `@ha-schematic-card/renderer`.
 
-This package does not yet include a full UI editor, HACS packaging, or theme-copy support.
+The card includes a minimal Lovelace config editor for `title` and `payload`. The payload is pasted from a future external editor/generator.
+
+This package does not yet include a full schematic drawing editor, HACS packaging, or theme-copy support.
 
 ## Build
 

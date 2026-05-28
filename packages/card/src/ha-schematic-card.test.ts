@@ -40,6 +40,10 @@ describe("ha-schematic-card", () => {
     await expect(import("./index")).resolves.toBeDefined();
   });
 
+  it("returns the config editor element", () => {
+    expect(HaSchematicCard.getConfigElement().tagName.toLowerCase()).toBe("ha-schematic-card-editor");
+  });
+
   it("stores a valid-looking config", async () => {
     const card = createCard();
     const encoded = encodePayload(payload);
