@@ -29,11 +29,13 @@ export class HaSchematicCard extends LitElement {
   static override styles = css`
     :host {
       display: block;
+      width: 100%;
     }
 
     ha-card,
     .card {
       display: block;
+      width: 100%;
       overflow: hidden;
     }
 
@@ -54,6 +56,16 @@ export class HaSchematicCard extends LitElement {
 
     .svg-container {
       display: block;
+      width: 100%;
+      min-height: var(--ha-schematic-card-min-height, 320px);
+      overflow: hidden;
+    }
+
+    .svg-container svg {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      height: auto;
     }
   `;
 

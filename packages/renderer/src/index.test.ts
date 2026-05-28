@@ -35,6 +35,7 @@ describe("SVG renderer", () => {
     expect(svg.tagName.toLowerCase()).toBe("svg");
     expect(svg.namespaceURI).toBe("http://www.w3.org/2000/svg");
     expect(svg.getAttribute("viewBox")).toBe("0 0 320 180");
+    expect(svg.getAttribute("preserveAspectRatio")).toBe("xMidYMid meet");
     expect(svg.getAttribute("width")).toBe("320");
     expect(svg.getAttribute("height")).toBe("180");
     expect(svg.getAttribute("class")).toBe("ha-schematic-card-svg");
