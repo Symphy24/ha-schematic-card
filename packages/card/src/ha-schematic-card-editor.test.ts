@@ -171,9 +171,42 @@ describe("ha-schematic-card-editor", () => {
     expect(typeof copied.capturedAt).toBe("string");
     expect(copied.variables["--primary-text-color"]).toBe("rgb(1, 2, 3)");
     expect(editor.shadowRoot?.textContent).toContain("Theme variables copied.");
+    expect(getThemeJsonTextarea(editor)).toBeNull();
   });
 
-  it("shows an error message when copying theme variables fails", async () => {
+  it("renders manual JSON fallback when clipboard is unavailable", async () => {
+    const editor = createEditor();
+    const events: CustomEvent[] = [];
+    editor.style.setProperty("--primary-text-color", "rgb(4, 5, 6)");
+    editor.addEventListener("config-changed", (event) => events.push(event as CustomEvent));
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: undefined
+    });
+
+    editor.setConfig({
+      title: "Demo",
+      payload: ""
+    });
+    await editor.updateComplete;
+
+    getButton(editor).click();
+    await editor.updateComplete;
+
+    const fallback = getThemeJsonTextarea(editor);
+    const copied = JSON.parse(fallback?.value ?? "");
+
+    expect(fallback?.readOnly).toBe(true);
+    expect(fallback?.getAttribute("wrap")).toBe("soft");
+    expect(copied.type).toBe("ha-schematic-card-theme-variables");
+    expect(copied.version).toBe(1);
+    expect(typeof copied.capturedAt).toBe("string");
+    expect(copied.variables["--primary-text-color"]).toBe("rgb(4, 5, 6)");
+    expect(events).toEqual([]);
+    expect(editor.shadowRoot?.textContent).toContain("Select and copy the JSON manually.");
+  });
+
+  it("renders manual JSON fallback when copying theme variables fails", async () => {
     const writeText = vi.fn().mockRejectedValue(new Error("denied"));
     const editor = createEditor();
     mockClipboard(writeText);
@@ -189,7 +222,32 @@ describe("ha-schematic-card-editor", () => {
     await editor.updateComplete;
 
     expect(writeText).toHaveBeenCalledOnce();
+    expect(JSON.parse(getThemeJsonTextarea(editor)?.value ?? "").type).toBe("ha-schematic-card-theme-variables");
     expect(editor.shadowRoot?.textContent).toContain("Could not copy theme variables.");
+  });
+
+  it("selects fallback JSON when requested", async () => {
+    const editor = createEditor();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: undefined
+    });
+
+    editor.setConfig({
+      title: "Demo",
+      payload: ""
+    });
+    await editor.updateComplete;
+
+    getButton(editor).click();
+    await editor.updateComplete;
+
+    const fallback = getThemeJsonTextarea(editor);
+    const select = vi.spyOn(fallback as HTMLTextAreaElement, "select");
+
+    getButton(editor, "Select JSON").click();
+
+    expect(select).toHaveBeenCalledOnce();
   });
 });
 
@@ -219,14 +277,19 @@ function getTextarea(editor: HaSchematicCardEditor, id: string): HTMLTextAreaEle
   return textarea;
 }
 
-function getButton(editor: HaSchematicCardEditor): HTMLButtonElement {
-  const button = editor.shadowRoot?.querySelector<HTMLButtonElement>("button");
+function getButton(editor: HaSchematicCardEditor, text = "Copy current theme variables"): HTMLButtonElement {
+  const button = Array.from(editor.shadowRoot?.querySelectorAll<HTMLButtonElement>("button") ?? [])
+    .find((candidate) => candidate.textContent?.includes(text));
 
   if (!button) {
-    throw new Error("Missing copy button");
+    throw new Error(`Missing button ${text}`);
   }
 
   return button;
+}
+
+function getThemeJsonTextarea(editor: HaSchematicCardEditor): HTMLTextAreaElement | null {
+  return editor.shadowRoot?.querySelector<HTMLTextAreaElement>(".theme-json") ?? null;
 }
 
 function mockClipboard(writeText: (value: string) => Promise<void>): void {

@@ -71,6 +71,10 @@ export class HaSchematicCardEditor extends LitElement {
       overflow-x: hidden;
     }
 
+    .theme-json {
+      min-height: 220px;
+    }
+
     .helper {
       color: var(--secondary-text-color, #6b6b6b);
       font-size: 12px;
@@ -108,11 +112,13 @@ export class HaSchematicCardEditor extends LitElement {
 
   static override properties = {
     _config: { state: true },
-    _themeCopyStatus: { state: true }
+    _themeCopyStatus: { state: true },
+    _themeVariablesJson: { state: true }
   };
 
   declare private _config?: HaSchematicCardConfig;
   declare private _themeCopyStatus?: ThemeCopyStatus;
+  declare private _themeVariablesJson?: string;
 
   setConfig(config: HaSchematicCardConfig): void {
     this._config = { ...config };
@@ -157,6 +163,18 @@ export class HaSchematicCardEditor extends LitElement {
             ${this._themeCopyStatus.message}
           </div>
         ` : nothing}
+        ${this._themeVariablesJson ? html`
+          <button type="button" @click=${this._handleSelectThemeVariablesJson}>
+            Select JSON
+          </button>
+          <textarea
+            class="theme-json"
+            readonly
+            spellcheck="false"
+            wrap="soft"
+            .value=${this._themeVariablesJson}
+          ></textarea>
+        ` : nothing}
       </div>
     `;
   }
@@ -190,34 +208,39 @@ export class HaSchematicCardEditor extends LitElement {
   }
 
   private async _handleCopyThemeVariables(): Promise<void> {
+    const themeVariablesJson = createThemeVariablesJson(this);
+
     try {
       const clipboard = navigator.clipboard;
 
       if (!clipboard?.writeText) {
+        this._themeVariablesJson = themeVariablesJson;
         this._themeCopyStatus = {
           kind: "error",
-          message: "Could not copy theme variables. Clipboard access is unavailable."
+          message: "Clipboard access is unavailable. Select and copy the JSON manually."
         };
         return;
       }
 
-      await clipboard.writeText(JSON.stringify({
-        type: "ha-schematic-card-theme-variables",
-        version: 1,
-        capturedAt: new Date().toISOString(),
-        variables: collectThemeVariables(this)
-      }, null, 2));
+      await clipboard.writeText(themeVariablesJson);
 
+      this._themeVariablesJson = undefined;
       this._themeCopyStatus = {
         kind: "success",
         message: "Theme variables copied."
       };
     } catch {
+      this._themeVariablesJson = themeVariablesJson;
       this._themeCopyStatus = {
         kind: "error",
-        message: "Could not copy theme variables. Please check browser permissions."
+        message: "Could not copy theme variables. Select and copy the JSON manually."
       };
     }
+  }
+
+  private _handleSelectThemeVariablesJson(): void {
+    const textarea = this.renderRoot.querySelector<HTMLTextAreaElement>(".theme-json");
+    textarea?.select();
   }
 }
 
@@ -274,4 +297,13 @@ function collectThemeVariables(element: HTMLElement): Record<string, string> {
   }
 
   return variables;
+}
+
+function createThemeVariablesJson(element: HTMLElement): string {
+  return JSON.stringify({
+    type: "ha-schematic-card-theme-variables",
+    version: 1,
+    capturedAt: new Date().toISOString(),
+    variables: collectThemeVariables(element)
+  }, null, 2);
 }
