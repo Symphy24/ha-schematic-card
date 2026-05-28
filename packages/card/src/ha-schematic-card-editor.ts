@@ -4,11 +4,33 @@ import type { HaSchematicCardConfig } from "./types";
 
 export const HA_SCHEMATIC_CARD_EDITOR_TAG = "ha-schematic-card-editor";
 
+export const THEME_VARIABLES_TO_COPY = [
+  "--primary-text-color",
+  "--secondary-text-color",
+  "--accent-color",
+  "--divider-color",
+  "--ha-card-background",
+  "--card-background-color",
+  "--primary-color",
+  "--error-color",
+  "--warning-color",
+  "--success-color",
+  "--paper-card-background-color",
+  "--disabled-text-color",
+  "--paper-font-body1_-_font-family",
+  "--mdc-typography-body1-font-family"
+] as const;
+
 declare global {
   interface HTMLElementTagNameMap {
     "ha-schematic-card-editor": HaSchematicCardEditor;
   }
 }
+
+type ThemeCopyStatus = {
+  kind: "success" | "error";
+  message: string;
+};
 
 export class HaSchematicCardEditor extends LitElement {
   static override styles = css`
@@ -57,13 +79,40 @@ export class HaSchematicCardEditor extends LitElement {
     .warning {
       color: var(--warning-color, #b26a00);
     }
+
+    .theme-tools {
+      display: grid;
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    button {
+      justify-self: start;
+      padding: 8px 12px;
+      border: 1px solid var(--divider-color, #d0d0d0);
+      border-radius: 4px;
+      color: var(--primary-text-color, #212121);
+      background: var(--card-background-color, #ffffff);
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .status-success {
+      color: var(--success-color, #0b8043);
+    }
+
+    .status-error {
+      color: var(--error-color, #b00020);
+    }
   `;
 
   static override properties = {
-    _config: { state: true }
+    _config: { state: true },
+    _themeCopyStatus: { state: true }
   };
 
   declare private _config?: HaSchematicCardConfig;
+  declare private _themeCopyStatus?: ThemeCopyStatus;
 
   setConfig(config: HaSchematicCardConfig): void {
     this._config = { ...config };
@@ -95,6 +144,20 @@ export class HaSchematicCardEditor extends LitElement {
         ></textarea>
         ${payloadHelper ? html`<div class=${payloadHelper.warning ? "helper warning" : "helper"}>${payloadHelper.text}</div>` : nothing}
       </div>
+
+      <div class="theme-tools">
+        <button type="button" @click=${this._handleCopyThemeVariables}>
+          Copy current theme variables
+        </button>
+        <div class="helper">
+          Copy selected Home Assistant theme variables as JSON for the future external editor preview.
+        </div>
+        ${this._themeCopyStatus ? html`
+          <div class=${this._themeCopyStatus.kind === "success" ? "helper status-success" : "helper status-error"}>
+            ${this._themeCopyStatus.message}
+          </div>
+        ` : nothing}
+      </div>
     `;
   }
 
@@ -124,6 +187,37 @@ export class HaSchematicCardEditor extends LitElement {
         config
       }
     }));
+  }
+
+  private async _handleCopyThemeVariables(): Promise<void> {
+    try {
+      const clipboard = navigator.clipboard;
+
+      if (!clipboard?.writeText) {
+        this._themeCopyStatus = {
+          kind: "error",
+          message: "Could not copy theme variables. Clipboard access is unavailable."
+        };
+        return;
+      }
+
+      await clipboard.writeText(JSON.stringify({
+        type: "ha-schematic-card-theme-variables",
+        version: 1,
+        capturedAt: new Date().toISOString(),
+        variables: collectThemeVariables(this)
+      }, null, 2));
+
+      this._themeCopyStatus = {
+        kind: "success",
+        message: "Theme variables copied."
+      };
+    } catch {
+      this._themeCopyStatus = {
+        kind: "error",
+        message: "Could not copy theme variables. Please check browser permissions."
+      };
+    }
   }
 }
 
@@ -162,4 +256,22 @@ function getPayloadHelper(payload: string): { text: string; warning: boolean } {
     text: "Payload starts with hsc1.",
     warning: false
   };
+}
+
+function collectThemeVariables(element: HTMLElement): Record<string, string> {
+  const documentElement = element.ownerDocument.documentElement;
+  const elementStyle = getComputedStyle(element);
+  const documentStyle = getComputedStyle(documentElement);
+  const variables: Record<string, string> = {};
+
+  for (const variableName of THEME_VARIABLES_TO_COPY) {
+    const value = elementStyle.getPropertyValue(variableName).trim()
+      || documentStyle.getPropertyValue(variableName).trim();
+
+    if (value) {
+      variables[variableName] = value;
+    }
+  }
+
+  return variables;
 }

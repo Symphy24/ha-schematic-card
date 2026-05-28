@@ -48,3 +48,7 @@ payload: hsc1....
 ```
 
 The demo references `sensor.demo_temperature`. If that entity does not exist, the card should still render using the payload fallback value.
+
+## Theme Variables
+
+The card config editor includes a "Copy current theme variables" button. It copies selected Home Assistant CSS variables as JSON for use in a future external editor preview. This does not modify the payload.
