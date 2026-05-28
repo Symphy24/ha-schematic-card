@@ -36,6 +36,10 @@ describe("ha-schematic-card", () => {
     expect(customElements.get(HA_SCHEMATIC_CARD_TAG)).toBe(HaSchematicCard);
   });
 
+  it("imports the card entry module without throwing", async () => {
+    await expect(import("./index")).resolves.toBeDefined();
+  });
+
   it("stores a valid-looking config", async () => {
     const card = createCard();
     const encoded = encodePayload(payload);

@@ -34,3 +34,5 @@ The repository now includes an initial TypeScript workspace setup for the shared
 - `npm run check`
 - `npm run build`
 - `npm test`
+
+`npm run build` creates the early browser-ready Lovelace resource at `packages/card/dist/ha-schematic-card.js`. Full HACS release packaging is not implemented yet.
