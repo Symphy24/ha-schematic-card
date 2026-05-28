@@ -8,6 +8,8 @@ This project is in early development. The repository currently contains only the
 
 The first goal is to establish a small, reviewable project foundation. It is not a working Home Assistant card yet, and the editor app has not been implemented.
 
+The repository now includes an initial TypeScript workspace setup for the shared packages.
+
 ## Intended Architecture
 
 - HACS-compatible Lovelace custom card for Home Assistant
@@ -25,3 +27,10 @@ The first goal is to establish a small, reviewable project foundation. It is not
 - `packages/renderer` - future safe SVG rendering logic
 - `packages/symbols` - future reusable symbol library
 - `packages/card` - future Home Assistant Lovelace card package
+
+## Commands
+
+- `npm install`
+- `npm run check`
+- `npm run build`
+- `npm test`

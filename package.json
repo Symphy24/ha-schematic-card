@@ -7,7 +7,12 @@
     "packages/*"
   ],
   "scripts": {
-    "check": "node -e \"console.log('check placeholder')\"",
-    "test": "node -e \"console.log('test placeholder')\""
+    "check": "tsc --noEmit",
+    "build": "npm run build --workspaces --if-present",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
   }
 }
