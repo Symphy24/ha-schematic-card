@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   HA_SCHEMATIC_CARD_EDITOR_TAG,
@@ -134,6 +134,63 @@ describe("ha-schematic-card-editor", () => {
 
     expect(warning?.textContent).toContain("Payload should start with hsc1.");
   });
+
+  it("renders a copy theme variables button", async () => {
+    const editor = createEditor();
+
+    editor.setConfig({
+      title: "Demo",
+      payload: ""
+    });
+    await editor.updateComplete;
+
+    expect(getButton(editor).textContent).toContain("Copy current theme variables");
+  });
+
+  it("copies selected theme variables as JSON", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const editor = createEditor();
+    editor.style.setProperty("--primary-text-color", "rgb(1, 2, 3)");
+    mockClipboard(writeText);
+
+    editor.setConfig({
+      title: "Demo",
+      payload: ""
+    });
+    await editor.updateComplete;
+
+    getButton(editor).click();
+    await Promise.resolve();
+    await editor.updateComplete;
+
+    expect(writeText).toHaveBeenCalledOnce();
+
+    const copied = JSON.parse(writeText.mock.calls[0]?.[0] as string);
+    expect(copied.type).toBe("ha-schematic-card-theme-variables");
+    expect(copied.version).toBe(1);
+    expect(typeof copied.capturedAt).toBe("string");
+    expect(copied.variables["--primary-text-color"]).toBe("rgb(1, 2, 3)");
+    expect(editor.shadowRoot?.textContent).toContain("Theme variables copied.");
+  });
+
+  it("shows an error message when copying theme variables fails", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    const editor = createEditor();
+    mockClipboard(writeText);
+
+    editor.setConfig({
+      title: "Demo",
+      payload: ""
+    });
+    await editor.updateComplete;
+
+    getButton(editor).click();
+    await Promise.resolve();
+    await editor.updateComplete;
+
+    expect(writeText).toHaveBeenCalledOnce();
+    expect(editor.shadowRoot?.textContent).toContain("Could not copy theme variables.");
+  });
 });
 
 function createEditor(): HaSchematicCardEditor {
@@ -160,4 +217,23 @@ function getTextarea(editor: HaSchematicCardEditor, id: string): HTMLTextAreaEle
   }
 
   return textarea;
+}
+
+function getButton(editor: HaSchematicCardEditor): HTMLButtonElement {
+  const button = editor.shadowRoot?.querySelector<HTMLButtonElement>("button");
+
+  if (!button) {
+    throw new Error("Missing copy button");
+  }
+
+  return button;
+}
+
+function mockClipboard(writeText: (value: string) => Promise<void>): void {
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: {
+      writeText
+    }
+  });
 }

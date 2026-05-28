@@ -14,6 +14,8 @@ The card decodes payloads through `@ha-schematic-card/codec` and renders safe SV
 
 The card includes a minimal Lovelace config editor for `title` and `payload`. The payload is pasted from a future external editor/generator.
 
+The config editor also has a "Copy current theme variables" button. It copies selected Home Assistant CSS variables as JSON for the future external editor preview, without modifying the schematic payload.
+
 This package does not yet include a full schematic drawing editor, HACS packaging, or theme-copy support.
 
 ## Build
