@@ -43,9 +43,10 @@ export class HaSchematicCardEditor extends LitElement {
       resize: vertical;
       font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
       line-height: 1.4;
-      white-space: pre;
-      overflow-wrap: normal;
-      overflow-x: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      overflow-x: hidden;
     }
 
     .helper {
@@ -88,6 +89,7 @@ export class HaSchematicCardEditor extends LitElement {
         <textarea
           id="payload"
           spellcheck="false"
+          wrap="soft"
           .value=${payload}
           @input=${this._handlePayloadInput}
         ></textarea>
