@@ -3,22 +3,30 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./dist/ha-schematic-card.js",
+  "module": "./dist/ha-schematic-card.js",
   "types": "./src/index.ts",
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "types": "./src/index.ts",
-      "default": "./dist/index.js"
+      "default": "./dist/ha-schematic-card.js"
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "check": "tsc -p tsconfig.json --noEmit"
+    "build": "vite build",
+    "check": "npm run typecheck",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@ha-schematic-card/codec": "0.0.0",
     "@ha-schematic-card/renderer": "0.0.0",
     "@ha-schematic-card/schema": "0.0.0",
     "lit": "^3.3.3"
+  },
+  "devDependencies": {
+    "vite": "^8.0.14"
   }
 }
