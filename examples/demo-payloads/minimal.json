@@ -64,6 +64,16 @@
       }
     },
     {
+      "id": "demo-direction-marker",
+      "type": "path",
+      "layer": 220,
+      "d": "M 264 86 L 284 96 L 264 106 Z",
+      "style": {
+        "fill": "var(--accent-color)",
+        "stroke": "none"
+      }
+    },
+    {
       "id": "demo-component-label",
       "type": "text",
       "layer": 610,

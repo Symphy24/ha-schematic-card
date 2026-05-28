@@ -128,4 +128,151 @@ describe("schema validation", () => {
     expect(validateSchematicPayload(payload).valid).toBe(true);
     expect(payload.items[0]?.layer).toBe(550);
   });
+
+  it("accepts a valid path item", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      items: [
+        {
+          id: "path-1",
+          type: "path",
+          layer: 400,
+          d: "M 10 10 L 40 10 L 25 30 Z"
+        }
+      ]
+    });
+
+    expect(result).toEqual({
+      valid: true,
+      errors: []
+    });
+  });
+
+  it("rejects empty path data", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      items: [
+        {
+          id: "path-1",
+          type: "path",
+          layer: 400,
+          d: ""
+        }
+      ]
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("items[0].d must be a non-empty path data string");
+  });
+
+  it("rejects markup-like path data", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      items: [
+        {
+          id: "path-1",
+          type: "path",
+          layer: 400,
+          d: "M 0 0 <script>"
+        }
+      ]
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("items[0].d contains unsupported or unsafe path data");
+  });
+
+  it("accepts valid structured transforms", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      items: [
+        {
+          id: "rect-1",
+          type: "rect",
+          layer: 300,
+          x: 0,
+          y: 0,
+          width: 10,
+          height: 10,
+          transform: [
+            { type: "translate", x: 10, y: 20 },
+            { type: "rotate", angle: 45, cx: 5, cy: 5 },
+            { type: "scale", x: 2, y: 1.5 }
+          ]
+        }
+      ]
+    });
+
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects invalid transform types", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      items: [
+        {
+          id: "rect-1",
+          type: "rect",
+          layer: 300,
+          x: 0,
+          y: 0,
+          width: 10,
+          height: 10,
+          transform: [
+            { type: "skew", x: 10 }
+          ]
+        }
+      ]
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("items[0].transform[0].type must be a supported transform type");
+  });
+
+  it("rejects transforms with non-numeric values", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      items: [
+        {
+          id: "rect-1",
+          type: "rect",
+          layer: 300,
+          x: 0,
+          y: 0,
+          width: 10,
+          height: 10,
+          transform: [
+            { type: "translate", x: "10", y: 20 }
+          ]
+        }
+      ]
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("items[0].transform[0].x must be a finite number");
+  });
 });

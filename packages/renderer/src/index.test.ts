@@ -159,6 +159,67 @@ describe("SVG renderer", () => {
     expect(text?.textContent).toBe("Safe text");
   });
 
+  it("renders path items with path data", () => {
+    const svg = renderSchematicSvg(createPayload([
+      {
+        id: "path-1",
+        type: "path",
+        layer: 400,
+        d: "M 10 10 L 20 20",
+        style: {
+          fill: "none",
+          stroke: "currentColor"
+        }
+      }
+    ]), {
+      document: createDocument()
+    });
+
+    const path = svg.children[0];
+
+    expect(path?.tagName.toLowerCase()).toBe("path");
+    expect(path?.getAttribute("d")).toBe("M 10 10 L 20 20");
+    expect(path?.getAttribute("fill")).toBe("none");
+    expect(path?.getAttribute("stroke")).toBe("currentColor");
+  });
+
+  it("renders structured transforms", () => {
+    const svg = renderSchematicSvg(createPayload([
+      {
+        ...rectItem("rect-1", 100),
+        transform: [
+          { type: "translate", x: 10, y: 20 },
+          { type: "rotate", angle: 45, cx: 5, cy: 6 },
+          { type: "scale", x: 2 }
+        ]
+      }
+    ]), {
+      document: createDocument()
+    });
+
+    expect(svg.children[0]?.getAttribute("transform")).toBe("translate(10 20) rotate(45 5 6) scale(2)");
+  });
+
+  it("applies transforms to groups", () => {
+    const svg = renderSchematicSvg(createPayload([
+      {
+        id: "group-1",
+        type: "group",
+        layer: 100,
+        transform: [
+          { type: "rotate", angle: 45 }
+        ],
+        children: [
+          rectItem("child-1", 100)
+        ]
+      }
+    ]), {
+      document: createDocument()
+    });
+
+    expect(svg.children[0]?.getAttribute("transform")).toBe("rotate(45)");
+  });
+
   it("does not apply URL-based paint values", () => {
     const svg = renderSchematicSvg(createPayload([
       {

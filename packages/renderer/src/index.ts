@@ -4,6 +4,7 @@ import type {
   SchematicGroup,
   SchematicItem,
   SchematicLine,
+  SchematicPath,
   SchematicPayload,
   SchematicPoint,
   SchematicPolyline,
@@ -73,6 +74,8 @@ function renderItem(documentRef: Document, item: SchematicItem, options: RenderO
       return renderCircle(documentRef, item);
     case "text":
       return renderText(documentRef, item);
+    case "path":
+      return renderPath(documentRef, item);
     case "group":
       return renderGroup(documentRef, item, options);
     case "entityValue":
@@ -132,6 +135,14 @@ function renderText(documentRef: Document, item: SchematicText): SVGElement {
   return element;
 }
 
+function renderPath(documentRef: Document, item: SchematicPath): SVGElement {
+  const element = createSvgElement(documentRef, "path");
+  setBaseAttrs(element, item);
+  setStringAttr(element, "d", item.d);
+  applySafeStyle(element, item.style);
+  return element;
+}
+
 function renderGroup(documentRef: Document, item: SchematicGroup, options: RenderOptions): SVGElement {
   const element = createSvgElement(documentRef, "g");
   setBaseAttrs(element, item);
@@ -175,6 +186,7 @@ function renderEntityValue(documentRef: Document, item: SchematicEntityValue, op
 function setBaseAttrs(element: SVGElement, item: SchematicItem): void {
   setStringAttr(element, "data-id", item.id);
   setNumberAttr(element, "data-layer", item.layer);
+  setStringAttr(element, "transform", formatTransform(item.transform));
 }
 
 function getEntityValueText(item: SchematicEntityValue, entityStates: Record<string, unknown> | undefined): string {
@@ -211,6 +223,27 @@ function applySafeStyle(element: SVGElement, style: SchematicStyle | undefined):
 
 function formatPoints(points: SchematicPoint[]): string {
   return points.map((point) => `${point.x},${point.y}`).join(" ");
+}
+
+function formatTransform(transform: SchematicItem["transform"]): string | undefined {
+  if (!transform || transform.length === 0) {
+    return undefined;
+  }
+
+  return transform.map((item) => {
+    switch (item.type) {
+      case "translate":
+        return `translate(${item.x} ${item.y})`;
+      case "rotate":
+        return item.cx === undefined || item.cy === undefined
+          ? `rotate(${item.angle})`
+          : `rotate(${item.angle} ${item.cx} ${item.cy})`;
+      case "scale":
+        return item.y === undefined
+          ? `scale(${item.x})`
+          : `scale(${item.x} ${item.y})`;
+    }
+  }).join(" ");
 }
 
 function createSvgElement<K extends keyof SVGElementTagNameMap>(

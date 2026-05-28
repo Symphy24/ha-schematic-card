@@ -57,7 +57,26 @@ export type SchematicBaseItem = {
   layer: number;
   visible?: boolean;
   style?: SchematicStyle;
+  transform?: SchematicTransform[];
 };
+
+export type SchematicTransform =
+  | {
+      type: "translate";
+      x: number;
+      y: number;
+    }
+  | {
+      type: "rotate";
+      angle: number;
+      cx?: number;
+      cy?: number;
+    }
+  | {
+      type: "scale";
+      x: number;
+      y?: number;
+    };
 
 export type SchematicLine = SchematicBaseItem & {
   type: "line";
@@ -96,6 +115,11 @@ export type SchematicText = SchematicBaseItem & {
   text: string;
 };
 
+export type SchematicPath = SchematicBaseItem & {
+  type: "path";
+  d: string;
+};
+
 export type SchematicGroup = SchematicBaseItem & {
   type: "group";
   children: SchematicItem[];
@@ -117,6 +141,7 @@ export type SchematicItem =
   | SchematicRect
   | SchematicCircle
   | SchematicText
+  | SchematicPath
   | SchematicGroup
   | SchematicEntityValue;
 
@@ -126,6 +151,7 @@ const SUPPORTED_ITEM_TYPES = new Set([
   "rect",
   "circle",
   "text",
+  "path",
   "group",
   "entityValue"
 ]);
@@ -195,6 +221,12 @@ function validateItem(value: unknown, path: string, errors: string[]): void {
     errors.push(`${path}.layer must be a finite number`);
   }
 
+  validateTransforms(value.transform, `${path}.transform`, errors);
+
+  if (value.type === "path") {
+    validatePathData(value.d, `${path}.d`, errors);
+  }
+
   if (value.type === "group") {
     if (!Array.isArray(value.children)) {
       errors.push(`${path}.children must be an array`);
@@ -204,10 +236,81 @@ function validateItem(value: unknown, path: string, errors: string[]): void {
   }
 }
 
+function validatePathData(value: unknown, path: string, errors: string[]): void {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    errors.push(`${path} must be a non-empty path data string`);
+    return;
+  }
+
+  const lowerValue = value.toLowerCase();
+  if (
+    value.includes("<")
+    || value.includes(">")
+    || value.includes("\"")
+    || value.includes("'")
+    || lowerValue.includes("script")
+    || lowerValue.includes("javascript:")
+    || lowerValue.includes("url(")
+    || !/^[MmZzLlHhVvCcSsQqTtAaEe0-9,\s.+-]+$/.test(value)
+  ) {
+    errors.push(`${path} contains unsupported or unsafe path data`);
+  }
+}
+
+function validateTransforms(value: unknown, path: string, errors: string[]): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!Array.isArray(value)) {
+    errors.push(`${path} must be an array`);
+    return;
+  }
+
+  value.forEach((transform, index) => validateTransform(transform, `${path}[${index}]`, errors));
+}
+
+function validateTransform(value: unknown, path: string, errors: string[]): void {
+  if (!isRecord(value)) {
+    errors.push(`${path} must be an object`);
+    return;
+  }
+
+  switch (value.type) {
+    case "translate":
+      validateFiniteNumber(value.x, `${path}.x`, errors);
+      validateFiniteNumber(value.y, `${path}.y`, errors);
+      return;
+    case "rotate":
+      validateFiniteNumber(value.angle, `${path}.angle`, errors);
+      validateOptionalFiniteNumber(value.cx, `${path}.cx`, errors);
+      validateOptionalFiniteNumber(value.cy, `${path}.cy`, errors);
+      return;
+    case "scale":
+      validateFiniteNumber(value.x, `${path}.x`, errors);
+      validateOptionalFiniteNumber(value.y, `${path}.y`, errors);
+      return;
+    default:
+      errors.push(`${path}.type must be a supported transform type`);
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isPositiveNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function validateFiniteNumber(value: unknown, path: string, errors: string[]): void {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    errors.push(`${path} must be a finite number`);
+  }
+}
+
+function validateOptionalFiniteNumber(value: unknown, path: string, errors: string[]): void {
+  if (value !== undefined) {
+    validateFiniteNumber(value, path, errors);
+  }
 }
