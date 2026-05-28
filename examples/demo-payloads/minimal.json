@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "metadata": {
+    "name": "Minimal schematic demo",
+    "description": "Small generic demo payload for manual Home Assistant testing.",
+    "createdBy": "ha-schematic-card"
+  },
+  "viewport": {
+    "width": 360,
+    "height": 180
+  },
+  "items": [
+    {
+      "id": "demo-title",
+      "type": "text",
+      "layer": 600,
+      "x": 16,
+      "y": 28,
+      "text": "Schematic Demo",
+      "style": {
+        "fill": "var(--primary-text-color)",
+        "fontSize": 18,
+        "fontWeight": "bold"
+      }
+    },
+    {
+      "id": "demo-flow-line",
+      "type": "polyline",
+      "layer": 120,
+      "points": [
+        {
+          "x": 48,
+          "y": 96
+        },
+        {
+          "x": 160,
+          "y": 96
+        },
+        {
+          "x": 280,
+          "y": 96
+        }
+      ],
+      "style": {
+        "stroke": "var(--accent-color)",
+        "strokeWidth": 6,
+        "fill": "none"
+      }
+    },
+    {
+      "id": "demo-component",
+      "type": "rect",
+      "layer": 300,
+      "x": 138,
+      "y": 68,
+      "width": 64,
+      "height": 56,
+      "rx": 6,
+      "ry": 6,
+      "style": {
+        "stroke": "var(--primary-text-color)",
+        "strokeWidth": 2,
+        "fill": "var(--divider-color)"
+      }
+    },
+    {
+      "id": "demo-component-label",
+      "type": "text",
+      "layer": 610,
+      "x": 170,
+      "y": 101,
+      "text": "Unit",
+      "style": {
+        "fill": "var(--primary-text-color)",
+        "fontSize": 14,
+        "textAnchor": "middle"
+      }
+    },
+    {
+      "id": "demo-status-dot",
+      "type": "circle",
+      "layer": 700,
+      "cx": 280,
+      "cy": 96,
+      "r": 10,
+      "style": {
+        "fill": "var(--success-color)",
+        "stroke": "var(--primary-text-color)",
+        "strokeWidth": 1
+      }
+    },
+    {
+      "id": "demo-temperature",
+      "type": "entityValue",
+      "layer": 520,
+      "x": 48,
+      "y": 146,
+      "entityId": "sensor.demo_temperature",
+      "label": "Temperature",
+      "unit": "C",
+      "fallback": "21.0",
+      "style": {
+        "fill": "var(--primary-text-color)",
+        "fontSize": 13
+      }
+    }
+  ]
+}
