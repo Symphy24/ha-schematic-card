@@ -44,10 +44,13 @@ Paste the contents of `examples/demo-payloads/minimal.hsc1.txt` into `payload`:
 ```yaml
 type: custom:ha-schematic-card
 title: Schematic Demo
+min_height: 360px
 payload: hsc1....
 ```
 
 The demo references `sensor.demo_temperature`. If that entity does not exist, the card should still render using the payload fallback value.
+
+The card exposes default Home Assistant grid sizing hints for the Sections view. You can still resize the card manually in the dashboard, and `min_height` can be adjusted or omitted.
 
 ## Theme Variables
 

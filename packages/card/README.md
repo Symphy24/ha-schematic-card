@@ -7,6 +7,7 @@ Expected future config shape:
 ```yaml
 type: custom:ha-schematic-card
 title: Schematic
+min_height: 360px
 payload: hsc1....
 ```
 
@@ -17,6 +18,10 @@ The card includes a minimal Lovelace config editor for `title` and `payload`. Th
 The config editor also has a "Copy current theme variables" button. It copies selected Home Assistant CSS variables as JSON for the future external editor preview, without modifying the schematic payload. If browser clipboard access is unavailable, which can happen over HTTP or a local IP address, the editor shows the JSON so it can be copied manually.
 
 This package does not yet include a full schematic drawing editor, HACS packaging, or theme-copy support.
+
+The card exposes Home Assistant grid sizing hints for larger schematic layouts by default. Users can still override dashboard layout options manually in the Lovelace UI or YAML.
+
+`min_height` is optional and applies only to the rendered card container.
 
 ## Build
 

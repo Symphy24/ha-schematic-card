@@ -2,6 +2,7 @@ export type HaSchematicCardConfig = {
   type?: string;
   payload?: string;
   title?: string;
+  min_height?: string;
 };
 
 export type HomeAssistant = {

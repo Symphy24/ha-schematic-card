@@ -29,11 +29,13 @@ export class HaSchematicCard extends LitElement {
   static override styles = css`
     :host {
       display: block;
+      width: 100%;
     }
 
     ha-card,
     .card {
       display: block;
+      width: 100%;
       overflow: hidden;
     }
 
@@ -47,6 +49,13 @@ export class HaSchematicCard extends LitElement {
       padding: 16px;
     }
 
+    .schematic-container {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: var(--ha-schematic-card-min-height, 320px);
+      overflow: hidden;
+    }
+
     .error {
       color: var(--error-color, #b00020);
       white-space: pre-wrap;
@@ -54,6 +63,15 @@ export class HaSchematicCard extends LitElement {
 
     .svg-container {
       display: block;
+      width: 100%;
+      min-height: inherit;
+    }
+
+    .svg-container svg {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      height: auto;
     }
   `;
 
@@ -81,6 +99,15 @@ export class HaSchematicCard extends LitElement {
     return document.createElement(HA_SCHEMATIC_CARD_EDITOR_TAG);
   }
 
+  getGridOptions(): Record<string, number> {
+    return {
+      columns: 12,
+      rows: 6,
+      min_columns: 6,
+      min_rows: 4
+    };
+  }
+
   setConfig(config: unknown): void {
     this._config = undefined;
     this._payload = undefined;
@@ -94,7 +121,8 @@ export class HaSchematicCard extends LitElement {
     const cardConfig: HaSchematicCardConfig = {
       type: typeof config.type === "string" ? config.type : "custom:ha-schematic-card",
       payload: typeof config.payload === "string" ? config.payload : undefined,
-      title: typeof config.title === "string" ? config.title : undefined
+      title: typeof config.title === "string" ? config.title : undefined,
+      min_height: typeof config.min_height === "string" ? config.min_height : undefined
     };
 
     this._config = cardConfig;
@@ -125,7 +153,12 @@ export class HaSchematicCard extends LitElement {
         ${title ? html`<div class="title">${title}</div>` : nothing}
         <div class="content">
           ${this._error ? html`<div class="error" role="alert">${this._error}</div>` : nothing}
-          <div class="svg-container"></div>
+          <div
+            class="schematic-container"
+            style=${this._getContainerStyle()}
+          >
+            <div class="svg-container"></div>
+          </div>
         </div>
       </ha-card>
     `;
@@ -164,6 +197,12 @@ export class HaSchematicCard extends LitElement {
     }
 
     return entityStates;
+  }
+
+  private _getContainerStyle(): string {
+    return this._config?.min_height
+      ? `--ha-schematic-card-min-height: ${this._config.min_height};`
+      : "";
   }
 }
 

@@ -44,6 +44,17 @@ describe("ha-schematic-card", () => {
     expect(HaSchematicCard.getConfigElement().tagName.toLowerCase()).toBe("ha-schematic-card-editor");
   });
 
+  it("exposes sensible Home Assistant grid options", () => {
+    const card = createCard();
+
+    expect(card.getGridOptions()).toEqual({
+      columns: 12,
+      rows: 6,
+      min_columns: 6,
+      min_rows: 4
+    });
+  });
+
   it("stores a valid-looking config", async () => {
     const card = createCard();
     const encoded = encodePayload(payload);
@@ -57,6 +68,22 @@ describe("ha-schematic-card", () => {
 
     expect(card.shadowRoot?.querySelector(".title")?.textContent).toBe("Plant");
     expect(card.shadowRoot?.querySelector("svg")).not.toBeNull();
+  });
+
+  it("applies optional min_height to the schematic container", async () => {
+    const card = createCard();
+
+    card.setConfig({
+      type: "custom:ha-schematic-card",
+      min_height: "420px",
+      payload: encodePayload(payload)
+    });
+    await card.updateComplete;
+
+    const container = card.shadowRoot?.querySelector<HTMLElement>(".schematic-container");
+
+    expect(container?.getAttribute("style")).toContain("--ha-schematic-card-min-height: 420px;");
+    expect(card.shadowRoot?.querySelector('[data-role="value"]')?.textContent).toBe("offline");
   });
 
   it("shows an error when payload is missing", async () => {
