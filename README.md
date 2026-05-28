@@ -36,3 +36,5 @@ The repository now includes an initial TypeScript workspace setup for the shared
 - `npm test`
 
 `npm run build` creates the early browser-ready Lovelace resource at `packages/card/dist/ha-schematic-card.js`. Full HACS release packaging is not implemented yet.
+
+For a minimal manual Home Assistant test flow, see `docs/manual-home-assistant-test.md`. Demo payload fixtures live in `examples/demo-payloads`.

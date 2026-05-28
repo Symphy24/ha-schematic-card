@@ -1,5 +1,8 @@
 # Demo Payloads
 
-Demo schematic payloads will live here later.
+Small demo payloads for manual testing.
 
-No final payload format has been defined yet.
+- `minimal.json` is decoded schema JSON.
+- `minimal.hsc1.txt` is the encoded payload string for Lovelace config.
+
+This is an early demo fixture, not a final editor export UI.
