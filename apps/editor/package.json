@@ -1,0 +1,9 @@
+{
+  "name": "@ha-schematic-card/editor",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "check": "node -e \"console.log('editor check placeholder')\"",
+    "test": "node -e \"console.log('editor test placeholder')\""
+  }
+}

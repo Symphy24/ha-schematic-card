@@ -1,0 +1,13 @@
+{
+  "name": "ha-schematic-card",
+  "version": "0.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "check": "node -e \"console.log('check placeholder')\"",
+    "test": "node -e \"console.log('test placeholder')\""
+  }
+}
