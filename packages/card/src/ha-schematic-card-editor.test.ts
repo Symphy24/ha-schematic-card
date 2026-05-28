@@ -85,6 +85,30 @@ describe("ha-schematic-card-editor", () => {
     });
   });
 
+  it("soft-wraps long payload text without changing the value", async () => {
+    const editor = createEditor();
+    const events: CustomEvent[] = [];
+    const longPayload = `hsc1.${"abcdef0123456789".repeat(20)}`;
+    editor.addEventListener("config-changed", (event) => events.push(event as CustomEvent));
+
+    editor.setConfig({
+      title: "Demo",
+      payload: ""
+    });
+    await editor.updateComplete;
+
+    const payload = getTextarea(editor, "payload");
+    payload.value = longPayload;
+    payload.dispatchEvent(new InputEvent("input", {
+      bubbles: true,
+      composed: true
+    }));
+
+    expect(payload.getAttribute("wrap")).toBe("soft");
+    expect(events.at(-1)?.detail.config.payload).toBe(longPayload);
+    expect(events.at(-1)?.detail.config.payload).not.toContain("\n");
+  });
+
   it("renders empty payload helper text without throwing", async () => {
     const editor = createEditor();
 
