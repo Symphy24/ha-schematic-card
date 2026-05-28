@@ -3,21 +3,11 @@ import { LitElement, css, html, nothing } from "lit";
 import { decodePayload } from "@ha-schematic-card/codec";
 import { renderSchematicSvg } from "@ha-schematic-card/renderer";
 import type { SchematicPayload } from "@ha-schematic-card/schema";
+import { HA_SCHEMATIC_CARD_EDITOR_TAG } from "./ha-schematic-card-editor";
+import type { HaSchematicCardConfig, HomeAssistant } from "./types";
+import "./ha-schematic-card-editor";
 
 export const HA_SCHEMATIC_CARD_TAG = "ha-schematic-card";
-
-export type HaSchematicCardConfig = {
-  type: string;
-  payload?: string;
-  title?: string;
-};
-
-export type HomeAssistant = {
-  states?: Record<string, {
-    state: string;
-    attributes?: Record<string, unknown>;
-  }>;
-};
 
 type CustomCardMetadata = {
   type: string;
@@ -82,10 +72,13 @@ export class HaSchematicCard extends LitElement {
 
   static getStubConfig(): HaSchematicCardConfig {
     return {
-      type: "custom:ha-schematic-card",
       title: "Schematic",
       payload: ""
     };
+  }
+
+  static getConfigElement(): HTMLElement {
+    return document.createElement(HA_SCHEMATIC_CARD_EDITOR_TAG);
   }
 
   setConfig(config: unknown): void {
