@@ -1,0 +1,9 @@
+{
+  "name": "@ha-schematic-card/renderer",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "check": "node -e \"console.log('renderer check placeholder')\"",
+    "test": "node -e \"console.log('renderer test placeholder')\""
+  }
+}

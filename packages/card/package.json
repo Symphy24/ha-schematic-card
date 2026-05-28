@@ -1,0 +1,9 @@
+{
+  "name": "@ha-schematic-card/card",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "check": "node -e \"console.log('card check placeholder')\"",
+    "test": "node -e \"console.log('card test placeholder')\""
+  }
+}

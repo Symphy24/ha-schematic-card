@@ -1,0 +1,9 @@
+{
+  "name": "@ha-schematic-card/codec",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "check": "node -e \"console.log('codec check placeholder')\"",
+    "test": "node -e \"console.log('codec test placeholder')\""
+  }
+}
