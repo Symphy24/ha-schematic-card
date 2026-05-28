@@ -14,5 +14,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@ha-schematic-card/schema": "0.0.0"
   }
 }
