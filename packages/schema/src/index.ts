@@ -21,6 +21,7 @@ export type SchematicPayload = {
   schemaVersion: number;
   metadata?: SchematicMetadata;
   viewport: SchematicViewport;
+  symbols?: SchematicSymbolDefinition[];
   items: SchematicItem[];
 };
 
@@ -135,7 +136,21 @@ export type SchematicEntityValue = SchematicBaseItem & {
   fallback?: string;
 };
 
-export type SchematicItem =
+export type SchematicSymbolDefinition = {
+  id: string;
+  viewport?: SchematicViewport;
+  items: SchematicSymbolChildItem[];
+};
+
+export type SchematicSymbolInstance = SchematicBaseItem & {
+  type: "symbol";
+  symbolId: string;
+  x: number;
+  y: number;
+  scale?: number;
+};
+
+export type SchematicSymbolChildItem =
   | SchematicLine
   | SchematicPolyline
   | SchematicRect
@@ -145,6 +160,17 @@ export type SchematicItem =
   | SchematicGroup
   | SchematicEntityValue;
 
+export type SchematicItem =
+  | SchematicLine
+  | SchematicPolyline
+  | SchematicRect
+  | SchematicCircle
+  | SchematicText
+  | SchematicPath
+  | SchematicGroup
+  | SchematicEntityValue
+  | SchematicSymbolInstance;
+
 const SUPPORTED_ITEM_TYPES = new Set([
   "line",
   "polyline",
@@ -153,7 +179,8 @@ const SUPPORTED_ITEM_TYPES = new Set([
   "text",
   "path",
   "group",
-  "entityValue"
+  "entityValue",
+  "symbol"
 ]);
 
 export function isSchematicPayload(value: unknown): value is SchematicPayload {
@@ -175,11 +202,12 @@ export function validateSchematicPayload(value: unknown): ValidationResult {
   }
 
   validateViewport(value.viewport, errors);
+  const symbolIds = validateSymbols(value.symbols, errors);
 
   if (!Array.isArray(value.items)) {
     errors.push("items must be an array");
   } else {
-    value.items.forEach((item, index) => validateItem(item, `items[${index}]`, errors));
+    value.items.forEach((item, index) => validateItem(item, `items[${index}]`, errors, symbolIds));
   }
 
   return {
@@ -203,7 +231,61 @@ function validateViewport(value: unknown, errors: string[]): void {
   }
 }
 
-function validateItem(value: unknown, path: string, errors: string[]): void {
+function validateSymbols(value: unknown, errors: string[]): Set<string> {
+  const symbolIds = new Set<string>();
+
+  if (value === undefined) {
+    return symbolIds;
+  }
+
+  if (!Array.isArray(value)) {
+    errors.push("symbols must be an array");
+    return symbolIds;
+  }
+
+  value.forEach((symbol, index) => {
+    const path = `symbols[${index}]`;
+
+    if (!isRecord(symbol)) {
+      errors.push(`${path} must be an object`);
+      return;
+    }
+
+    if (typeof symbol.id !== "string" || symbol.id.length === 0) {
+      errors.push(`${path}.id must be a non-empty string`);
+    } else if (symbolIds.has(symbol.id)) {
+      errors.push(`${path}.id must be unique`);
+    } else {
+      symbolIds.add(symbol.id);
+    }
+
+    if (symbol.viewport !== undefined) {
+      validateViewport(symbol.viewport, errors);
+    }
+
+    if (!Array.isArray(symbol.items)) {
+      errors.push(`${path}.items must be an array`);
+    } else {
+      symbol.items.forEach((item, itemIndex) => validateItem(
+        item,
+        `${path}.items[${itemIndex}]`,
+        errors,
+        symbolIds,
+        false
+      ));
+    }
+  });
+
+  return symbolIds;
+}
+
+function validateItem(
+  value: unknown,
+  path: string,
+  errors: string[],
+  symbolIds: Set<string>,
+  allowSymbolReference = true
+): void {
   if (!isRecord(value)) {
     errors.push(`${path} must be an object`);
     return;
@@ -227,11 +309,33 @@ function validateItem(value: unknown, path: string, errors: string[]): void {
     validatePathData(value.d, `${path}.d`, errors);
   }
 
+  if (value.type === "symbol") {
+    if (!allowSymbolReference) {
+      errors.push(`${path}.type cannot be symbol inside a symbol definition`);
+    }
+
+    if (typeof value.symbolId !== "string" || value.symbolId.length === 0) {
+      errors.push(`${path}.symbolId must be a non-empty string`);
+    } else if (!symbolIds.has(value.symbolId)) {
+      errors.push(`${path}.symbolId must reference a defined symbol`);
+    }
+
+    validateFiniteNumber(value.x, `${path}.x`, errors);
+    validateFiniteNumber(value.y, `${path}.y`, errors);
+    validateOptionalFiniteNumber(value.scale, `${path}.scale`, errors);
+  }
+
   if (value.type === "group") {
     if (!Array.isArray(value.children)) {
       errors.push(`${path}.children must be an array`);
     } else {
-      value.children.forEach((child, index) => validateItem(child, `${path}.children[${index}]`, errors));
+      value.children.forEach((child, index) => validateItem(
+        child,
+        `${path}.children[${index}]`,
+        errors,
+        symbolIds,
+        allowSymbolReference
+      ));
     }
   }
 }

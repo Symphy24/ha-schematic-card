@@ -129,6 +129,128 @@ describe("schema validation", () => {
     expect(payload.items[0]?.layer).toBe(550);
   });
 
+  it("accepts symbol definitions and symbol instances", () => {
+    const payload: SchematicPayload = {
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      symbols: [
+        {
+          id: "generic-box",
+          viewport: {
+            width: 20,
+            height: 20
+          },
+          items: [
+            {
+              id: "box-rect",
+              type: "rect",
+              layer: 300,
+              x: 0,
+              y: 0,
+              width: 20,
+              height: 20
+            }
+          ]
+        }
+      ],
+      items: [
+        {
+          id: "box-1",
+          type: "symbol",
+          layer: 300,
+          symbolId: "generic-box",
+          x: 10,
+          y: 20,
+          scale: 2
+        }
+      ]
+    };
+
+    expect(validateSchematicPayload(payload)).toEqual({
+      valid: true,
+      errors: []
+    });
+  });
+
+  it("rejects symbol instances that reference missing definitions", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      items: [
+        {
+          id: "box-1",
+          type: "symbol",
+          layer: 300,
+          symbolId: "missing-symbol",
+          x: 10,
+          y: 20
+        }
+      ]
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("items[0].symbolId must reference a defined symbol");
+  });
+
+  it("rejects duplicate symbol definition ids", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      symbols: [
+        {
+          id: "generic-box",
+          items: []
+        },
+        {
+          id: "generic-box",
+          items: []
+        }
+      ],
+      items: []
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("symbols[1].id must be unique");
+  });
+
+  it("rejects nested symbol references inside symbol definitions", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      symbols: [
+        {
+          id: "outer-symbol",
+          items: [
+            {
+              id: "nested-symbol",
+              type: "symbol",
+              layer: 300,
+              symbolId: "outer-symbol",
+              x: 0,
+              y: 0
+            }
+          ]
+        }
+      ],
+      items: []
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("symbols[0].items[0].type cannot be symbol inside a symbol definition");
+  });
+
   it("accepts a valid path item", () => {
     const result = validateSchematicPayload({
       schemaVersion: HSC_SCHEMA_VERSION,

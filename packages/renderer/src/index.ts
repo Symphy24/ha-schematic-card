@@ -10,6 +10,8 @@ import type {
   SchematicPolyline,
   SchematicRect,
   SchematicStyle,
+  SchematicSymbolDefinition,
+  SchematicSymbolInstance,
   SchematicText
 } from "@ha-schematic-card/schema";
 
@@ -33,8 +35,19 @@ export type RenderOptions = {
   className?: string;
 };
 
+type RenderContext = {
+  document: Document;
+  entityStates?: Record<string, unknown>;
+  symbols: Map<string, SchematicSymbolDefinition>;
+};
+
 export function renderSchematicSvg(payload: SchematicPayload, options: RenderOptions = {}): SVGSVGElement {
   const documentRef = options.document ?? document;
+  const context: RenderContext = {
+    document: documentRef,
+    entityStates: options.entityStates,
+    symbols: new Map((payload.symbols ?? []).map((symbol) => [symbol.id, symbol]))
+  };
   const svg = createSvgElement(documentRef, "svg");
   const className = options.className ?? DEFAULT_CLASS_NAME;
 
@@ -45,7 +58,7 @@ export function renderSchematicSvg(payload: SchematicPayload, options: RenderOpt
   setNumberAttr(svg, "height", payload.viewport.height);
 
   for (const item of sortItemsByLayer(payload.items)) {
-    const element = renderItem(documentRef, item, options);
+    const element = renderItem(item, context);
 
     if (element) {
       svg.append(element);
@@ -59,28 +72,30 @@ export function sortItemsByLayer(items: SchematicItem[]): SchematicItem[] {
   return [...items].sort((left, right) => left.layer - right.layer);
 }
 
-function renderItem(documentRef: Document, item: SchematicItem, options: RenderOptions): SVGElement | null {
+function renderItem(item: SchematicItem, context: RenderContext): SVGElement | null {
   if (item.visible === false) {
     return null;
   }
 
   switch (item.type) {
     case "line":
-      return renderLine(documentRef, item);
+      return renderLine(context.document, item);
     case "polyline":
-      return renderPolyline(documentRef, item);
+      return renderPolyline(context.document, item);
     case "rect":
-      return renderRect(documentRef, item);
+      return renderRect(context.document, item);
     case "circle":
-      return renderCircle(documentRef, item);
+      return renderCircle(context.document, item);
     case "text":
-      return renderText(documentRef, item);
+      return renderText(context.document, item);
     case "path":
-      return renderPath(documentRef, item);
+      return renderPath(context.document, item);
     case "group":
-      return renderGroup(documentRef, item, options);
+      return renderGroup(item, context);
     case "entityValue":
-      return renderEntityValue(documentRef, item, options);
+      return renderEntityValue(context.document, item, context);
+    case "symbol":
+      return renderSymbol(item, context);
   }
 }
 
@@ -144,13 +159,14 @@ function renderPath(documentRef: Document, item: SchematicPath): SVGElement {
   return element;
 }
 
-function renderGroup(documentRef: Document, item: SchematicGroup, options: RenderOptions): SVGElement {
+function renderGroup(item: SchematicGroup, context: RenderContext): SVGElement {
+  const documentRef = context.document;
   const element = createSvgElement(documentRef, "g");
   setBaseAttrs(element, item);
   applySafeStyle(element, item.style);
 
   for (const child of sortItemsByLayer(item.children)) {
-    const childElement = renderItem(documentRef, child, options);
+    const childElement = renderItem(child, context);
 
     if (childElement) {
       element.append(childElement);
@@ -160,7 +176,7 @@ function renderGroup(documentRef: Document, item: SchematicGroup, options: Rende
   return element;
 }
 
-function renderEntityValue(documentRef: Document, item: SchematicEntityValue, options: RenderOptions): SVGElement {
+function renderEntityValue(documentRef: Document, item: SchematicEntityValue, context: RenderContext): SVGElement {
   const element = createSvgElement(documentRef, "g");
   setBaseAttrs(element, item);
   applySafeStyle(element, item.style);
@@ -178,8 +194,32 @@ function renderEntityValue(documentRef: Document, item: SchematicEntityValue, op
   setStringAttr(value, "data-role", "value");
   setNumberAttr(value, "x", item.x);
   setNumberAttr(value, "y", item.label ? item.y + 16 : item.y);
-  value.textContent = getEntityValueText(item, options.entityStates);
+  value.textContent = getEntityValueText(item, context.entityStates);
   element.append(value);
+
+  return element;
+}
+
+function renderSymbol(item: SchematicSymbolInstance, context: RenderContext): SVGElement | null {
+  const symbol = context.symbols.get(item.symbolId);
+
+  if (!symbol) {
+    return null;
+  }
+
+  const element = createSvgElement(context.document, "g");
+  setBaseAttrs(element, item);
+  setStringAttr(element, "data-symbol-id", item.symbolId);
+  setStringAttr(element, "transform", formatSymbolTransform(item));
+  applySafeStyle(element, item.style);
+
+  for (const child of sortItemsByLayer(symbol.items)) {
+    const childElement = renderItem(child, context);
+
+    if (childElement) {
+      element.append(childElement);
+    }
+  }
 
   return element;
 }
@@ -245,6 +285,14 @@ function formatTransform(transform: SchematicItem["transform"]): string | undefi
           : `scale(${item.x} ${item.y})`;
     }
   }).join(" ");
+}
+
+function formatSymbolTransform(item: SchematicSymbolInstance): string {
+  return [
+    `translate(${item.x} ${item.y})`,
+    item.scale === undefined ? undefined : `scale(${item.scale})`,
+    formatTransform(item.transform)
+  ].filter((value) => value !== undefined && value.length > 0).join(" ");
 }
 
 function createSvgElement<K extends keyof SVGElementTagNameMap>(
