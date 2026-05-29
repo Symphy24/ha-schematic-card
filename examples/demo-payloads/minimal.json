@@ -6,9 +6,49 @@
     "createdBy": "ha-schematic-card"
   },
   "viewport": {
-    "width": 360,
+    "width": 420,
     "height": 180
   },
+  "symbols": [
+    {
+      "id": "demo-generic-unit",
+      "viewport": {
+        "width": 64,
+        "height": 56
+      },
+      "items": [
+        {
+          "id": "unit-box",
+          "type": "rect",
+          "layer": 300,
+          "x": 0,
+          "y": 0,
+          "width": 64,
+          "height": 56,
+          "rx": 6,
+          "ry": 6,
+          "style": {
+            "stroke": "var(--primary-text-color)",
+            "strokeWidth": 2,
+            "fill": "var(--divider-color)"
+          }
+        },
+        {
+          "id": "unit-label",
+          "type": "text",
+          "layer": 610,
+          "x": 32,
+          "y": 33,
+          "text": "Unit",
+          "style": {
+            "fill": "var(--primary-text-color)",
+            "fontSize": 14,
+            "textAnchor": "middle"
+          }
+        }
+      ]
+    }
+  ],
   "items": [
     {
       "id": "demo-title",
@@ -33,11 +73,15 @@
           "y": 96
         },
         {
-          "x": 160,
+          "x": 168,
           "y": 96
         },
         {
-          "x": 280,
+          "x": 288,
+          "y": 96
+        },
+        {
+          "x": 372,
           "y": 96
         }
       ],
@@ -48,41 +92,54 @@
       }
     },
     {
-      "id": "demo-component",
-      "type": "rect",
+      "id": "demo-component-a",
+      "type": "symbol",
       "layer": 300,
-      "x": 138,
-      "y": 68,
-      "width": 64,
-      "height": 56,
-      "rx": 6,
-      "ry": 6,
-      "style": {
-        "stroke": "var(--primary-text-color)",
-        "strokeWidth": 2,
-        "fill": "var(--divider-color)"
-      }
+      "symbolId": "demo-generic-unit",
+      "x": 116,
+      "y": 68
+    },
+    {
+      "id": "demo-component-b",
+      "type": "symbol",
+      "layer": 300,
+      "symbolId": "demo-generic-unit",
+      "x": 236,
+      "y": 68
     },
     {
       "id": "demo-direction-marker",
       "type": "path",
       "layer": 220,
-      "d": "M 264 86 L 284 96 L 264 106 Z",
+      "d": "M 352 86 L 372 96 L 352 106 Z",
       "style": {
         "fill": "var(--accent-color)",
         "stroke": "none"
       }
     },
     {
-      "id": "demo-component-label",
+      "id": "demo-component-a-label",
       "type": "text",
-      "layer": 610,
-      "x": 170,
-      "y": 101,
-      "text": "Unit",
+      "layer": 620,
+      "x": 148,
+      "y": 138,
+      "text": "Instance A",
       "style": {
-        "fill": "var(--primary-text-color)",
-        "fontSize": 14,
+        "fill": "var(--secondary-text-color)",
+        "fontSize": 12,
+        "textAnchor": "middle"
+      }
+    },
+    {
+      "id": "demo-component-b-label",
+      "type": "text",
+      "layer": 620,
+      "x": 268,
+      "y": 138,
+      "text": "Instance B",
+      "style": {
+        "fill": "var(--secondary-text-color)",
+        "fontSize": 12,
         "textAnchor": "middle"
       }
     },
@@ -90,7 +147,7 @@
       "id": "demo-status-dot",
       "type": "circle",
       "layer": 700,
-      "cx": 280,
+      "cx": 372,
       "cy": 96,
       "r": 10,
       "style": {

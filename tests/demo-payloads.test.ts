@@ -14,6 +14,8 @@ describe("demo payload fixtures", () => {
       valid: true,
       errors: []
     });
+    expect(Array.isArray(payload.symbols)).toBe(true);
+    expect(symbolItemsFor(payload, "demo-generic-unit")).toHaveLength(2);
     expect(payload.items.some((item) => isItemType(item, "entityValue"))).toBe(true);
   });
 
@@ -40,4 +42,20 @@ async function readTextFixture(fileName: string): Promise<string> {
 
 function isItemType(value: unknown, type: string): boolean {
   return typeof value === "object" && value !== null && "type" in value && value.type === type;
+}
+
+function symbolItemsFor(payload: { items: unknown[] }, symbolId: string): unknown[] {
+  return payload.items.filter((item) => (
+    isItemType(item, "symbol")
+    && hasSymbolId(item, symbolId)
+  ));
+}
+
+function hasSymbolId(value: unknown, symbolId: string): boolean {
+  return (
+    typeof value === "object"
+    && value !== null
+    && "symbolId" in value
+    && value.symbolId === symbolId
+  );
 }

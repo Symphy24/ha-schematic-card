@@ -8,7 +8,8 @@ import {
 import {
   HSC_SCHEMA_VERSION,
   type SchematicItem,
-  type SchematicPayload
+  type SchematicPayload,
+  type SchematicSymbolChildItem
 } from "../../schema/src";
 
 function createDocument(): Document {
@@ -100,6 +101,73 @@ describe("SVG renderer", () => {
 
     expect(group?.tagName.toLowerCase()).toBe("g");
     expect(childIds(group as Element)).toEqual(["child-bottom", "child-top"]);
+  });
+
+  it("renders symbol instances from payload definitions", () => {
+    const payload: SchematicPayload = {
+      ...createPayload([
+        {
+          id: "symbol-1",
+          type: "symbol",
+          layer: 300,
+          symbolId: "generic-box",
+          x: 10,
+          y: 20,
+          scale: 2
+        }
+      ]),
+      symbols: [
+        {
+          id: "generic-box",
+          items: [
+            symbolRectItem("symbol-child-top", 300),
+            symbolRectItem("symbol-child-bottom", 100)
+          ]
+        }
+      ]
+    };
+
+    const svg = renderSchematicSvg(payload, {
+      document: createDocument()
+    });
+    const symbol = svg.children[0];
+
+    expect(symbol?.tagName.toLowerCase()).toBe("g");
+    expect(symbol?.getAttribute("data-symbol-id")).toBe("generic-box");
+    expect(symbol?.getAttribute("transform")).toBe("translate(10 20) scale(2)");
+    expect(childIds(symbol as Element)).toEqual(["symbol-child-bottom", "symbol-child-top"]);
+  });
+
+  it("combines symbol placement with structured transforms", () => {
+    const payload: SchematicPayload = {
+      ...createPayload([
+        {
+          id: "symbol-1",
+          type: "symbol",
+          layer: 300,
+          symbolId: "generic-box",
+          x: 10,
+          y: 20,
+          transform: [
+            { type: "rotate", angle: 45 }
+          ]
+        }
+      ]),
+      symbols: [
+        {
+          id: "generic-box",
+          items: [
+            symbolRectItem("symbol-child", 100)
+          ]
+        }
+      ]
+    };
+
+    const svg = renderSchematicSvg(payload, {
+      document: createDocument()
+    });
+
+    expect(svg.children[0]?.getAttribute("transform")).toBe("translate(10 20) rotate(45)");
   });
 
   it("renders basic primitive attributes", () => {
@@ -311,6 +379,10 @@ describe("SVG renderer", () => {
 });
 
 function rectItem(id: string, layer: number): SchematicItem {
+  return symbolRectItem(id, layer);
+}
+
+function symbolRectItem(id: string, layer: number): SchematicSymbolChildItem {
   return {
     id,
     type: "rect",

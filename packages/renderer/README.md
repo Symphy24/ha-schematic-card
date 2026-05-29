@@ -6,4 +6,6 @@ The renderer creates SVG nodes with `createElementNS`, sorts items by numeric `l
 
 It supports safe `path` data and structured transforms from the schema. It does not render raw SVG snippets or arbitrary transform strings.
 
+It can render payload-defined reusable symbols by expanding `symbol` items into safe SVG groups. Symbol content still uses the same primitive renderer and layer sorting.
+
 It does not access Home Assistant directly. Entity values are supplied through renderer options.
