@@ -157,6 +157,41 @@
       }
     },
     {
+      "id": "demo-alarm-badge",
+      "type": "circle",
+      "layer": 710,
+      "cx": 372,
+      "cy": 56,
+      "r": 18,
+      "visibleWhen": {
+        "entityId": "binary_sensor.demo_alarm",
+        "equals": "on"
+      },
+      "style": {
+        "fill": "var(--error-color)",
+        "stroke": "var(--primary-text-color)",
+        "strokeWidth": 2
+      }
+    },
+    {
+      "id": "demo-alarm-label",
+      "type": "text",
+      "layer": 720,
+      "x": 372,
+      "y": 61,
+      "text": "ALARM",
+      "visibleWhen": {
+        "entityId": "binary_sensor.demo_alarm",
+        "equals": "on"
+      },
+      "style": {
+        "fill": "#ffffff",
+        "fontSize": 9,
+        "fontWeight": "bold",
+        "textAnchor": "middle"
+      }
+    },
+    {
       "id": "demo-temperature",
       "type": "entityValue",
       "layer": 520,

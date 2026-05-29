@@ -82,6 +82,72 @@ describe("SVG renderer", () => {
     expect(childIds(svg)).toEqual(["visible"]);
   });
 
+  it("renders items when entity visibility conditions match", () => {
+    const svg = renderSchematicSvg(createPayload([
+      {
+        ...rectItem("visible-when-on", 100),
+        visibleWhen: {
+          entityId: "binary_sensor.alarm",
+          equals: "on"
+        }
+      }
+    ]), {
+      document: createDocument(),
+      entityStates: {
+        "binary_sensor.alarm": "on"
+      }
+    });
+
+    expect(childIds(svg)).toEqual(["visible-when-on"]);
+  });
+
+  it("skips items when entity visibility conditions do not match", () => {
+    const svg = renderSchematicSvg(createPayload([
+      {
+        ...rectItem("hidden-when-off", 100),
+        visibleWhen: {
+          entityId: "binary_sensor.alarm",
+          equals: "on"
+        }
+      },
+      rectItem("always-visible", 200)
+    ]), {
+      document: createDocument(),
+      entityStates: {
+        "binary_sensor.alarm": "off"
+      }
+    });
+
+    expect(childIds(svg)).toEqual(["always-visible"]);
+  });
+
+  it("applies visibility conditions inside groups", () => {
+    const svg = renderSchematicSvg(createPayload([
+      {
+        id: "group-1",
+        type: "group",
+        layer: 100,
+        children: [
+          {
+            ...rectItem("conditional-child", 100),
+            visibleWhen: {
+              entityId: "binary_sensor.alarm",
+              equals: "on"
+            }
+          },
+          rectItem("normal-child", 200)
+        ]
+      }
+    ]), {
+      document: createDocument(),
+      entityStates: {
+        "binary_sensor.alarm": "off"
+      }
+    });
+
+    expect(childIds(svg.children[0] as Element)).toEqual(["normal-child"]);
+  });
+
   it("renders and sorts group children recursively", () => {
     const svg = renderSchematicSvg(createPayload([
       {

@@ -16,6 +16,7 @@ describe("demo payload fixtures", () => {
     });
     expect(Array.isArray(payload.symbols)).toBe(true);
     expect(symbolItemsFor(payload, "demo-generic-unit")).toHaveLength(2);
+    expect(conditionalItemsFor(payload, "binary_sensor.demo_alarm", "on")).toHaveLength(2);
     expect(payload.items.some((item) => isItemType(item, "entityValue"))).toBe(true);
   });
 
@@ -57,5 +58,25 @@ function hasSymbolId(value: unknown, symbolId: string): boolean {
     && value !== null
     && "symbolId" in value
     && value.symbolId === symbolId
+  );
+}
+
+function conditionalItemsFor(payload: { items: unknown[] }, entityId: string, equals: string): unknown[] {
+  return payload.items.filter((item) => hasVisibleWhen(item, entityId, equals));
+}
+
+function hasVisibleWhen(value: unknown, entityId: string, equals: string): boolean {
+  if (typeof value !== "object" || value === null || !("visibleWhen" in value)) {
+    return false;
+  }
+
+  const condition = value.visibleWhen;
+  return (
+    typeof condition === "object"
+    && condition !== null
+    && "entityId" in condition
+    && condition.entityId === entityId
+    && "equals" in condition
+    && condition.equals === equals
   );
 }

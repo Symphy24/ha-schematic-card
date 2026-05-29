@@ -129,6 +129,63 @@ describe("schema validation", () => {
     expect(payload.items[0]?.layer).toBe(550);
   });
 
+  it("accepts a structured visibility condition", () => {
+    const payload: SchematicPayload = {
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      items: [
+        {
+          id: "alarm-badge",
+          type: "circle",
+          layer: 700,
+          cx: 10,
+          cy: 10,
+          r: 5,
+          visibleWhen: {
+            entityId: "binary_sensor.alarm",
+            equals: "on"
+          }
+        }
+      ]
+    };
+
+    expect(validateSchematicPayload(payload)).toEqual({
+      valid: true,
+      errors: []
+    });
+  });
+
+  it("rejects invalid visibility conditions", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      items: [
+        {
+          id: "alarm-badge",
+          type: "circle",
+          layer: 700,
+          cx: 10,
+          cy: 10,
+          r: 5,
+          visibleWhen: {
+            entityId: "",
+            equals: true
+          }
+        }
+      ]
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("items[0].visibleWhen.entityId must be a non-empty string");
+    expect(result.errors).toContain("items[0].visibleWhen.equals must be a string");
+  });
+
   it("accepts symbol definitions and symbol instances", () => {
     const payload: SchematicPayload = {
       schemaVersion: HSC_SCHEMA_VERSION,

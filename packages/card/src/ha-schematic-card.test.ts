@@ -118,6 +118,46 @@ describe("ha-schematic-card", () => {
     expect(card.shadowRoot?.querySelector('[data-role="value"]')?.textContent).toBe("23");
   });
 
+  it("passes hass entity states to renderer visibility conditions", async () => {
+    const conditionalPayload: SchematicPayload = {
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 100,
+        height: 80
+      },
+      items: [
+        {
+          id: "alarm-badge",
+          type: "circle",
+          layer: 700,
+          cx: 10,
+          cy: 20,
+          r: 5,
+          visibleWhen: {
+            entityId: "binary_sensor.alarm",
+            equals: "on"
+          }
+        }
+      ]
+    };
+    const card = createCard();
+
+    card.hass = {
+      states: {
+        "binary_sensor.alarm": {
+          state: "on"
+        }
+      }
+    };
+    card.setConfig({
+      type: "custom:ha-schematic-card",
+      payload: encodePayload(conditionalPayload)
+    });
+    await card.updateComplete;
+
+    expect(card.shadowRoot?.querySelector('[data-id="alarm-badge"]')).not.toBeNull();
+  });
+
   it("renders without using innerHTML for SVG injection", async () => {
     const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML");
     const card = createCard();

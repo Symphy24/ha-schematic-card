@@ -12,7 +12,8 @@ import type {
   SchematicStyle,
   SchematicSymbolDefinition,
   SchematicSymbolInstance,
-  SchematicText
+  SchematicText,
+  SchematicVisibilityCondition
 } from "@ha-schematic-card/schema";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
@@ -73,7 +74,7 @@ export function sortItemsByLayer(items: SchematicItem[]): SchematicItem[] {
 }
 
 function renderItem(item: SchematicItem, context: RenderContext): SVGElement | null {
-  if (item.visible === false) {
+  if (!isItemVisible(item, context.entityStates)) {
     return null;
   }
 
@@ -97,6 +98,30 @@ function renderItem(item: SchematicItem, context: RenderContext): SVGElement | n
     case "symbol":
       return renderSymbol(item, context);
   }
+}
+
+function isItemVisible(item: SchematicItem, entityStates: Record<string, unknown> | undefined): boolean {
+  if (item.visible === false) {
+    return false;
+  }
+
+  if (!item.visibleWhen) {
+    return true;
+  }
+
+  return evaluateVisibilityCondition(item.visibleWhen, entityStates);
+}
+
+function evaluateVisibilityCondition(
+  condition: SchematicVisibilityCondition,
+  entityStates: Record<string, unknown> | undefined
+): boolean {
+  if (!entityStates || !Object.hasOwn(entityStates, condition.entityId)) {
+    return false;
+  }
+
+  const state = entityStates[condition.entityId];
+  return state !== null && state !== undefined && String(state) === condition.equals;
 }
 
 function renderLine(documentRef: Document, item: SchematicLine): SVGElement {
