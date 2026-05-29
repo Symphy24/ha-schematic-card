@@ -477,6 +477,97 @@ describe("SVG renderer", () => {
     expect(svg.querySelector('[data-role="value"]')?.textContent).toBe("21 C");
   });
 
+  it("formats entityValue numbers with precision", () => {
+    const svg = renderSchematicSvg(createPayload([
+      {
+        id: "value-1",
+        type: "entityValue",
+        layer: 500,
+        x: 10,
+        y: 20,
+        entityId: "sensor.example",
+        precision: 1,
+        unit: "C"
+      }
+    ]), {
+      document: createDocument(),
+      entityStates: {
+        "sensor.example": "21.26"
+      }
+    });
+
+    expect(svg.querySelector('[data-role="value"]')?.textContent).toBe("21.3 C");
+  });
+
+  it("uses Home Assistant unit attributes when no payload unit is provided", () => {
+    const svg = renderSchematicSvg(createPayload([
+      {
+        id: "value-1",
+        type: "entityValue",
+        layer: 500,
+        x: 10,
+        y: 20,
+        entityId: "sensor.example",
+        precision: 0
+      }
+    ]), {
+      document: createDocument(),
+      entityStates: {
+        "sensor.example": {
+          state: "21.6",
+          attributes: {
+            unit_of_measurement: "C"
+          }
+        }
+      }
+    });
+
+    expect(svg.querySelector('[data-role="value"]')?.textContent).toBe("22 C");
+  });
+
+  it("renders fallback for unknown or unavailable entityValue states", () => {
+    const svg = renderSchematicSvg(createPayload([
+      {
+        id: "value-1",
+        type: "entityValue",
+        layer: 500,
+        x: 10,
+        y: 20,
+        entityId: "sensor.example",
+        fallback: "offline",
+        unit: "C"
+      }
+    ]), {
+      document: createDocument(),
+      entityStates: {
+        "sensor.example": "unavailable"
+      }
+    });
+
+    expect(svg.querySelector('[data-role="value"]')?.textContent).toBe("offline");
+  });
+
+  it("renders unavailableText when no fallback is provided", () => {
+    const svg = renderSchematicSvg(createPayload([
+      {
+        id: "value-1",
+        type: "entityValue",
+        layer: 500,
+        x: 10,
+        y: 20,
+        entityId: "sensor.example",
+        unavailableText: "n/a"
+      }
+    ]), {
+      document: createDocument(),
+      entityStates: {
+        "sensor.example": "unknown"
+      }
+    });
+
+    expect(svg.querySelector('[data-role="value"]')?.textContent).toBe("n/a");
+  });
+
   it("does not assign innerHTML while rendering", () => {
     const window = new Window();
     const descriptor = Object.getOwnPropertyDescriptor(window.Element.prototype, "innerHTML");

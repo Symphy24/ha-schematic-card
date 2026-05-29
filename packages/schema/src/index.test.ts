@@ -186,6 +186,63 @@ describe("schema validation", () => {
     expect(result.errors).toContain("items[0].visibleWhen.equals must be a string");
   });
 
+  it("accepts entityValue formatting options", () => {
+    const payload: SchematicPayload = {
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      items: [
+        {
+          id: "temperature",
+          type: "entityValue",
+          layer: 520,
+          x: 10,
+          y: 20,
+          entityId: "sensor.temperature",
+          fallback: "n/a",
+          precision: 1,
+          unavailableText: "offline"
+        }
+      ]
+    };
+
+    expect(validateSchematicPayload(payload)).toEqual({
+      valid: true,
+      errors: []
+    });
+  });
+
+  it("rejects invalid entityValue formatting options", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      items: [
+        {
+          id: "temperature",
+          type: "entityValue",
+          layer: 520,
+          x: 10,
+          y: 20,
+          entityId: "",
+          unit: 123,
+          precision: 1.5,
+          unavailableText: false
+        }
+      ]
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("items[0].entityId must be a non-empty string");
+    expect(result.errors).toContain("items[0].unit must be a string");
+    expect(result.errors).toContain("items[0].precision must be a non-negative integer");
+    expect(result.errors).toContain("items[0].unavailableText must be a string");
+  });
+
   it("accepts structured conditional styles", () => {
     const payload: SchematicPayload = {
       schemaVersion: HSC_SCHEMA_VERSION,

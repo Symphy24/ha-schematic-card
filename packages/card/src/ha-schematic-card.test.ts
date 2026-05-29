@@ -118,6 +118,46 @@ describe("ha-schematic-card", () => {
     expect(card.shadowRoot?.querySelector('[data-role="value"]')?.textContent).toBe("23");
   });
 
+  it("passes Home Assistant unit attributes to entityValue rendering", async () => {
+    const unitPayload: SchematicPayload = {
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 100,
+        height: 80
+      },
+      items: [
+        {
+          id: "value-1",
+          type: "entityValue",
+          layer: 500,
+          x: 10,
+          y: 20,
+          entityId: "sensor.example",
+          precision: 1
+        }
+      ]
+    };
+    const card = createCard();
+
+    card.hass = {
+      states: {
+        "sensor.example": {
+          state: "23.44",
+          attributes: {
+            unit_of_measurement: "C"
+          }
+        }
+      }
+    };
+    card.setConfig({
+      type: "custom:ha-schematic-card",
+      payload: encodePayload(unitPayload)
+    });
+    await card.updateComplete;
+
+    expect(card.shadowRoot?.querySelector('[data-role="value"]')?.textContent).toBe("23.4 C");
+  });
+
   it("passes hass entity states to renderer visibility conditions", async () => {
     const conditionalPayload: SchematicPayload = {
       schemaVersion: HSC_SCHEMA_VERSION,

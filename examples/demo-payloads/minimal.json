@@ -209,10 +209,11 @@
       "layer": 520,
       "x": 48,
       "y": 146,
-      "entityId": "sensor.demo_temperature",
+      "entityId": "input_number.schematic_demo_temperature",
       "label": "Temperature",
-      "unit": "C",
       "fallback": "21.0",
+      "precision": 1,
+      "unavailableText": "n/a",
       "style": {
         "fill": "var(--primary-text-color)",
         "fontSize": 13

@@ -18,7 +18,7 @@ describe("demo payload fixtures", () => {
     expect(symbolItemsFor(payload, "demo-generic-unit")).toHaveLength(2);
     expect(visibilityItemsFor(payload, "input_boolean.schematic_demo_alarm", "on")).toHaveLength(2);
     expect(styleItemsFor(payload, "input_boolean.schematic_demo_alarm", "on")).toHaveLength(1);
-    expect(payload.items.some((item) => isItemType(item, "entityValue"))).toBe(true);
+    expect(formattedEntityValueItemsFor(payload, "input_number.schematic_demo_temperature")).toHaveLength(1);
   });
 
   it("includes an encoded hsc1 payload that decodes successfully", async () => {
@@ -70,6 +70,14 @@ function styleItemsFor(payload: { items: unknown[] }, entityId: string, equals: 
   return payload.items.filter((item) => hasStyleWhen(item, entityId, equals));
 }
 
+function formattedEntityValueItemsFor(payload: { items: unknown[] }, entityId: string): unknown[] {
+  return payload.items.filter((item) => (
+    isItemType(item, "entityValue")
+    && hasEntityId(item, entityId)
+    && hasPrecision(item, 1)
+  ));
+}
+
 function hasVisibleWhen(value: unknown, entityId: string, equals: string): boolean {
   if (typeof value !== "object" || value === null || !("visibleWhen" in value)) {
     return false;
@@ -100,5 +108,23 @@ function hasCondition(value: unknown, entityId: string, equals: string): boolean
     && value.entityId === entityId
     && "equals" in value
     && value.equals === equals
+  );
+}
+
+function hasEntityId(value: unknown, entityId: string): boolean {
+  return (
+    typeof value === "object"
+    && value !== null
+    && "entityId" in value
+    && value.entityId === entityId
+  );
+}
+
+function hasPrecision(value: unknown, precision: number): boolean {
+  return (
+    typeof value === "object"
+    && value !== null
+    && "precision" in value
+    && value.precision === precision
   );
 }

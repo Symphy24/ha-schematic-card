@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 
 import { decodePayload } from "@ha-schematic-card/codec";
+import type { EntityStateValue } from "@ha-schematic-card/renderer";
 import { renderSchematicSvg } from "@ha-schematic-card/renderer";
 import type { SchematicPayload } from "@ha-schematic-card/schema";
 import { HA_SCHEMATIC_CARD_EDITOR_TAG } from "./ha-schematic-card-editor";
@@ -167,12 +168,15 @@ export class HaSchematicCard extends LitElement {
     }
   }
 
-  private _getEntityStates(): Record<string, unknown> {
+  private _getEntityStates(): Record<string, EntityStateValue> {
     const states = this.hass?.states ?? {};
-    const entityStates: Record<string, unknown> = {};
+    const entityStates: Record<string, EntityStateValue> = {};
 
     for (const [entityId, state] of Object.entries(states)) {
-      entityStates[entityId] = state.state;
+      entityStates[entityId] = {
+        state: state.state,
+        attributes: state.attributes
+      };
     }
 
     return entityStates;
