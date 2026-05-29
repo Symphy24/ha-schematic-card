@@ -57,8 +57,14 @@ export type SchematicBaseItem = {
   id: string;
   layer: number;
   visible?: boolean;
+  visibleWhen?: SchematicVisibilityCondition;
   style?: SchematicStyle;
   transform?: SchematicTransform[];
+};
+
+export type SchematicVisibilityCondition = {
+  entityId: string;
+  equals: string;
 };
 
 export type SchematicTransform =
@@ -304,6 +310,7 @@ function validateItem(
   }
 
   validateTransforms(value.transform, `${path}.transform`, errors);
+  validateVisibilityCondition(value.visibleWhen, `${path}.visibleWhen`, errors);
 
   if (value.type === "path") {
     validatePathData(value.d, `${path}.d`, errors);
@@ -337,6 +344,25 @@ function validateItem(
         allowSymbolReference
       ));
     }
+  }
+}
+
+function validateVisibilityCondition(value: unknown, path: string, errors: string[]): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!isRecord(value)) {
+    errors.push(`${path} must be an object`);
+    return;
+  }
+
+  if (typeof value.entityId !== "string" || value.entityId.length === 0) {
+    errors.push(`${path}.entityId must be a non-empty string`);
+  }
+
+  if (typeof value.equals !== "string") {
+    errors.push(`${path}.equals must be a string`);
   }
 }
 

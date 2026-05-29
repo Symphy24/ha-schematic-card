@@ -49,6 +49,23 @@ payload: hsc1....
 
 The demo references `sensor.demo_temperature`. If that entity does not exist, the card should still render using the payload fallback value.
 
+## Conditional Visibility Demo
+
+The demo also includes a red `ALARM` badge controlled by:
+
+```yaml
+visibleWhen:
+  entityId: binary_sensor.demo_alarm
+  equals: "on"
+```
+
+To test it manually, create a Home Assistant helper/entity named `binary_sensor.demo_alarm` or temporarily adjust the payload to point at an entity you already have.
+
+Expected behavior:
+
+- When `binary_sensor.demo_alarm` is `on`, the red `ALARM` badge appears near the right side of the schematic.
+- When `binary_sensor.demo_alarm` is `off`, unavailable, or missing, the badge is hidden.
+
 ## Theme Variables
 
 The card config editor includes a "Copy current theme variables" button. It copies selected Home Assistant CSS variables as JSON for use in a future external editor preview. This does not modify the payload.
