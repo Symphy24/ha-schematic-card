@@ -47,7 +47,12 @@ title: Schematic Demo
 payload: hsc1....
 ```
 
-The demo references `sensor.demo_temperature`. If that entity does not exist, the card should still render using the payload fallback value.
+The demo references `input_number.schematic_demo_temperature`. To test live value formatting, create a Home Assistant number helper named `schematic_demo_temperature`, set a value such as `21.26`, and optionally set its unit to `C`.
+
+Expected behavior:
+
+- The value is displayed with one decimal place, for example `21.3 C`.
+- If the entity does not exist or is unavailable, the card should still render using the payload fallback value.
 
 ## Conditional Visibility And Style Demo
 

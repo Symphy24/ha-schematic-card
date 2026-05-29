@@ -33,13 +33,18 @@ export const SCHEMATIC_RENDERER_NAME = "ha-schematic-renderer";
 
 export type RenderOptions = {
   document?: Document;
-  entityStates?: Record<string, unknown>;
+  entityStates?: Record<string, EntityStateValue>;
   className?: string;
+};
+
+export type EntityStateValue = string | number | boolean | null | undefined | {
+  state: unknown;
+  attributes?: Record<string, unknown>;
 };
 
 type RenderContext = {
   document: Document;
-  entityStates?: Record<string, unknown>;
+  entityStates?: Record<string, EntityStateValue>;
   symbols: Map<string, SchematicSymbolDefinition>;
 };
 
@@ -101,7 +106,7 @@ function renderItem(item: SchematicItem, context: RenderContext): SVGElement | n
   }
 }
 
-function isItemVisible(item: SchematicItem, entityStates: Record<string, unknown> | undefined): boolean {
+function isItemVisible(item: SchematicItem, entityStates: Record<string, EntityStateValue> | undefined): boolean {
   if (item.visible === false) {
     return false;
   }
@@ -115,13 +120,13 @@ function isItemVisible(item: SchematicItem, entityStates: Record<string, unknown
 
 function evaluateVisibilityCondition(
   condition: SchematicVisibilityCondition,
-  entityStates: Record<string, unknown> | undefined
+  entityStates: Record<string, EntityStateValue> | undefined
 ): boolean {
   if (!entityStates || !Object.hasOwn(entityStates, condition.entityId)) {
     return false;
   }
 
-  const state = entityStates[condition.entityId];
+  const state = getEntityState(entityStates[condition.entityId]);
   return state !== null && state !== undefined && String(state) === condition.equals;
 }
 
@@ -259,14 +264,14 @@ function setBaseAttrs(element: SVGElement, item: SchematicItem): void {
 function applyItemStyle(
   element: SVGElement,
   item: SchematicItem,
-  entityStates: Record<string, unknown> | undefined
+  entityStates: Record<string, EntityStateValue> | undefined
 ): void {
   applySafeStyle(element, resolveItemStyle(item, entityStates));
 }
 
 function resolveItemStyle(
   item: SchematicItem,
-  entityStates: Record<string, unknown> | undefined
+  entityStates: Record<string, EntityStateValue> | undefined
 ): SchematicStyle | undefined {
   if (!item.styleWhen || item.styleWhen.length === 0) {
     return item.style;
@@ -281,26 +286,75 @@ function resolveItemStyle(
 
 function evaluateConditionalStyle(
   entry: SchematicConditionalStyle,
-  entityStates: Record<string, unknown> | undefined
+  entityStates: Record<string, EntityStateValue> | undefined
 ): boolean {
   return evaluateVisibilityCondition(entry.when, entityStates);
 }
 
-function getEntityValueText(item: SchematicEntityValue, entityStates: Record<string, unknown> | undefined): string {
-  if (entityStates && Object.hasOwn(entityStates, item.entityId)) {
-    return formatEntityState(entityStates[item.entityId], item.unit);
+function getEntityValueText(
+  item: SchematicEntityValue,
+  entityStates: Record<string, EntityStateValue> | undefined
+): string {
+  const entityState = entityStates && Object.hasOwn(entityStates, item.entityId)
+    ? entityStates[item.entityId]
+    : undefined;
+  const state = getEntityState(entityState);
+
+  if (isUnavailableState(state)) {
+    return item.fallback ?? item.unavailableText ?? "";
   }
 
-  if (item.fallback !== undefined) {
-    return item.unit ? `${item.fallback} ${item.unit}` : item.fallback;
+  const formattedState = formatEntityState(state, item.precision);
+  const unit = item.unit ?? getEntityUnit(entityState);
+
+  if (formattedState !== "") {
+    return unit ? `${formattedState} ${unit}` : formattedState;
   }
 
-  return "";
+  return item.fallback ?? "";
 }
 
-function formatEntityState(value: unknown, unit: string | undefined): string {
-  const text = value === null || value === undefined ? "" : String(value);
-  return unit && text ? `${text} ${unit}` : text;
+function getEntityState(value: EntityStateValue): unknown {
+  if (isEntityStateObject(value)) {
+    return value.state;
+  }
+
+  return value;
+}
+
+function getEntityUnit(value: EntityStateValue): string | undefined {
+  if (!isEntityStateObject(value)) {
+    return undefined;
+  }
+
+  const unit = value.attributes?.unit_of_measurement;
+  return typeof unit === "string" && unit.length > 0 ? unit : undefined;
+}
+
+function isEntityStateObject(value: EntityStateValue): value is { state: unknown; attributes?: Record<string, unknown> } {
+  return typeof value === "object" && value !== null && "state" in value;
+}
+
+function isUnavailableState(value: unknown): boolean {
+  return value === null
+    || value === undefined
+    || value === ""
+    || value === "unknown"
+    || value === "unavailable";
+}
+
+function formatEntityState(value: unknown, precision: number | undefined): string {
+  const numericValue = typeof value === "number"
+    ? value
+    : typeof value === "string" && value.trim() !== ""
+      ? Number(value)
+      : Number.NaN;
+
+  if (Number.isFinite(numericValue) && precision !== undefined) {
+    return numericValue.toFixed(precision);
+  }
+
+  return String(value);
 }
 
 function applySafeStyle(element: SVGElement, style: SchematicStyle | undefined): void {

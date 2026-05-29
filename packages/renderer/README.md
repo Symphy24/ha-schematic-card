@@ -10,4 +10,6 @@ It can render payload-defined reusable symbols by expanding `symbol` items into 
 
 It can also apply simple `visibleWhen` entity-state conditions and `styleWhen` conditional safe styles using entity values supplied through renderer options.
 
+`entityValue` rendering supports simple numeric precision, fallback text for unavailable states, explicit payload units, and Home Assistant `unit_of_measurement` attributes.
+
 It does not access Home Assistant directly.

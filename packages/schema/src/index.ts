@@ -146,6 +146,8 @@ export type SchematicEntityValue = SchematicBaseItem & {
   label?: string;
   unit?: string;
   fallback?: string;
+  precision?: number;
+  unavailableText?: string;
 };
 
 export type SchematicSymbolDefinition = {
@@ -339,6 +341,17 @@ function validateItem(
     validateOptionalFiniteNumber(value.scale, `${path}.scale`, errors);
   }
 
+  if (value.type === "entityValue") {
+    if (typeof value.entityId !== "string" || value.entityId.length === 0) {
+      errors.push(`${path}.entityId must be a non-empty string`);
+    }
+
+    validateOptionalString(value.unit, `${path}.unit`, errors);
+    validateOptionalString(value.fallback, `${path}.fallback`, errors);
+    validateOptionalString(value.unavailableText, `${path}.unavailableText`, errors);
+    validateOptionalInteger(value.precision, `${path}.precision`, errors);
+  }
+
   if (value.type === "group") {
     if (!Array.isArray(value.children)) {
       errors.push(`${path}.children must be an array`);
@@ -527,5 +540,11 @@ function validateOptionalFiniteNumber(value: unknown, path: string, errors: stri
 function validateOptionalString(value: unknown, path: string, errors: string[]): void {
   if (value !== undefined && typeof value !== "string") {
     errors.push(`${path} must be a string`);
+  }
+}
+
+function validateOptionalInteger(value: unknown, path: string, errors: string[]): void {
+  if (value !== undefined && (typeof value !== "number" || !Number.isInteger(value) || value < 0)) {
+    errors.push(`${path} must be a non-negative integer`);
   }
 }

@@ -13,3 +13,5 @@ Payloads can also define reusable `symbols` made from the same safe primitives. 
 Items may include a simple structured `visibleWhen` condition to show an item only when a Home Assistant entity state equals a specific string. This is intentionally limited data, not executable JavaScript.
 
 Items may also include `styleWhen` entries that apply an alternative safe style when the same kind of entity-state condition matches. Conditional styles use the same safe style fields as normal item styles.
+
+`entityValue` items support small display helpers such as `unit`, `fallback`, `precision`, and `unavailableText`. Renderers may also use Home Assistant `unit_of_measurement` attributes when the payload does not provide a unit.
