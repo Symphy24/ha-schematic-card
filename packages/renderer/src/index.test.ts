@@ -211,6 +211,74 @@ describe("SVG renderer", () => {
     expect(svg.children[0]?.getAttribute("fill")).toBe("var(--success-color)");
   });
 
+  it("applies safe flow animation when enabled", () => {
+    const svg = renderSchematicSvg(createPayload([
+      {
+        id: "flow-line",
+        type: "polyline",
+        layer: 220,
+        points: [
+          { x: 0, y: 0 },
+          { x: 20, y: 0 }
+        ],
+        flow: {
+          type: "dash",
+          durationSeconds: 1.5,
+          enabledWhen: {
+            entityId: "input_boolean.flow",
+            equals: "on"
+          }
+        }
+      }
+    ]), {
+      document: createDocument(),
+      entityStates: {
+        "input_boolean.flow": "on"
+      }
+    });
+
+    const flowLine = svg.querySelector('[data-id="flow-line"]');
+    const flowStyle = svg.querySelector("style")?.textContent;
+
+    expect(flowStyle).toContain("stroke-dashoffset:0");
+    expect(flowStyle).toContain("@keyframes ha-schematic-card-flow-dash{from{stroke-dashoffset:20;}to{stroke-dashoffset:0;}}");
+    expect(flowLine?.getAttribute("class")).toContain("ha-schematic-card-flow-dash");
+    expect(flowLine?.getAttribute("class")).not.toContain("ha-schematic-card-flow-reverse");
+    expect(flowLine?.getAttribute("data-flow")).toBe("dash");
+    expect(flowLine?.getAttribute("style")).toBe("--hsc-flow-duration: 1.5s");
+  });
+
+  it("does not apply flow animation when condition does not match", () => {
+    const svg = renderSchematicSvg(createPayload([
+      {
+        id: "flow-line",
+        type: "polyline",
+        layer: 220,
+        points: [
+          { x: 0, y: 0 },
+          { x: 20, y: 0 }
+        ],
+        flow: {
+          type: "dash",
+          enabledWhen: {
+            entityId: "input_boolean.flow",
+            equals: "on"
+          }
+        }
+      }
+    ]), {
+      document: createDocument(),
+      entityStates: {
+        "input_boolean.flow": "off"
+      }
+    });
+
+    const flowLine = svg.querySelector('[data-id="flow-line"]');
+
+    expect(flowLine?.getAttribute("class")).toBeNull();
+    expect(flowLine?.getAttribute("data-flow")).toBeNull();
+  });
+
   it("renders and sorts group children recursively", () => {
     const svg = renderSchematicSvg(createPayload([
       {
@@ -615,5 +683,7 @@ function symbolRectItem(id: string, layer: number): SchematicSymbolChildItem {
 }
 
 function childIds(element: Element): string[] {
-  return Array.from(element.children).map((child) => child.getAttribute("data-id") ?? "");
+  return Array.from(element.children)
+    .map((child) => child.getAttribute("data-id"))
+    .filter((id): id is string => id !== null);
 }

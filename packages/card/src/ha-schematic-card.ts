@@ -3,7 +3,11 @@ import { LitElement, css, html, nothing } from "lit";
 import { decodePayload } from "@ha-schematic-card/codec";
 import type { EntityStateValue } from "@ha-schematic-card/renderer";
 import { renderSchematicSvg } from "@ha-schematic-card/renderer";
-import type { SchematicPayload } from "@ha-schematic-card/schema";
+import type {
+  SchematicItem,
+  SchematicPayload,
+  SchematicSymbolDefinition
+} from "@ha-schematic-card/schema";
 import { HA_SCHEMATIC_CARD_EDITOR_TAG } from "./ha-schematic-card-editor";
 import type { HaSchematicCardConfig, HomeAssistant } from "./types";
 import "./ha-schematic-card-editor";
@@ -82,6 +86,7 @@ export class HaSchematicCard extends LitElement {
   declare private _config?: HaSchematicCardConfig;
   declare private _error?: string;
   declare private _payload?: SchematicPayload;
+  private _renderKey?: string;
 
   static getStubConfig(): HaSchematicCardConfig {
     return {
@@ -98,6 +103,7 @@ export class HaSchematicCard extends LitElement {
     this._config = undefined;
     this._payload = undefined;
     this._error = undefined;
+    this._renderKey = undefined;
 
     if (!isRecord(config)) {
       this._error = "Invalid config: expected an object.";
@@ -151,28 +157,48 @@ export class HaSchematicCard extends LitElement {
       return;
     }
 
-    container.replaceChildren();
-
     if (!this._payload || this._error) {
+      container.replaceChildren();
       return;
     }
+
+    const entityStates = this._getEntityStates(this._payload);
+    const renderKey = JSON.stringify({
+      payload: this._payload,
+      entityStates
+    });
+
+    if (renderKey === this._renderKey && container.children.length > 0) {
+      return;
+    }
+
+    this._renderKey = renderKey;
+    container.replaceChildren();
 
     try {
       container.append(renderSchematicSvg(this._payload, {
         document: this.ownerDocument,
-        entityStates: this._getEntityStates()
+        entityStates
       }));
     } catch (error) {
+      this._renderKey = undefined;
       this._error = `Render failed: ${error instanceof Error ? error.message : String(error)}`;
       this.requestUpdate();
     }
   }
 
-  private _getEntityStates(): Record<string, EntityStateValue> {
+  private _getEntityStates(payload: SchematicPayload): Record<string, EntityStateValue> {
     const states = this.hass?.states ?? {};
     const entityStates: Record<string, EntityStateValue> = {};
+    const referencedEntityIds = getReferencedEntityIds(payload);
 
-    for (const [entityId, state] of Object.entries(states)) {
+    for (const entityId of referencedEntityIds) {
+      const state = states[entityId];
+
+      if (!state) {
+        continue;
+      }
+
       entityStates[entityId] = {
         state: state.state,
         attributes: state.attributes
@@ -180,6 +206,50 @@ export class HaSchematicCard extends LitElement {
     }
 
     return entityStates;
+  }
+}
+
+function getReferencedEntityIds(payload: SchematicPayload): Set<string> {
+  const entityIds = new Set<string>();
+
+  for (const symbol of payload.symbols ?? []) {
+    collectSymbolEntityIds(symbol, entityIds);
+  }
+
+  for (const item of payload.items) {
+    collectItemEntityIds(item, entityIds);
+  }
+
+  return entityIds;
+}
+
+function collectSymbolEntityIds(symbol: SchematicSymbolDefinition, entityIds: Set<string>): void {
+  for (const item of symbol.items) {
+    collectItemEntityIds(item, entityIds);
+  }
+}
+
+function collectItemEntityIds(item: SchematicItem, entityIds: Set<string>): void {
+  if (item.visibleWhen) {
+    entityIds.add(item.visibleWhen.entityId);
+  }
+
+  for (const entry of item.styleWhen ?? []) {
+    entityIds.add(entry.when.entityId);
+  }
+
+  if ((item.type === "line" || item.type === "polyline" || item.type === "path") && item.flow?.enabledWhen) {
+    entityIds.add(item.flow.enabledWhen.entityId);
+  }
+
+  if (item.type === "entityValue") {
+    entityIds.add(item.entityId);
+  }
+
+  if (item.type === "group") {
+    for (const child of item.children) {
+      collectItemEntityIds(child, entityIds);
+    }
   }
 }
 

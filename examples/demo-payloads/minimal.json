@@ -89,6 +89,14 @@
         "stroke": "var(--accent-color)",
         "strokeWidth": 6,
         "fill": "none"
+      },
+      "flow": {
+        "type": "dash",
+        "durationSeconds": 1.5,
+        "enabledWhen": {
+          "entityId": "input_boolean.schematic_demo_flow",
+          "equals": "on"
+        }
       }
     },
     {

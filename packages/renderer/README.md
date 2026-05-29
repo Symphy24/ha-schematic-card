@@ -12,4 +12,6 @@ It can also apply simple `visibleWhen` entity-state conditions and `styleWhen` c
 
 `entityValue` rendering supports simple numeric precision, fallback text for unavailable states, explicit payload units, and Home Assistant `unit_of_measurement` attributes.
 
+Line-like items can render a safe dashed `flow` animation from structured payload data. The renderer generates the animation CSS itself and does not accept raw CSS from payloads.
+
 It does not access Home Assistant directly.

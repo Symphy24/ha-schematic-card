@@ -84,6 +84,26 @@ Expected behavior:
 - When `input_boolean.schematic_demo_alarm` is `on`, the status dot changes to the error color and the red `ALARM` badge appears near the right side of the schematic.
 - When `input_boolean.schematic_demo_alarm` is `off`, unavailable, or missing, the status dot stays in the success color and the badge is hidden.
 
+## Flow Animation Demo
+
+The main flow line has a safe dashed flow animation controlled by:
+
+```yaml
+flow:
+  type: dash
+  durationSeconds: 1.5
+  enabledWhen:
+    entityId: input_boolean.schematic_demo_flow
+    equals: "on"
+```
+
+To test it manually, create a Home Assistant toggle helper named `schematic_demo_flow`, which appears as `input_boolean.schematic_demo_flow`.
+
+Expected behavior:
+
+- When `input_boolean.schematic_demo_flow` is `on`, the main flow line shows a moving dashed flow indication.
+- When it is `off`, unavailable, or missing, the flow line is rendered as a normal static line.
+
 ## Theme Variables
 
 The card config editor includes a "Copy current theme variables" button. It copies selected Home Assistant CSS variables as JSON for use in a future external editor preview. This does not modify the payload.
