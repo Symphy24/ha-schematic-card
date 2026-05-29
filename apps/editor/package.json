@@ -2,8 +2,20 @@
   "name": "@ha-schematic-card/editor",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "check": "node -e \"console.log('editor check placeholder')\"",
-    "test": "node -e \"console.log('editor test placeholder')\""
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ha-schematic-card/codec": "0.0.0",
+    "@ha-schematic-card/renderer": "0.0.0",
+    "@ha-schematic-card/schema": "0.0.0"
+  },
+  "devDependencies": {
+    "vite": "^8.0.14"
   }
 }
