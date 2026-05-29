@@ -59,12 +59,18 @@ export type SchematicBaseItem = {
   visible?: boolean;
   visibleWhen?: SchematicVisibilityCondition;
   style?: SchematicStyle;
+  styleWhen?: SchematicConditionalStyle[];
   transform?: SchematicTransform[];
 };
 
 export type SchematicVisibilityCondition = {
   entityId: string;
   equals: string;
+};
+
+export type SchematicConditionalStyle = {
+  when: SchematicVisibilityCondition;
+  style: SchematicStyle;
 };
 
 export type SchematicTransform =
@@ -311,6 +317,7 @@ function validateItem(
 
   validateTransforms(value.transform, `${path}.transform`, errors);
   validateVisibilityCondition(value.visibleWhen, `${path}.visibleWhen`, errors);
+  validateConditionalStyles(value.styleWhen, `${path}.styleWhen`, errors);
 
   if (value.type === "path") {
     validatePathData(value.d, `${path}.d`, errors);
@@ -344,6 +351,78 @@ function validateItem(
         allowSymbolReference
       ));
     }
+  }
+}
+
+function validateConditionalStyles(value: unknown, path: string, errors: string[]): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!Array.isArray(value)) {
+    errors.push(`${path} must be an array`);
+    return;
+  }
+
+  value.forEach((entry, index) => {
+    const entryPath = `${path}[${index}]`;
+
+    if (!isRecord(entry)) {
+      errors.push(`${entryPath} must be an object`);
+      return;
+    }
+
+    validateVisibilityCondition(entry.when, `${entryPath}.when`, errors);
+    validateStyle(entry.style, `${entryPath}.style`, errors);
+  });
+}
+
+function validateStyle(value: unknown, path: string, errors: string[]): void {
+  if (!isRecord(value)) {
+    errors.push(`${path} must be an object`);
+    return;
+  }
+
+  const supportedProperties = new Set([
+    "stroke",
+    "strokeWidth",
+    "strokeDasharray",
+    "fill",
+    "opacity",
+    "fontSize",
+    "fontWeight",
+    "textAnchor"
+  ]);
+
+  for (const property of Object.keys(value)) {
+    if (!supportedProperties.has(property)) {
+      errors.push(`${path}.${property} is not a supported style property`);
+    }
+  }
+
+  validateOptionalString(value.stroke, `${path}.stroke`, errors);
+  validateOptionalFiniteNumber(value.strokeWidth, `${path}.strokeWidth`, errors);
+  validateOptionalString(value.strokeDasharray, `${path}.strokeDasharray`, errors);
+  validateOptionalString(value.fill, `${path}.fill`, errors);
+  validateOptionalFiniteNumber(value.opacity, `${path}.opacity`, errors);
+  validateOptionalFiniteNumber(value.fontSize, `${path}.fontSize`, errors);
+
+  if (
+    value.fontWeight !== undefined
+    && value.fontWeight !== "normal"
+    && value.fontWeight !== "bold"
+    && (typeof value.fontWeight !== "number" || !Number.isFinite(value.fontWeight))
+  ) {
+    errors.push(`${path}.fontWeight must be "normal", "bold", or a finite number`);
+  }
+
+  if (
+    value.textAnchor !== undefined
+    && value.textAnchor !== "start"
+    && value.textAnchor !== "middle"
+    && value.textAnchor !== "end"
+  ) {
+    errors.push(`${path}.textAnchor must be "start", "middle", or "end"`);
   }
 }
 
@@ -442,5 +521,11 @@ function validateFiniteNumber(value: unknown, path: string, errors: string[]): v
 function validateOptionalFiniteNumber(value: unknown, path: string, errors: string[]): void {
   if (value !== undefined) {
     validateFiniteNumber(value, path, errors);
+  }
+}
+
+function validateOptionalString(value: unknown, path: string, errors: string[]): void {
+  if (value !== undefined && typeof value !== "string") {
+    errors.push(`${path} must be a string`);
   }
 }

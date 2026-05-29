@@ -154,7 +154,19 @@
         "fill": "var(--success-color)",
         "stroke": "var(--primary-text-color)",
         "strokeWidth": 1
-      }
+      },
+      "styleWhen": [
+        {
+          "when": {
+            "entityId": "input_boolean.schematic_demo_alarm",
+            "equals": "on"
+          },
+          "style": {
+            "fill": "var(--error-color)",
+            "strokeWidth": 3
+          }
+        }
+      ]
     },
     {
       "id": "demo-alarm-badge",
@@ -164,7 +176,7 @@
       "cy": 56,
       "r": 18,
       "visibleWhen": {
-        "entityId": "binary_sensor.demo_alarm",
+        "entityId": "input_boolean.schematic_demo_alarm",
         "equals": "on"
       },
       "style": {
@@ -181,7 +193,7 @@
       "y": 61,
       "text": "ALARM",
       "visibleWhen": {
-        "entityId": "binary_sensor.demo_alarm",
+        "entityId": "input_boolean.schematic_demo_alarm",
         "equals": "on"
       },
       "style": {

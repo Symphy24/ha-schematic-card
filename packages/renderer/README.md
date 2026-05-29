@@ -8,6 +8,6 @@ It supports safe `path` data and structured transforms from the schema. It does 
 
 It can render payload-defined reusable symbols by expanding `symbol` items into safe SVG groups. Symbol content still uses the same primitive renderer and layer sorting.
 
-It can also apply simple `visibleWhen` entity-state conditions using entity values supplied through renderer options.
+It can also apply simple `visibleWhen` entity-state conditions and `styleWhen` conditional safe styles using entity values supplied through renderer options.
 
 It does not access Home Assistant directly.

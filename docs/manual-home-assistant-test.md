@@ -49,22 +49,35 @@ payload: hsc1....
 
 The demo references `sensor.demo_temperature`. If that entity does not exist, the card should still render using the payload fallback value.
 
-## Conditional Visibility Demo
+## Conditional Visibility And Style Demo
 
-The demo also includes a red `ALARM` badge controlled by:
+The demo also includes a status indicator controlled by `input_boolean.schematic_demo_alarm`.
+
+The red `ALARM` badge is controlled by:
 
 ```yaml
 visibleWhen:
-  entityId: binary_sensor.demo_alarm
+  entityId: input_boolean.schematic_demo_alarm
   equals: "on"
 ```
 
-To test it manually, create a Home Assistant helper/entity named `binary_sensor.demo_alarm` or temporarily adjust the payload to point at an entity you already have.
+The round status dot also changes style with:
+
+```yaml
+styleWhen:
+  - when:
+      entityId: input_boolean.schematic_demo_alarm
+      equals: "on"
+    style:
+      fill: var(--error-color)
+```
+
+To test it manually, create a Home Assistant toggle helper named `schematic_demo_alarm`, which appears as `input_boolean.schematic_demo_alarm`, or temporarily adjust the payload to point at an entity you already have.
 
 Expected behavior:
 
-- When `binary_sensor.demo_alarm` is `on`, the red `ALARM` badge appears near the right side of the schematic.
-- When `binary_sensor.demo_alarm` is `off`, unavailable, or missing, the badge is hidden.
+- When `input_boolean.schematic_demo_alarm` is `on`, the status dot changes to the error color and the red `ALARM` badge appears near the right side of the schematic.
+- When `input_boolean.schematic_demo_alarm` is `off`, unavailable, or missing, the status dot stays in the success color and the badge is hidden.
 
 ## Theme Variables
 

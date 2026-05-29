@@ -158,6 +158,57 @@ describe("ha-schematic-card", () => {
     expect(card.shadowRoot?.querySelector('[data-id="alarm-badge"]')).not.toBeNull();
   });
 
+  it("passes hass entity states to renderer conditional styles", async () => {
+    const conditionalPayload: SchematicPayload = {
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 100,
+        height: 80
+      },
+      items: [
+        {
+          id: "status-dot",
+          type: "circle",
+          layer: 700,
+          cx: 10,
+          cy: 20,
+          r: 5,
+          style: {
+            fill: "var(--success-color)"
+          },
+          styleWhen: [
+            {
+              when: {
+                entityId: "input_boolean.alarm",
+                equals: "on"
+              },
+              style: {
+                fill: "var(--error-color)"
+              }
+            }
+          ]
+        }
+      ]
+    };
+    const card = createCard();
+
+    card.hass = {
+      states: {
+        "input_boolean.alarm": {
+          state: "on"
+        }
+      }
+    };
+    card.setConfig({
+      type: "custom:ha-schematic-card",
+      payload: encodePayload(conditionalPayload)
+    });
+    await card.updateComplete;
+
+    expect(card.shadowRoot?.querySelector('[data-id="status-dot"]')?.getAttribute("fill"))
+      .toBe("var(--error-color)");
+  });
+
   it("renders without using innerHTML for SVG injection", async () => {
     const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML");
     const card = createCard();
