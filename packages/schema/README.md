@@ -11,3 +11,5 @@ The schema supports safe SVG-like primitives, including `path` as path data only
 Payloads can also define reusable `symbols` made from the same safe primitives. A `symbol` item references one of those definitions by id and places it in the schematic. Symbol definitions are payload data, not a hardcoded domain-specific symbol library.
 
 Items may include a simple structured `visibleWhen` condition to show an item only when a Home Assistant entity state equals a specific string. This is intentionally limited data, not executable JavaScript.
+
+Items may also include `styleWhen` entries that apply an alternative safe style when the same kind of entity-state condition matches. Conditional styles use the same safe style fields as normal item styles.

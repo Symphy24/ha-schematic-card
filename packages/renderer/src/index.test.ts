@@ -148,6 +148,69 @@ describe("SVG renderer", () => {
     expect(childIds(svg.children[0] as Element)).toEqual(["normal-child"]);
   });
 
+  it("applies conditional styles when entity conditions match", () => {
+    const svg = renderSchematicSvg(createPayload([
+      {
+        ...rectItem("status", 100),
+        style: {
+          fill: "var(--success-color)",
+          strokeWidth: 1
+        },
+        styleWhen: [
+          {
+            when: {
+              entityId: "input_boolean.alarm",
+              equals: "on"
+            },
+            style: {
+              fill: "var(--error-color)",
+              strokeWidth: 3
+            }
+          }
+        ]
+      }
+    ]), {
+      document: createDocument(),
+      entityStates: {
+        "input_boolean.alarm": "on"
+      }
+    });
+
+    const status = svg.children[0];
+
+    expect(status?.getAttribute("fill")).toBe("var(--error-color)");
+    expect(status?.getAttribute("stroke-width")).toBe("3");
+  });
+
+  it("keeps base styles when conditional styles do not match", () => {
+    const svg = renderSchematicSvg(createPayload([
+      {
+        ...rectItem("status", 100),
+        style: {
+          fill: "var(--success-color)"
+        },
+        styleWhen: [
+          {
+            when: {
+              entityId: "input_boolean.alarm",
+              equals: "on"
+            },
+            style: {
+              fill: "var(--error-color)"
+            }
+          }
+        ]
+      }
+    ]), {
+      document: createDocument(),
+      entityStates: {
+        "input_boolean.alarm": "off"
+      }
+    });
+
+    expect(svg.children[0]?.getAttribute("fill")).toBe("var(--success-color)");
+  });
+
   it("renders and sorts group children recursively", () => {
     const svg = renderSchematicSvg(createPayload([
       {

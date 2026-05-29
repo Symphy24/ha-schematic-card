@@ -16,7 +16,8 @@ describe("demo payload fixtures", () => {
     });
     expect(Array.isArray(payload.symbols)).toBe(true);
     expect(symbolItemsFor(payload, "demo-generic-unit")).toHaveLength(2);
-    expect(conditionalItemsFor(payload, "binary_sensor.demo_alarm", "on")).toHaveLength(2);
+    expect(visibilityItemsFor(payload, "input_boolean.schematic_demo_alarm", "on")).toHaveLength(2);
+    expect(styleItemsFor(payload, "input_boolean.schematic_demo_alarm", "on")).toHaveLength(1);
     expect(payload.items.some((item) => isItemType(item, "entityValue"))).toBe(true);
   });
 
@@ -61,8 +62,12 @@ function hasSymbolId(value: unknown, symbolId: string): boolean {
   );
 }
 
-function conditionalItemsFor(payload: { items: unknown[] }, entityId: string, equals: string): unknown[] {
+function visibilityItemsFor(payload: { items: unknown[] }, entityId: string, equals: string): unknown[] {
   return payload.items.filter((item) => hasVisibleWhen(item, entityId, equals));
+}
+
+function styleItemsFor(payload: { items: unknown[] }, entityId: string, equals: string): unknown[] {
+  return payload.items.filter((item) => hasStyleWhen(item, entityId, equals));
 }
 
 function hasVisibleWhen(value: unknown, entityId: string, equals: string): boolean {
@@ -70,13 +75,30 @@ function hasVisibleWhen(value: unknown, entityId: string, equals: string): boole
     return false;
   }
 
-  const condition = value.visibleWhen;
+  return hasCondition(value.visibleWhen, entityId, equals);
+}
+
+function hasStyleWhen(value: unknown, entityId: string, equals: string): boolean {
+  if (typeof value !== "object" || value === null || !("styleWhen" in value)) {
+    return false;
+  }
+
+  return Array.isArray(value.styleWhen)
+    && value.styleWhen.some((entry) => (
+      typeof entry === "object"
+      && entry !== null
+      && "when" in entry
+      && hasCondition(entry.when, entityId, equals)
+    ));
+}
+
+function hasCondition(value: unknown, entityId: string, equals: string): boolean {
   return (
-    typeof condition === "object"
-    && condition !== null
-    && "entityId" in condition
-    && condition.entityId === entityId
-    && "equals" in condition
-    && condition.equals === equals
+    typeof value === "object"
+    && value !== null
+    && "entityId" in value
+    && value.entityId === entityId
+    && "equals" in value
+    && value.equals === equals
   );
 }

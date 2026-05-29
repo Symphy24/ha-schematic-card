@@ -1,5 +1,6 @@
 import type {
   SchematicCircle,
+  SchematicConditionalStyle,
   SchematicEntityValue,
   SchematicGroup,
   SchematicItem,
@@ -80,17 +81,17 @@ function renderItem(item: SchematicItem, context: RenderContext): SVGElement | n
 
   switch (item.type) {
     case "line":
-      return renderLine(context.document, item);
+      return renderLine(context.document, item, context);
     case "polyline":
-      return renderPolyline(context.document, item);
+      return renderPolyline(context.document, item, context);
     case "rect":
-      return renderRect(context.document, item);
+      return renderRect(context.document, item, context);
     case "circle":
-      return renderCircle(context.document, item);
+      return renderCircle(context.document, item, context);
     case "text":
-      return renderText(context.document, item);
+      return renderText(context.document, item, context);
     case "path":
-      return renderPath(context.document, item);
+      return renderPath(context.document, item, context);
     case "group":
       return renderGroup(item, context);
     case "entityValue":
@@ -124,26 +125,26 @@ function evaluateVisibilityCondition(
   return state !== null && state !== undefined && String(state) === condition.equals;
 }
 
-function renderLine(documentRef: Document, item: SchematicLine): SVGElement {
+function renderLine(documentRef: Document, item: SchematicLine, context: RenderContext): SVGElement {
   const element = createSvgElement(documentRef, "line");
   setBaseAttrs(element, item);
   setNumberAttr(element, "x1", item.x1);
   setNumberAttr(element, "y1", item.y1);
   setNumberAttr(element, "x2", item.x2);
   setNumberAttr(element, "y2", item.y2);
-  applySafeStyle(element, item.style);
+  applyItemStyle(element, item, context.entityStates);
   return element;
 }
 
-function renderPolyline(documentRef: Document, item: SchematicPolyline): SVGElement {
+function renderPolyline(documentRef: Document, item: SchematicPolyline, context: RenderContext): SVGElement {
   const element = createSvgElement(documentRef, "polyline");
   setBaseAttrs(element, item);
   setStringAttr(element, "points", formatPoints(item.points));
-  applySafeStyle(element, item.style);
+  applyItemStyle(element, item, context.entityStates);
   return element;
 }
 
-function renderRect(documentRef: Document, item: SchematicRect): SVGElement {
+function renderRect(documentRef: Document, item: SchematicRect, context: RenderContext): SVGElement {
   const element = createSvgElement(documentRef, "rect");
   setBaseAttrs(element, item);
   setNumberAttr(element, "x", item.x);
@@ -152,35 +153,35 @@ function renderRect(documentRef: Document, item: SchematicRect): SVGElement {
   setNumberAttr(element, "height", item.height);
   setNumberAttr(element, "rx", item.rx);
   setNumberAttr(element, "ry", item.ry);
-  applySafeStyle(element, item.style);
+  applyItemStyle(element, item, context.entityStates);
   return element;
 }
 
-function renderCircle(documentRef: Document, item: SchematicCircle): SVGElement {
+function renderCircle(documentRef: Document, item: SchematicCircle, context: RenderContext): SVGElement {
   const element = createSvgElement(documentRef, "circle");
   setBaseAttrs(element, item);
   setNumberAttr(element, "cx", item.cx);
   setNumberAttr(element, "cy", item.cy);
   setNumberAttr(element, "r", item.r);
-  applySafeStyle(element, item.style);
+  applyItemStyle(element, item, context.entityStates);
   return element;
 }
 
-function renderText(documentRef: Document, item: SchematicText): SVGElement {
+function renderText(documentRef: Document, item: SchematicText, context: RenderContext): SVGElement {
   const element = createSvgElement(documentRef, "text");
   setBaseAttrs(element, item);
   setNumberAttr(element, "x", item.x);
   setNumberAttr(element, "y", item.y);
   element.textContent = item.text;
-  applySafeStyle(element, item.style);
+  applyItemStyle(element, item, context.entityStates);
   return element;
 }
 
-function renderPath(documentRef: Document, item: SchematicPath): SVGElement {
+function renderPath(documentRef: Document, item: SchematicPath, context: RenderContext): SVGElement {
   const element = createSvgElement(documentRef, "path");
   setBaseAttrs(element, item);
   setStringAttr(element, "d", item.d);
-  applySafeStyle(element, item.style);
+  applyItemStyle(element, item, context.entityStates);
   return element;
 }
 
@@ -188,7 +189,7 @@ function renderGroup(item: SchematicGroup, context: RenderContext): SVGElement {
   const documentRef = context.document;
   const element = createSvgElement(documentRef, "g");
   setBaseAttrs(element, item);
-  applySafeStyle(element, item.style);
+  applyItemStyle(element, item, context.entityStates);
 
   for (const child of sortItemsByLayer(item.children)) {
     const childElement = renderItem(child, context);
@@ -204,7 +205,7 @@ function renderGroup(item: SchematicGroup, context: RenderContext): SVGElement {
 function renderEntityValue(documentRef: Document, item: SchematicEntityValue, context: RenderContext): SVGElement {
   const element = createSvgElement(documentRef, "g");
   setBaseAttrs(element, item);
-  applySafeStyle(element, item.style);
+  applyItemStyle(element, item, context.entityStates);
 
   if (item.label) {
     const label = createSvgElement(documentRef, "text");
@@ -236,7 +237,7 @@ function renderSymbol(item: SchematicSymbolInstance, context: RenderContext): SV
   setBaseAttrs(element, item);
   setStringAttr(element, "data-symbol-id", item.symbolId);
   setStringAttr(element, "transform", formatSymbolTransform(item));
-  applySafeStyle(element, item.style);
+  applyItemStyle(element, item, context.entityStates);
 
   for (const child of sortItemsByLayer(symbol.items)) {
     const childElement = renderItem(child, context);
@@ -253,6 +254,36 @@ function setBaseAttrs(element: SVGElement, item: SchematicItem): void {
   setStringAttr(element, "data-id", item.id);
   setNumberAttr(element, "data-layer", item.layer);
   setStringAttr(element, "transform", formatTransform(item.transform));
+}
+
+function applyItemStyle(
+  element: SVGElement,
+  item: SchematicItem,
+  entityStates: Record<string, unknown> | undefined
+): void {
+  applySafeStyle(element, resolveItemStyle(item, entityStates));
+}
+
+function resolveItemStyle(
+  item: SchematicItem,
+  entityStates: Record<string, unknown> | undefined
+): SchematicStyle | undefined {
+  if (!item.styleWhen || item.styleWhen.length === 0) {
+    return item.style;
+  }
+
+  const matchedStyles = item.styleWhen
+    .filter((entry) => evaluateConditionalStyle(entry, entityStates))
+    .map((entry) => entry.style);
+
+  return Object.assign({}, item.style, ...matchedStyles) as SchematicStyle;
+}
+
+function evaluateConditionalStyle(
+  entry: SchematicConditionalStyle,
+  entityStates: Record<string, unknown> | undefined
+): boolean {
+  return evaluateVisibilityCondition(entry.when, entityStates);
 }
 
 function getEntityValueText(item: SchematicEntityValue, entityStates: Record<string, unknown> | undefined): string {

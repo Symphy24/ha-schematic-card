@@ -186,6 +186,83 @@ describe("schema validation", () => {
     expect(result.errors).toContain("items[0].visibleWhen.equals must be a string");
   });
 
+  it("accepts structured conditional styles", () => {
+    const payload: SchematicPayload = {
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      items: [
+        {
+          id: "status-dot",
+          type: "circle",
+          layer: 700,
+          cx: 10,
+          cy: 10,
+          r: 5,
+          style: {
+            fill: "var(--success-color)"
+          },
+          styleWhen: [
+            {
+              when: {
+                entityId: "input_boolean.alarm",
+                equals: "on"
+              },
+              style: {
+                fill: "var(--error-color)",
+                strokeWidth: 2
+              }
+            }
+          ]
+        }
+      ]
+    };
+
+    expect(validateSchematicPayload(payload)).toEqual({
+      valid: true,
+      errors: []
+    });
+  });
+
+  it("rejects invalid conditional styles", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      items: [
+        {
+          id: "status-dot",
+          type: "circle",
+          layer: 700,
+          cx: 10,
+          cy: 10,
+          r: 5,
+          styleWhen: [
+            {
+              when: {
+                entityId: "",
+                equals: "on"
+              },
+              style: {
+                fill: 42,
+                cssText: "fill: red"
+              }
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("items[0].styleWhen[0].when.entityId must be a non-empty string");
+    expect(result.errors).toContain("items[0].styleWhen[0].style.cssText is not a supported style property");
+    expect(result.errors).toContain("items[0].styleWhen[0].style.fill must be a string");
+  });
+
   it("accepts symbol definitions and symbol instances", () => {
     const payload: SchematicPayload = {
       schemaVersion: HSC_SCHEMA_VERSION,
