@@ -6,7 +6,7 @@ A generic Home Assistant Lovelace custom card for SD/SCADA-like schematic diagra
 
 This project is in early development. The repository currently contains only the initial project scaffold and package structure.
 
-The first goal is to establish a small, reviewable project foundation. It is not a working Home Assistant card yet, and the editor app has not been implemented.
+The first goal is to establish a small, reviewable project foundation. The Home Assistant card and editor app are still early foundations, not complete products.
 
 The repository now includes an initial TypeScript workspace setup for the shared packages.
 
@@ -21,7 +21,7 @@ The repository now includes an initial TypeScript workspace setup for the shared
 
 ## Workspaces
 
-- `apps/editor` - future external schematic editor/generator
+- `apps/editor` - early local editor/generator foundation
 - `packages/schema` - future payload schema definitions
 - `packages/codec` - future payload encoding and decoding
 - `packages/renderer` - future safe SVG rendering logic
@@ -38,3 +38,9 @@ The repository now includes an initial TypeScript workspace setup for the shared
 `npm run build` creates the early browser-ready Lovelace resource at `packages/card/dist/ha-schematic-card.js`. Full HACS release packaging is not implemented yet.
 
 For a minimal manual Home Assistant test flow, see `docs/manual-home-assistant-test.md`. Demo payload fixtures live in `examples/demo-payloads`.
+
+Run the early editor preview locally with:
+
+```sh
+npm run dev -w @ha-schematic-card/editor
+```
