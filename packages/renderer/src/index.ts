@@ -2,6 +2,7 @@ import type {
   SchematicCircle,
   SchematicConditionalStyle,
   SchematicEntityValue,
+  SchematicFlowAnimation,
   SchematicGroup,
   SchematicItem,
   SchematicLine,
@@ -72,6 +73,8 @@ export function renderSchematicSvg(payload: SchematicPayload, options: RenderOpt
     }
   }
 
+  svg.append(createFlowStyleElement(documentRef));
+
   return svg;
 }
 
@@ -138,6 +141,7 @@ function renderLine(documentRef: Document, item: SchematicLine, context: RenderC
   setNumberAttr(element, "x2", item.x2);
   setNumberAttr(element, "y2", item.y2);
   applyItemStyle(element, item, context.entityStates);
+  applyFlowAnimation(element, item, context.entityStates);
   return element;
 }
 
@@ -146,6 +150,7 @@ function renderPolyline(documentRef: Document, item: SchematicPolyline, context:
   setBaseAttrs(element, item);
   setStringAttr(element, "points", formatPoints(item.points));
   applyItemStyle(element, item, context.entityStates);
+  applyFlowAnimation(element, item, context.entityStates);
   return element;
 }
 
@@ -187,6 +192,7 @@ function renderPath(documentRef: Document, item: SchematicPath, context: RenderC
   setBaseAttrs(element, item);
   setStringAttr(element, "d", item.d);
   applyItemStyle(element, item, context.entityStates);
+  applyFlowAnimation(element, item, context.entityStates);
   return element;
 }
 
@@ -259,6 +265,50 @@ function setBaseAttrs(element: SVGElement, item: SchematicItem): void {
   setStringAttr(element, "data-id", item.id);
   setNumberAttr(element, "data-layer", item.layer);
   setStringAttr(element, "transform", formatTransform(item.transform));
+}
+
+function createFlowStyleElement(documentRef: Document): SVGStyleElement {
+  const element = createSvgElement(documentRef, "style");
+  element.textContent = [
+    ".ha-schematic-card-flow-dash{",
+    "stroke-dasharray:12 8;",
+    "stroke-dashoffset:0;",
+    "animation:ha-schematic-card-flow-dash var(--hsc-flow-duration, 2s) linear infinite;",
+    "}",
+    ".ha-schematic-card-flow-reverse{animation-direction:reverse;}",
+    "@keyframes ha-schematic-card-flow-dash{from{stroke-dashoffset:20;}to{stroke-dashoffset:0;}}"
+  ].join("");
+  return element;
+}
+
+function applyFlowAnimation(
+  element: SVGElement,
+  item: SchematicLine | SchematicPolyline | SchematicPath,
+  entityStates: Record<string, EntityStateValue> | undefined
+): void {
+  const flow = item.flow;
+
+  if (!flow || !isFlowEnabled(flow, entityStates)) {
+    return;
+  }
+
+  setStringAttr(element, "class", [
+    element.getAttribute("class"),
+    "ha-schematic-card-flow-dash",
+    flow.reverse ? "ha-schematic-card-flow-reverse" : undefined
+  ].filter((value) => value !== undefined && value !== null && value.length > 0).join(" "));
+  setStringAttr(element, "data-flow", flow.type);
+
+  if (flow.durationSeconds !== undefined) {
+    setStringAttr(element, "style", `--hsc-flow-duration: ${flow.durationSeconds}s`);
+  }
+}
+
+function isFlowEnabled(
+  flow: SchematicFlowAnimation,
+  entityStates: Record<string, EntityStateValue> | undefined
+): boolean {
+  return !flow.enabledWhen || evaluateVisibilityCondition(flow.enabledWhen, entityStates);
 }
 
 function applyItemStyle(

@@ -60,6 +60,7 @@ export type SchematicBaseItem = {
   visibleWhen?: SchematicVisibilityCondition;
   style?: SchematicStyle;
   styleWhen?: SchematicConditionalStyle[];
+  flow?: SchematicFlowAnimation;
   transform?: SchematicTransform[];
 };
 
@@ -71,6 +72,13 @@ export type SchematicVisibilityCondition = {
 export type SchematicConditionalStyle = {
   when: SchematicVisibilityCondition;
   style: SchematicStyle;
+};
+
+export type SchematicFlowAnimation = {
+  type: "dash";
+  enabledWhen?: SchematicVisibilityCondition;
+  durationSeconds?: number;
+  reverse?: boolean;
 };
 
 export type SchematicTransform =
@@ -320,6 +328,7 @@ function validateItem(
   validateTransforms(value.transform, `${path}.transform`, errors);
   validateVisibilityCondition(value.visibleWhen, `${path}.visibleWhen`, errors);
   validateConditionalStyles(value.styleWhen, `${path}.styleWhen`, errors);
+  validateFlowAnimation(value.flow, `${path}.flow`, value.type, errors);
 
   if (value.type === "path") {
     validatePathData(value.d, `${path}.d`, errors);
@@ -364,6 +373,37 @@ function validateItem(
         allowSymbolReference
       ));
     }
+  }
+}
+
+function validateFlowAnimation(
+  value: unknown,
+  path: string,
+  itemType: unknown,
+  errors: string[]
+): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (itemType !== "line" && itemType !== "polyline" && itemType !== "path") {
+    errors.push(`${path} is only supported on line, polyline, and path items`);
+  }
+
+  if (!isRecord(value)) {
+    errors.push(`${path} must be an object`);
+    return;
+  }
+
+  if (value.type !== "dash") {
+    errors.push(`${path}.type must be "dash"`);
+  }
+
+  validateVisibilityCondition(value.enabledWhen, `${path}.enabledWhen`, errors);
+  validateOptionalPositiveNumber(value.durationSeconds, `${path}.durationSeconds`, errors);
+
+  if (value.reverse !== undefined && typeof value.reverse !== "boolean") {
+    errors.push(`${path}.reverse must be a boolean`);
   }
 }
 
@@ -534,6 +574,12 @@ function validateFiniteNumber(value: unknown, path: string, errors: string[]): v
 function validateOptionalFiniteNumber(value: unknown, path: string, errors: string[]): void {
   if (value !== undefined) {
     validateFiniteNumber(value, path, errors);
+  }
+}
+
+function validateOptionalPositiveNumber(value: unknown, path: string, errors: string[]): void {
+  if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value <= 0)) {
+    errors.push(`${path} must be a positive number`);
   }
 }
 

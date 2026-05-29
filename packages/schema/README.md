@@ -15,3 +15,5 @@ Items may include a simple structured `visibleWhen` condition to show an item on
 Items may also include `styleWhen` entries that apply an alternative safe style when the same kind of entity-state condition matches. Conditional styles use the same safe style fields as normal item styles.
 
 `entityValue` items support small display helpers such as `unit`, `fallback`, `precision`, and `unavailableText`. Renderers may also use Home Assistant `unit_of_measurement` attributes when the payload does not provide a unit.
+
+Line-like items may include a small structured `flow` animation. The first supported type is `dash`, optionally enabled by the same simple entity-state condition model.

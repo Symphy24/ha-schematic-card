@@ -320,6 +320,73 @@ describe("schema validation", () => {
     expect(result.errors).toContain("items[0].styleWhen[0].style.fill must be a string");
   });
 
+  it("accepts structured flow animation on line-like items", () => {
+    const payload: SchematicPayload = {
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      items: [
+        {
+          id: "flow-line",
+          type: "polyline",
+          layer: 220,
+          points: [
+            { x: 0, y: 0 },
+            { x: 20, y: 0 }
+          ],
+          flow: {
+            type: "dash",
+            durationSeconds: 1.5,
+            reverse: true,
+            enabledWhen: {
+              entityId: "input_boolean.flow",
+              equals: "on"
+            }
+          }
+        }
+      ]
+    };
+
+    expect(validateSchematicPayload(payload)).toEqual({
+      valid: true,
+      errors: []
+    });
+  });
+
+  it("rejects invalid flow animation config", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      items: [
+        {
+          id: "flow-rect",
+          type: "rect",
+          layer: 220,
+          x: 0,
+          y: 0,
+          width: 10,
+          height: 10,
+          flow: {
+            type: "spin",
+            durationSeconds: 0,
+            reverse: "yes"
+          }
+        }
+      ]
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("items[0].flow is only supported on line, polyline, and path items");
+    expect(result.errors).toContain("items[0].flow.type must be \"dash\"");
+    expect(result.errors).toContain("items[0].flow.durationSeconds must be a positive number");
+    expect(result.errors).toContain("items[0].flow.reverse must be a boolean");
+  });
+
   it("accepts symbol definitions and symbol instances", () => {
     const payload: SchematicPayload = {
       schemaVersion: HSC_SCHEMA_VERSION,

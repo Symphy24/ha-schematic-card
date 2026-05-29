@@ -18,6 +18,7 @@ describe("demo payload fixtures", () => {
     expect(symbolItemsFor(payload, "demo-generic-unit")).toHaveLength(2);
     expect(visibilityItemsFor(payload, "input_boolean.schematic_demo_alarm", "on")).toHaveLength(2);
     expect(styleItemsFor(payload, "input_boolean.schematic_demo_alarm", "on")).toHaveLength(1);
+    expect(flowItemsFor(payload, "input_boolean.schematic_demo_flow", "on")).toHaveLength(1);
     expect(formattedEntityValueItemsFor(payload, "input_number.schematic_demo_temperature")).toHaveLength(1);
   });
 
@@ -78,6 +79,10 @@ function formattedEntityValueItemsFor(payload: { items: unknown[] }, entityId: s
   ));
 }
 
+function flowItemsFor(payload: { items: unknown[] }, entityId: string, equals: string): unknown[] {
+  return payload.items.filter((item) => hasFlow(item, entityId, equals));
+}
+
 function hasVisibleWhen(value: unknown, entityId: string, equals: string): boolean {
   if (typeof value !== "object" || value === null || !("visibleWhen" in value)) {
     return false;
@@ -98,6 +103,22 @@ function hasStyleWhen(value: unknown, entityId: string, equals: string): boolean
       && "when" in entry
       && hasCondition(entry.when, entityId, equals)
     ));
+}
+
+function hasFlow(value: unknown, entityId: string, equals: string): boolean {
+  if (typeof value !== "object" || value === null || !("flow" in value)) {
+    return false;
+  }
+
+  const flow = value.flow;
+  return (
+    typeof flow === "object"
+    && flow !== null
+    && "type" in flow
+    && flow.type === "dash"
+    && "enabledWhen" in flow
+    && hasCondition(flow.enabledWhen, entityId, equals)
+  );
 }
 
 function hasCondition(value: unknown, entityId: string, equals: string): boolean {

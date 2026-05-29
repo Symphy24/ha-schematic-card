@@ -76,6 +76,55 @@ describe("ha-schematic-card", () => {
     expect(svg?.getAttribute("viewBox")).toBe("0 0 100 80");
   });
 
+  it("does not rebuild the SVG when payload and entity states are unchanged", async () => {
+    const card = createCard();
+
+    card.setConfig({
+      type: "custom:ha-schematic-card",
+      payload: encodePayload(payload)
+    });
+    await card.updateComplete;
+
+    const svg = card.shadowRoot?.querySelector("svg");
+
+    card.hass = {
+      states: {}
+    };
+    await card.updateComplete;
+
+    expect(card.shadowRoot?.querySelector("svg")).toBe(svg);
+  });
+
+  it("does not rebuild the SVG for unrelated Home Assistant state changes", async () => {
+    const card = createCard();
+
+    card.hass = {
+      states: {
+        "sensor.unrelated": {
+          state: "1"
+        }
+      }
+    };
+    card.setConfig({
+      type: "custom:ha-schematic-card",
+      payload: encodePayload(payload)
+    });
+    await card.updateComplete;
+
+    const svg = card.shadowRoot?.querySelector("svg");
+
+    card.hass = {
+      states: {
+        "sensor.unrelated": {
+          state: "2"
+        }
+      }
+    };
+    await card.updateComplete;
+
+    expect(card.shadowRoot?.querySelector("svg")).toBe(svg);
+  });
+
   it("shows an error when payload is missing", async () => {
     const card = createCard();
 
