@@ -50,6 +50,8 @@ type EditorElements = {
   openExportButton: HTMLButtonElement;
   toggleGridButton: HTMLButtonElement;
   gridSizeInput: HTMLInputElement;
+  drawPolylineButton: HTMLButtonElement;
+  finishPolylineButton: HTMLButtonElement;
   closeTransferPanelButton: HTMLButtonElement;
   importButton: HTMLButtonElement;
   jsonSectionToggle: HTMLButtonElement;
@@ -59,6 +61,7 @@ type EditorElements = {
   gridEnabled: boolean;
   gridSize: number;
   dragState?: PreviewDragState;
+  drawState?: PolylineDrawState;
 };
 
 type PreviewDragState = {
@@ -67,6 +70,14 @@ type PreviewDragState = {
   startItem: SchematicItem;
   coordinateSpace: SvgCoordinateSpace;
 };
+
+type PolylineDrawState = {
+  itemId: string;
+  points: SchematicPoint[];
+  previewPoint?: SchematicPoint;
+};
+
+type AddItemType = "text" | "rect" | "circle";
 
 type SvgCoordinateSpace = {
   viewBox?: {
@@ -130,6 +141,8 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     openExportButton: getRequiredElement(previewPane, ".open-export-button", HTMLButtonElement),
     toggleGridButton: getRequiredElement(previewPane, ".toggle-grid-button", HTMLButtonElement),
     gridSizeInput: getRequiredElement(previewPane, ".grid-size-input", HTMLInputElement),
+    drawPolylineButton: getRequiredElement(previewPane, ".draw-polyline-button", HTMLButtonElement),
+    finishPolylineButton: getRequiredElement(previewPane, ".finish-polyline-button", HTMLButtonElement),
     closeTransferPanelButton: getRequiredElement(transferPanel, ".transfer-panel-close", HTMLButtonElement),
     importButton: getRequiredElement(transferPanel, ".import-button", HTMLButtonElement),
     jsonSectionToggle: getRequiredElement(jsonPane, '[data-section-toggle="json-editor-section"]', HTMLButtonElement),
@@ -147,6 +160,8 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.openExportButton.addEventListener("click", () => openTransferPanel(elements, "export"));
   elements.toggleGridButton.addEventListener("click", () => togglePreviewGrid(elements, documentRef));
   elements.gridSizeInput.addEventListener("change", () => updateGridSize(elements, documentRef));
+  elements.drawPolylineButton.addEventListener("click", () => startPolylineDrawing(elements, documentRef));
+  elements.finishPolylineButton.addEventListener("click", () => finishPolylineDrawing(elements, documentRef));
   elements.closeTransferPanelButton.addEventListener("click", () => closeTransferPanel(elements));
   elements.importButton.addEventListener("click", () => importEncodedPayload(elements, documentRef));
   elements.addTextButton.addEventListener("click", () => addItem(elements, "text", documentRef));
@@ -188,7 +203,9 @@ function updateFromJson(elements: EditorElements, documentRef: Document): void {
     entityStates: demoEntityStates
   });
   renderPreviewGrid(svg, result.payload, elements.gridEnabled, elements.gridSize, documentRef);
-  svg.addEventListener("click", (event) => selectPreviewItem(elements, result.payload, event.target, documentRef));
+  renderPolylineRubberBand(svg, elements.drawState, documentRef);
+  svg.addEventListener("click", (event) => handlePreviewClick(elements, result.payload, event, documentRef));
+  svg.addEventListener("mousemove", (event) => updatePolylineRubberBand(elements, event, documentRef));
   svg.addEventListener("mousedown", (event) => startPreviewDrag(elements, result.payload, event, documentRef));
   elements.previewSurface.append(svg);
   elements.exportOutput.value = encodePayload(result.payload);
@@ -257,6 +274,27 @@ function renderPreviewGrid(
   svg.prepend(grid);
 }
 
+function renderPolylineRubberBand(
+  svg: SVGSVGElement,
+  drawState: PolylineDrawState | undefined,
+  documentRef: Document
+): void {
+  if (!drawState || drawState.points.length === 0 || !drawState.previewPoint) {
+    return;
+  }
+
+  const lastPoint = drawState.points[drawState.points.length - 1];
+  const rubberBand = documentRef.createElementNS(SVG_NAMESPACE, "line");
+  rubberBand.classList.add("editor-polyline-rubber-band");
+  rubberBand.setAttribute("data-editor-rubber-band", "true");
+  rubberBand.setAttribute("pointer-events", "none");
+  rubberBand.setAttribute("x1", String(lastPoint.x));
+  rubberBand.setAttribute("y1", String(lastPoint.y));
+  rubberBand.setAttribute("x2", String(drawState.previewPoint.x));
+  rubberBand.setAttribute("y2", String(drawState.previewPoint.y));
+  svg.append(rubberBand);
+}
+
 function parseAndValidatePayload(value: string): { ok: true; payload: SchematicPayload } | { ok: false; message: string } {
   let parsed: unknown;
 
@@ -319,7 +357,7 @@ function renderDisabledItemTools(elements: EditorElements, message: string): voi
   elements.inspectorStatus.dataset.state = "error";
 }
 
-function addItem(elements: EditorElements, type: "text" | "rect" | "circle", documentRef: Document): void {
+function addItem(elements: EditorElements, type: AddItemType, documentRef: Document): void {
   const result = parseAndValidatePayload(elements.jsonInput.value);
 
   if (!result.ok) {
@@ -335,7 +373,7 @@ function addItem(elements: EditorElements, type: "text" | "rect" | "circle", doc
   jumpToSelectedItemInJson(elements);
 }
 
-function createDefaultItem(payload: SchematicPayload, type: "text" | "rect" | "circle"): SchematicItem {
+function createDefaultItem(payload: SchematicPayload, type: AddItemType): SchematicItem {
   const centerX = Math.round(payload.viewport.width / 2);
   const centerY = Math.round(payload.viewport.height / 2);
   const id = createUniqueItemId(payload, type);
@@ -389,7 +427,7 @@ function createDefaultItem(payload: SchematicPayload, type: "text" | "rect" | "c
   }
 }
 
-function createUniqueItemId(payload: SchematicPayload, type: "text" | "rect" | "circle"): string {
+function createUniqueItemId(payload: SchematicPayload, type: string): string {
   const existingIds = new Set(payload.items.map((item) => item.id));
   let index = 1;
 
@@ -450,6 +488,20 @@ function selectPreviewItem(
   jumpToSelectedItemInJson(elements);
 }
 
+function handlePreviewClick(
+  elements: EditorElements,
+  payload: SchematicPayload,
+  event: MouseEvent,
+  documentRef: Document
+): void {
+  if (elements.drawState) {
+    addPolylinePointFromEvent(elements, payload, event, documentRef);
+    return;
+  }
+
+  selectPreviewItem(elements, payload, event.target, documentRef);
+}
+
 function findSelectablePreviewItemId(
   elements: EditorElements,
   payload: SchematicPayload,
@@ -475,12 +527,204 @@ function findSelectablePreviewItemId(
   return undefined;
 }
 
+function startPolylineDrawing(elements: EditorElements, documentRef: Document): void {
+  if (elements.drawState) {
+    cancelPolylineDrawing(elements, documentRef);
+    return;
+  }
+
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  const itemId = createUniqueItemId(result.payload, "polyline");
+  elements.drawState = {
+    itemId,
+    points: []
+  };
+  elements.selectedItemId = itemId;
+  updateDrawControls(elements);
+  updateFromJson(elements, documentRef);
+  elements.inspectorStatus.textContent = "Click preview points. Enter or Finish to save, Escape to cancel.";
+  elements.inspectorStatus.dataset.state = "valid";
+}
+
+function addPolylinePointFromEvent(
+  elements: EditorElements,
+  payload: SchematicPayload,
+  event: MouseEvent,
+  documentRef: Document
+): void {
+  const svg = event.currentTarget;
+
+  if (!elements.drawState || !isSvgElement(svg, documentRef)) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  const point = snapPointIfNeeded(elements, getSvgPoint(getSvgCoordinateSpace(svg), event));
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  elements.drawState.points.push(point);
+  elements.drawState.previewPoint = undefined;
+  upsertDraftPolyline(result.payload, elements.drawState);
+  elements.selectedItemId = elements.drawState.itemId;
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  updateFromJson(elements, documentRef);
+  elements.inspectorStatus.textContent = `Drawing ${elements.drawState.itemId}: ${elements.drawState.points.length} point(s)`;
+  elements.inspectorStatus.dataset.state = "valid";
+}
+
+function updatePolylineRubberBand(elements: EditorElements, event: MouseEvent, documentRef: Document): void {
+  const svg = event.currentTarget;
+
+  if (!elements.drawState || elements.drawState.points.length === 0 || !isSvgElement(svg, documentRef)) {
+    return;
+  }
+
+  elements.drawState.previewPoint = snapPointIfNeeded(elements, getSvgPoint(getSvgCoordinateSpace(svg), event));
+  updatePolylineRubberBandElement(svg, elements.drawState, documentRef);
+}
+
+function updatePolylineRubberBandElement(
+  svg: SVGSVGElement,
+  drawState: PolylineDrawState,
+  documentRef: Document
+): void {
+  let rubberBand = svg.querySelector<SVGLineElement>("[data-editor-rubber-band]");
+
+  if (!rubberBand) {
+    rubberBand = documentRef.createElementNS(SVG_NAMESPACE, "line");
+    rubberBand.classList.add("editor-polyline-rubber-band");
+    rubberBand.setAttribute("data-editor-rubber-band", "true");
+    rubberBand.setAttribute("pointer-events", "none");
+    svg.append(rubberBand);
+  }
+
+  const lastPoint = drawState.points[drawState.points.length - 1];
+  const previewPoint = drawState.previewPoint;
+
+  if (!previewPoint) {
+    rubberBand.remove();
+    return;
+  }
+
+  rubberBand.setAttribute("x1", String(lastPoint.x));
+  rubberBand.setAttribute("y1", String(lastPoint.y));
+  rubberBand.setAttribute("x2", String(previewPoint.x));
+  rubberBand.setAttribute("y2", String(previewPoint.y));
+}
+
+function finishPolylineDrawing(elements: EditorElements, documentRef: Document): void {
+  if (!elements.drawState) {
+    return;
+  }
+
+  if (elements.drawState.points.length < 2) {
+    elements.inspectorStatus.textContent = "Polyline needs at least two points";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  const itemId = elements.drawState.itemId;
+  elements.selectedItemId = itemId;
+  delete elements.drawState;
+  updateDrawControls(elements);
+  updateFromJson(elements, documentRef);
+  jumpToSelectedItemInJson(elements);
+  elements.inspectorStatus.textContent = `Finished ${itemId}`;
+  elements.inspectorStatus.dataset.state = "valid";
+}
+
+function cancelPolylineDrawing(elements: EditorElements, documentRef: Document): void {
+  const drawState = elements.drawState;
+
+  if (!drawState) {
+    return;
+  }
+
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+  delete elements.drawState;
+  updateDrawControls(elements);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  result.payload.items = result.payload.items.filter((item) => item.id !== drawState.itemId);
+  elements.selectedItemId = result.payload.items[0]?.id;
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  updateFromJson(elements, documentRef);
+  elements.inspectorStatus.textContent = "Polyline drawing cancelled";
+  elements.inspectorStatus.dataset.state = "valid";
+}
+
+function upsertDraftPolyline(payload: SchematicPayload, drawState: PolylineDrawState): void {
+  const existingItem = payload.items.find((item) => item.id === drawState.itemId);
+  const polyline: SchematicItem = {
+    id: drawState.itemId,
+    type: "polyline",
+    layer: 100,
+    points: drawState.points,
+    style: {
+      stroke: "var(--accent-color)",
+      strokeWidth: 4,
+      fill: "none"
+    }
+  };
+
+  if (existingItem) {
+    Object.assign(existingItem, polyline);
+    return;
+  }
+
+  payload.items.push(polyline);
+}
+
+function updateDrawControls(elements: EditorElements): void {
+  const drawing = elements.drawState !== undefined;
+  elements.drawPolylineButton.textContent = drawing ? "Cancel Polyline" : "Draw Polyline";
+  elements.drawPolylineButton.setAttribute("aria-pressed", String(drawing));
+  elements.finishPolylineButton.hidden = !drawing;
+  elements.previewSurface.dataset.drawMode = drawing ? "polyline" : "";
+
+  if (!drawing) {
+    delete elements.previewSurface.dataset.drawMode;
+  }
+}
+
+function snapPointIfNeeded(elements: EditorElements, point: SchematicPoint): SchematicPoint {
+  if (!elements.gridEnabled) {
+    return point;
+  }
+
+  return {
+    x: snapNumber(point.x, elements.gridSize),
+    y: snapNumber(point.y, elements.gridSize)
+  };
+}
+
 function startPreviewDrag(
   elements: EditorElements,
   payload: SchematicPayload,
   event: MouseEvent,
   documentRef: Document
 ): void {
+  if (elements.drawState) {
+    return;
+  }
+
   if (event.button !== 0) {
     return;
   }
@@ -801,6 +1045,18 @@ function updateSelectedItemField(
 
 function handleEditorKeyDown(elements: EditorElements, event: KeyboardEvent, documentRef: Document): void {
   if (isTypingTarget(event.target)) {
+    return;
+  }
+
+  if (elements.drawState && event.key === "Enter") {
+    event.preventDefault();
+    finishPolylineDrawing(elements, documentRef);
+    return;
+  }
+
+  if (elements.drawState && event.key === "Escape") {
+    event.preventDefault();
+    cancelPolylineDrawing(elements, documentRef);
     return;
   }
 
@@ -1319,6 +1575,18 @@ function createPreviewPane(documentRef: Document): HTMLElement {
   toggleGridButton.textContent = "Grid On";
   toggleGridButton.setAttribute("aria-pressed", "true");
 
+  const drawPolylineButton = documentRef.createElement("button");
+  drawPolylineButton.className = "draw-polyline-button utility-button";
+  drawPolylineButton.type = "button";
+  drawPolylineButton.textContent = "Draw Polyline";
+  drawPolylineButton.setAttribute("aria-pressed", "false");
+
+  const finishPolylineButton = documentRef.createElement("button");
+  finishPolylineButton.className = "finish-polyline-button utility-button";
+  finishPolylineButton.type = "button";
+  finishPolylineButton.textContent = "Finish";
+  finishPolylineButton.hidden = true;
+
   const gridSizeLabel = documentRef.createElement("label");
   gridSizeLabel.className = "grid-size-field";
 
@@ -1335,7 +1603,14 @@ function createPreviewPane(documentRef: Document): HTMLElement {
 
   gridSizeLabel.append(gridSizeText, gridSizeInput);
 
-  controls.append(toggleGridButton, gridSizeLabel, openImportButton, openExportButton);
+  controls.append(
+    drawPolylineButton,
+    finishPolylineButton,
+    toggleGridButton,
+    gridSizeLabel,
+    openImportButton,
+    openExportButton
+  );
   pane.querySelector(".pane-header")?.append(controls);
 
   const themeSection = documentRef.createElement("section");
