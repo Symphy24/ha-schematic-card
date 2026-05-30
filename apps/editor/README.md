@@ -45,23 +45,25 @@ Manual test flow:
 28. Drag a visible polyline point handle and confirm that one point moves.
 29. Right-click a polyline and use `Add point here`.
 30. Right-click a polyline and use `Delete nearest point`.
-31. Confirm deleting is disabled when only two polyline points remain.
-32. Confirm selecting an item scrolls the decoded JSON to that item's `id`.
-33. Confirm the decoded JSON section opens automatically if it was collapsed.
-34. Confirm the decoded JSON, preview, and exported payload update together.
-35. Collapse and expand `Items / Inspector` and `Decoded JSON` with the header buttons.
-36. Drag the vertical handle between the editor and preview to resize the left panel.
-37. Confirm the item list scrolls inside its section when there are many top-level items.
-38. Confirm invalid numeric inspector values show an inspector error without changing the JSON.
-39. Click `Undo` / `Redo`, or use `Ctrl+Z` / `Ctrl+Shift+Z`, after add, duplicate, delete, drag, inspector, and polyline point edits.
-40. Confirm invalid JSON or schema errors appear in the export panel status.
-41. Open the export side panel from the preview header and copy the generated `hsc1...` payload.
-42. Open the import side panel from the preview header, paste an existing `hsc1...` payload, and click `Import`.
-43. Confirm valid imports replace the decoded JSON and update the preview.
-44. Confirm invalid imports show an error without overwriting the decoded JSON.
-45. Paste JSON from the Lovelace editor's `Copy current theme variables` button into `Theme preview JSON`.
-46. Click `Apply Theme` and confirm the preview uses the pasted CSS variables, including dark/light card backgrounds.
-47. Confirm invalid theme JSON shows a theme error without changing the payload JSON or export.
+31. Right-click a preview item and use `Bring forward`, `Send backward`, `Bring to front`, or `Send to back`.
+32. Confirm the item's `layer` changes in JSON and the preview z-order updates.
+33. Confirm deleting is disabled when only two polyline points remain.
+34. Confirm selecting an item scrolls the decoded JSON to that item's `id`.
+35. Confirm the decoded JSON section opens automatically if it was collapsed.
+36. Confirm the decoded JSON, preview, and exported payload update together.
+37. Collapse and expand `Items / Inspector` and `Decoded JSON` with the header buttons.
+38. Drag the vertical handle between the editor and preview to resize the left panel.
+39. Confirm the item list scrolls inside its section when there are many top-level items.
+40. Confirm invalid numeric inspector values show an inspector error without changing the JSON.
+41. Click `Undo` / `Redo`, or use `Ctrl+Z` / `Ctrl+Shift+Z`, after add, duplicate, delete, drag, layer, inspector, and polyline point edits.
+42. Confirm invalid JSON or schema errors appear in the export panel status.
+43. Open the export side panel from the preview header and copy the generated `hsc1...` payload.
+44. Open the import side panel from the preview header, paste an existing `hsc1...` payload, and click `Import`.
+45. Confirm valid imports replace the decoded JSON and update the preview.
+46. Confirm invalid imports show an error without overwriting the decoded JSON.
+47. Paste JSON from the Lovelace editor's `Copy current theme variables` button into `Theme preview JSON`.
+48. Click `Apply Theme` and confirm the preview uses the pasted CSS variables, including dark/light card backgrounds.
+49. Confirm invalid theme JSON shows a theme error without changing the payload JSON or export.
 
 
 ## Build
