@@ -36,6 +36,7 @@ type EditorElements = {
   copyButton: HTMLButtonElement;
   applyThemeButton: HTMLButtonElement;
   importButton: HTMLButtonElement;
+  jsonSectionToggle: HTMLButtonElement;
   formatButton: HTMLButtonElement;
   resetButton: HTMLButtonElement;
   selectedItemId?: string;
@@ -75,6 +76,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     copyButton: getRequiredElement(exportPane, ".copy-button", HTMLButtonElement),
     applyThemeButton: getRequiredElement(previewPane, ".apply-theme-button", HTMLButtonElement),
     importButton: getRequiredElement(exportPane, ".import-button", HTMLButtonElement),
+    jsonSectionToggle: getRequiredElement(jsonPane, '[data-section-toggle="json-editor-section"]', HTMLButtonElement),
     formatButton: getRequiredElement(jsonPane, ".format-button", HTMLButtonElement),
     resetButton: getRequiredElement(jsonPane, ".reset-button", HTMLButtonElement)
   };
@@ -114,10 +116,12 @@ function updateFromJson(elements: EditorElements, documentRef: Document): void {
     return;
   }
 
-  elements.previewSurface.append(renderSchematicSvg(result.payload, {
+  const svg = renderSchematicSvg(result.payload, {
     document: documentRef,
     entityStates: demoEntityStates
-  }));
+  });
+  svg.addEventListener("click", (event) => selectPreviewItem(elements, result.payload, event.target, documentRef));
+  elements.previewSurface.append(svg);
   elements.exportOutput.value = encodePayload(result.payload);
   elements.status.textContent = "Valid payload";
   elements.status.dataset.state = "valid";
@@ -210,11 +214,115 @@ function renderItemTools(elements: EditorElements, payload: SchematicPayload, do
     button.addEventListener("click", () => {
       elements.selectedItemId = item.id;
       renderItemTools(elements, payload, documentRef);
+      jumpToSelectedItemInJson(elements);
     });
     elements.itemList.append(button);
   }
 
   renderInspector(elements, selectedItem, documentRef);
+  highlightSelectedPreviewItem(elements);
+}
+
+function selectPreviewItem(
+  elements: EditorElements,
+  payload: SchematicPayload,
+  target: EventTarget | null,
+  documentRef: Document
+): void {
+  const itemId = findSelectablePreviewItemId(elements, payload, target);
+
+  if (!itemId) {
+    return;
+  }
+
+  elements.selectedItemId = itemId;
+  renderItemTools(elements, payload, documentRef);
+  jumpToSelectedItemInJson(elements);
+}
+
+function findSelectablePreviewItemId(
+  elements: EditorElements,
+  payload: SchematicPayload,
+  target: EventTarget | null
+): string | undefined {
+  if (!(target instanceof Element)) {
+    return undefined;
+  }
+
+  const topLevelIds = new Set(payload.items.map((item) => item.id));
+  let current: Element | null = target;
+
+  while (current && current !== elements.previewSurface) {
+    const itemId = current.getAttribute("data-id");
+
+    if (itemId && topLevelIds.has(itemId)) {
+      return itemId;
+    }
+
+    current = current.parentElement;
+  }
+
+  return undefined;
+}
+
+function highlightSelectedPreviewItem(elements: EditorElements): void {
+  for (const element of elements.previewSurface.querySelectorAll("[data-editor-selected]")) {
+    element.removeAttribute("data-editor-selected");
+  }
+
+  if (!elements.selectedItemId) {
+    return;
+  }
+
+  for (const element of elements.previewSurface.querySelectorAll("[data-id]")) {
+    if (element.getAttribute("data-id") === elements.selectedItemId) {
+      element.setAttribute("data-editor-selected", "true");
+    }
+  }
+}
+
+function jumpToSelectedItemInJson(elements: EditorElements): void {
+  if (!elements.selectedItemId) {
+    return;
+  }
+
+  const matchIndex = findItemIdIndex(elements.jsonInput.value, elements.selectedItemId);
+
+  if (matchIndex === -1) {
+    return;
+  }
+
+  expandSection(elements.jsonSectionToggle, elements.jsonInput);
+  elements.jsonInput.focus();
+  elements.jsonInput.setSelectionRange(matchIndex, matchIndex + elements.selectedItemId.length + 7);
+  elements.jsonInput.scrollTop = estimateTextareaScrollTop(elements.jsonInput.value, matchIndex);
+}
+
+function findItemIdIndex(json: string, itemId: string): number {
+  const itemIdPattern = `"id": "${itemId}"`;
+  const itemsIndex = json.indexOf("\"items\": [");
+  const searchStart = itemsIndex === -1 ? 0 : itemsIndex;
+  return json.indexOf(itemIdPattern, searchStart);
+}
+
+function expandSection(toggle: HTMLButtonElement, body: HTMLElement): void {
+  if (!body.hidden) {
+    return;
+  }
+
+  body.hidden = false;
+  toggle.setAttribute("aria-expanded", "true");
+  toggle.querySelector(".subsection-icon")?.replaceChildren("^^");
+  const section = toggle.closest<HTMLElement>(".editor-subsection");
+
+  if (section) {
+    section.dataset.collapsed = "false";
+  }
+}
+
+function estimateTextareaScrollTop(value: string, index: number): number {
+  const line = value.slice(0, index).split("\n").length - 1;
+  return Math.max(0, line - 3) * 17;
 }
 
 function renderInspector(elements: EditorElements, item: SchematicItem, documentRef: Document): void {
@@ -496,6 +604,7 @@ function createCollapsibleSection(
   const toggle = documentRef.createElement("button");
   toggle.className = "subsection-toggle";
   toggle.type = "button";
+  toggle.dataset.sectionToggle = className;
   toggle.setAttribute("aria-expanded", "true");
 
   const titleElement = documentRef.createElement("span");
