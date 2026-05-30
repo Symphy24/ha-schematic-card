@@ -51,14 +51,15 @@ Manual test flow:
 34. Drag the vertical handle between the editor and preview to resize the left panel.
 35. Confirm the item list scrolls inside its section when there are many top-level items.
 36. Confirm invalid numeric inspector values show an inspector error without changing the JSON.
-37. Confirm invalid JSON or schema errors appear in the export panel status.
-38. Open the export side panel from the preview header and copy the generated `hsc1...` payload.
-39. Open the import side panel from the preview header, paste an existing `hsc1...` payload, and click `Import`.
-40. Confirm valid imports replace the decoded JSON and update the preview.
-41. Confirm invalid imports show an error without overwriting the decoded JSON.
-42. Paste JSON from the Lovelace editor's `Copy current theme variables` button into `Theme preview JSON`.
-43. Click `Apply Theme` and confirm the preview uses the pasted CSS variables, including dark/light card backgrounds.
-44. Confirm invalid theme JSON shows a theme error without changing the payload JSON or export.
+37. Click `Undo` / `Redo`, or use `Ctrl+Z` / `Ctrl+Shift+Z`, after add, drag, inspector, and polyline point edits.
+38. Confirm invalid JSON or schema errors appear in the export panel status.
+39. Open the export side panel from the preview header and copy the generated `hsc1...` payload.
+40. Open the import side panel from the preview header, paste an existing `hsc1...` payload, and click `Import`.
+41. Confirm valid imports replace the decoded JSON and update the preview.
+42. Confirm invalid imports show an error without overwriting the decoded JSON.
+43. Paste JSON from the Lovelace editor's `Copy current theme variables` button into `Theme preview JSON`.
+44. Click `Apply Theme` and confirm the preview uses the pasted CSS variables, including dark/light card backgrounds.
+45. Confirm invalid theme JSON shows a theme error without changing the payload JSON or export.
 
 
 ## Build

@@ -178,6 +178,25 @@ describe("editor app", () => {
     expect(editedText?.getAttribute("y")).toBe("24");
   });
 
+  it("undoes and redoes inspector field edits", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, '[data-item-id="demo-title"]').click();
+    getInspectorInput(app, "x").value = "42";
+    getInspectorInput(app, "x").dispatchEvent(new Event("change"));
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 42");
+
+    getButton(app, ".undo-button").click();
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 16");
+
+    getButton(app, ".redo-button").click();
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 42");
+  });
+
   it("adds a text item and selects it for editing", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
@@ -197,6 +216,35 @@ describe("editor app", () => {
     expect(getTextarea(app, ".json-input").value).toContain("\"x\": 211");
     expect(app.querySelector("svg")?.textContent).toContain("Added label");
     expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+  });
+
+  it("undoes and redoes adding an item", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const undoButton = getButton(app, ".undo-button");
+    const redoButton = getButton(app, ".redo-button");
+
+    expect(undoButton.disabled).toBe(true);
+    expect(redoButton.disabled).toBe(true);
+
+    getButton(app, ".add-text-button").click();
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"id\": \"text-1\"");
+    expect(undoButton.disabled).toBe(false);
+    expect(redoButton.disabled).toBe(true);
+
+    undoButton.click();
+
+    expect(getTextarea(app, ".json-input").value).not.toContain("\"id\": \"text-1\"");
+    expect(app.querySelector('[data-id="text-1"]')).toBeNull();
+    expect(undoButton.disabled).toBe(true);
+    expect(redoButton.disabled).toBe(false);
+
+    redoButton.click();
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"id\": \"text-1\"");
+    expect(app.querySelector('[data-id="text-1"]')).not.toBeNull();
+    expect(getButton(app, '[data-item-id="text-1"]').getAttribute("aria-pressed")).toBe("true");
   });
 
   it("adds rect and circle items with visible defaults", () => {
@@ -263,6 +311,35 @@ describe("editor app", () => {
     expect(movedTitle?.getAttribute("y")).toBe("40");
     expect(getButton(app, '[data-item-id="demo-title"]').getAttribute("aria-pressed")).toBe("true");
     expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+  });
+
+  it("undoes and redoes dragging a preview item", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const svg = app.querySelector("svg");
+    const title = [...app.querySelectorAll("text")].find((element) => element.textContent === "Schematic Demo");
+
+    if (!svg || !title) {
+      throw new Error("draggable preview item missing");
+    }
+
+    setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
+    title.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 16, clientY: 28, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 36, clientY: 43 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 40");
+    expect(getTextarea(app, ".json-input").value).toContain("\"y\": 40");
+
+    app.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }));
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 16");
+    expect(getTextarea(app, ".json-input").value).toContain("\"y\": 28");
+
+    app.dispatchEvent(new KeyboardEvent("keydown", { key: "Z", ctrlKey: true, shiftKey: true, bubbles: true }));
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 40");
+    expect(getTextarea(app, ".json-input").value).toContain("\"y\": 40");
   });
 
   it("toggles the preview grid overlay", () => {
@@ -428,6 +505,35 @@ describe("editor app", () => {
     expect(movedHandle?.getAttribute("r")).toBe("5");
     expect(visibleDot?.getAttribute("r")).toBe("1.5");
     expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+  });
+
+  it("undoes and redoes polyline point edits", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    drawTwoPointPolyline(app);
+
+    const handle = app.querySelector<SVGCircleElement>('.editor-polyline-handle-hitbox[data-polyline-handle="polyline-1"][data-point-index="1"]');
+    const svg = app.querySelector("svg");
+
+    if (!handle || !svg) {
+      throw new Error("polyline handle missing");
+    }
+
+    setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
+    handle.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 60, clientY: 40, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 82, clientY: 74 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(getPolylinePoints(app, "polyline-1")[1]).toEqual({ x: 80, y: 70 });
+
+    getButton(app, ".undo-button").click();
+
+    expect(getPolylinePoints(app, "polyline-1")[1]).toEqual({ x: 60, y: 40 });
+
+    getButton(app, ".redo-button").click();
+
+    expect(getPolylinePoints(app, "polyline-1")[1]).toEqual({ x: 80, y: 70 });
   });
 
   it("locks dragged polyline points horizontally or vertically while holding Shift", () => {
