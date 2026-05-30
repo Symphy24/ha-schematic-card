@@ -27,15 +27,17 @@ textarea {
 
 .editor-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
-  gap: 16px;
+  grid-template-columns: minmax(340px, 0.95fr) minmax(0, 1.15fr) minmax(320px, 0.9fr);
+  gap: 12px;
   min-height: 100vh;
-  padding: 16px;
+  padding: 12px;
 }
 
-.preview-pane,
-.export-pane {
+.pane {
+  display: flex;
   min-width: 0;
+  min-height: 520px;
+  flex-direction: column;
   border: 1px solid #d7dde4;
   border-radius: 8px;
   background: #ffffff;
@@ -46,6 +48,7 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-height: 52px;
   padding: 12px 14px;
   border-bottom: 1px solid #d7dde4;
 }
@@ -56,8 +59,32 @@ textarea {
   font-weight: 650;
 }
 
+.json-input,
+.payload-output {
+  flex: 1;
+  width: 100%;
+  min-height: 460px;
+  resize: none;
+  border: 0;
+  padding: 12px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.json-input {
+  white-space: pre;
+  overflow: auto;
+}
+
+.payload-output {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .preview-surface {
-  min-height: 420px;
+  flex: 1;
+  min-height: 460px;
   padding: 12px;
 }
 
@@ -67,23 +94,10 @@ textarea {
   height: auto;
 }
 
-.export-pane {
+.export-controls {
   display: flex;
-  flex-direction: column;
-}
-
-.payload-output {
-  flex: 1;
-  min-height: 420px;
-  width: 100%;
-  resize: vertical;
-  border: 0;
-  padding: 12px;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
+  align-items: center;
+  gap: 10px;
 }
 
 .copy-button {
@@ -95,17 +109,29 @@ textarea {
   cursor: pointer;
 }
 
-.copy-button:focus-visible {
+.copy-button:focus-visible,
+.json-input:focus,
+.payload-output:focus {
   outline: 2px solid #2f6fed;
   outline-offset: 2px;
 }
 
 .status {
+  max-width: 280px;
   color: #5b6470;
-  font-size: 13px;
+  font-size: 12px;
+  white-space: pre-wrap;
 }
 
-@media (max-width: 860px) {
+.status[data-state="error"] {
+  color: #c81e3a;
+}
+
+.status[data-state="valid"] {
+  color: #168a4a;
+}
+
+@media (max-width: 1100px) {
   .editor-shell {
     grid-template-columns: 1fr;
   }
