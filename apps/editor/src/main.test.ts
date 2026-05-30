@@ -238,6 +238,31 @@ describe("editor app", () => {
     expect(editedText?.getAttribute("y")).toBe("18");
   });
 
+  it("drags a selected preview item and updates JSON, preview, and export", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const svg = app.querySelector("svg");
+    const title = [...app.querySelectorAll("text")].find((element) => element.textContent === "Schematic Demo");
+
+    if (!svg || !title) {
+      throw new Error("draggable preview item missing");
+    }
+
+    setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
+    title.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 16, clientY: 28, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 36, clientY: 43 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    const movedTitle = [...app.querySelectorAll("text")].find((element) => element.textContent === "Schematic Demo");
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 36");
+    expect(getTextarea(app, ".json-input").value).toContain("\"y\": 43");
+    expect(movedTitle?.getAttribute("x")).toBe("36");
+    expect(movedTitle?.getAttribute("y")).toBe("43");
+    expect(getButton(app, '[data-item-id="demo-title"]').getAttribute("aria-pressed")).toBe("true");
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+  });
+
   it("opens and closes the import/export side panel from the preview header", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
@@ -518,4 +543,21 @@ function getInspectorInput(root: ParentNode, fieldName: string): HTMLInputElemen
   }
 
   throw new Error(`inspector input missing: ${fieldName}`);
+}
+
+function setSvgBounds(
+  svg: SVGSVGElement,
+  rect: { left: number; top: number; width: number; height: number }
+): void {
+  Object.defineProperty(svg, "getBoundingClientRect", {
+    configurable: true,
+    value: () => ({
+      ...rect,
+      right: rect.left + rect.width,
+      bottom: rect.top + rect.height,
+      x: rect.left,
+      y: rect.top,
+      toJSON: () => rect
+    })
+  });
 }

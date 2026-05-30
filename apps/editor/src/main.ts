@@ -4,6 +4,7 @@ import {
   isSchematicPayload,
   type SchematicPayload,
   type SchematicItem,
+  type SchematicPoint,
   validateSchematicPayload
 } from "@ha-schematic-card/schema";
 
@@ -51,6 +52,28 @@ type EditorElements = {
   formatButton: HTMLButtonElement;
   resetButton: HTMLButtonElement;
   selectedItemId?: string;
+  dragState?: PreviewDragState;
+};
+
+type PreviewDragState = {
+  itemId: string;
+  lastPoint: SchematicPoint;
+  coordinateSpace: SvgCoordinateSpace;
+};
+
+type SvgCoordinateSpace = {
+  viewBox?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  bounds: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  };
 };
 
 export function getDemoPayload(): SchematicPayload {
@@ -152,6 +175,7 @@ function updateFromJson(elements: EditorElements, documentRef: Document): void {
     entityStates: demoEntityStates
   });
   svg.addEventListener("click", (event) => selectPreviewItem(elements, result.payload, event.target, documentRef));
+  svg.addEventListener("mousedown", (event) => startPreviewDrag(elements, result.payload, event, documentRef));
   elements.previewSurface.append(svg);
   elements.exportOutput.value = encodePayload(result.payload);
   elements.status.textContent = "Valid payload";
@@ -375,6 +399,171 @@ function findSelectablePreviewItemId(
   }
 
   return undefined;
+}
+
+function startPreviewDrag(
+  elements: EditorElements,
+  payload: SchematicPayload,
+  event: MouseEvent,
+  documentRef: Document
+): void {
+  if (event.button !== 0) {
+    return;
+  }
+
+  const itemId = findSelectablePreviewItemId(elements, payload, event.target);
+
+  if (!itemId) {
+    return;
+  }
+
+  const item = payload.items.find((candidate) => candidate.id === itemId);
+
+  if (!item) {
+    return;
+  }
+
+  elements.selectedItemId = itemId;
+  renderItemTools(elements, payload, documentRef);
+
+  if (!canMoveItem(item)) {
+    elements.inspectorStatus.textContent = `${item.type} cannot be dragged yet`;
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  const svg = event.currentTarget;
+
+  if (!isSvgElement(svg, documentRef)) {
+    return;
+  }
+
+  const coordinateSpace = getSvgCoordinateSpace(svg);
+
+  elements.dragState = {
+    itemId,
+    lastPoint: getSvgPoint(coordinateSpace, event),
+    coordinateSpace
+  };
+
+  elements.previewSurface.dataset.dragging = "true";
+  event.preventDefault();
+
+  const onMove = (moveEvent: MouseEvent): void => {
+    dragSelectedPreviewItem(elements, moveEvent, documentRef);
+  };
+  const stopDrag = (): void => {
+    documentRef.removeEventListener("mousemove", onMove);
+    documentRef.removeEventListener("mouseup", stopDrag);
+    delete elements.dragState;
+    delete elements.previewSurface.dataset.dragging;
+  };
+
+  documentRef.addEventListener("mousemove", onMove);
+  documentRef.addEventListener("mouseup", stopDrag);
+}
+
+function isSvgElement(value: EventTarget | null, documentRef: Document): value is SVGSVGElement {
+  const svgConstructor = documentRef.defaultView?.SVGSVGElement;
+  return svgConstructor
+    ? value instanceof svgConstructor
+    : value instanceof Element && value.tagName.toLowerCase() === "svg";
+}
+
+function dragSelectedPreviewItem(
+  elements: EditorElements,
+  event: MouseEvent,
+  documentRef: Document
+): void {
+  if (!elements.dragState) {
+    return;
+  }
+
+  const currentPoint = getSvgPoint(elements.dragState.coordinateSpace, event);
+  const dx = currentPoint.x - elements.dragState.lastPoint.x;
+  const dy = currentPoint.y - elements.dragState.lastPoint.y;
+
+  moveSelectedItemFromDrag(elements, dx, dy, currentPoint, documentRef);
+}
+
+function moveSelectedItemFromDrag(
+  elements: EditorElements,
+  dx: number,
+  dy: number,
+  currentPoint: SchematicPoint,
+  documentRef: Document
+): void {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  const dragState = elements.dragState;
+  const item = dragState
+    ? result.payload.items.find((candidate) => candidate.id === dragState.itemId)
+    : undefined;
+
+  if (!dragState || !item) {
+    elements.inspectorStatus.textContent = "Selected item was not found";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  if (!moveItem(item, dx, dy)) {
+    elements.inspectorStatus.textContent = `${item.type} cannot be dragged yet`;
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  dragState.lastPoint = currentPoint;
+  elements.selectedItemId = dragState.itemId;
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  updateFromJson(elements, documentRef);
+  elements.inspectorStatus.textContent = `Moved ${item.id}`;
+  elements.inspectorStatus.dataset.state = "valid";
+}
+
+function getSvgCoordinateSpace(svg: SVGSVGElement): SvgCoordinateSpace {
+  const rect = svg.getBoundingClientRect();
+
+  return {
+    viewBox: parseViewBox(svg.getAttribute("viewBox")),
+    bounds: {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height
+    }
+  };
+}
+
+function getSvgPoint(coordinateSpace: SvgCoordinateSpace, event: MouseEvent): SchematicPoint {
+  const { viewBox, bounds } = coordinateSpace;
+
+  if (!viewBox || bounds.width <= 0 || bounds.height <= 0) {
+    return {
+      x: event.clientX,
+      y: event.clientY
+    };
+  }
+
+  return {
+    x: viewBox.x + ((event.clientX - bounds.left) / bounds.width) * viewBox.width,
+    y: viewBox.y + ((event.clientY - bounds.top) / bounds.height) * viewBox.height
+  };
+}
+
+function parseViewBox(value: string | null): { x: number; y: number; width: number; height: number } | undefined {
+  const parts = value?.trim().split(/\s+/).map(Number);
+
+  if (!parts || parts.length !== 4 || parts.some((part) => !Number.isFinite(part))) {
+    return undefined;
+  }
+
+  const [x, y, width, height] = parts;
+  return { x, y, width, height };
 }
 
 function highlightSelectedPreviewItem(elements: EditorElements): void {
