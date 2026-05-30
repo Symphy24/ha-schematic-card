@@ -23,6 +23,7 @@ const demoEntityStates = {
 } as const;
 
 type EditorElements = {
+  editorRoot: HTMLElement;
   jsonInput: HTMLTextAreaElement;
   itemList: HTMLElement;
   inspector: HTMLElement;
@@ -30,11 +31,18 @@ type EditorElements = {
   previewSurface: HTMLElement;
   themeInput: HTMLTextAreaElement;
   themeStatus: HTMLElement;
+  transferPanel: HTMLElement;
+  transferPanelTitle: HTMLElement;
+  importSection: HTMLElement;
+  exportSection: HTMLElement;
   importInput: HTMLTextAreaElement;
   exportOutput: HTMLTextAreaElement;
   status: HTMLElement;
   copyButton: HTMLButtonElement;
   applyThemeButton: HTMLButtonElement;
+  openImportButton: HTMLButtonElement;
+  openExportButton: HTMLButtonElement;
+  closeTransferPanelButton: HTMLButtonElement;
   importButton: HTMLButtonElement;
   jsonSectionToggle: HTMLButtonElement;
   formatButton: HTMLButtonElement;
@@ -57,12 +65,15 @@ export function encodeDemoPayload(payload: SchematicPayload = demoPayload): stri
 export function createEditorApp(documentRef: Document = document): HTMLElement {
   const shell = documentRef.createElement("section");
   shell.className = "editor-shell";
+  shell.tabIndex = -1;
 
   const jsonPane = createJsonPane(documentRef);
   const previewPane = createPreviewPane(documentRef);
-  const exportPane = createExportPane(documentRef);
+  const resizeHandle = createResizeHandle(documentRef, shell);
+  const transferPanel = createTransferPanel(documentRef);
 
   const elements: EditorElements = {
+    editorRoot: shell,
     jsonInput: getRequiredElement(jsonPane, ".json-input", HTMLTextAreaElement),
     itemList: getRequiredElement(jsonPane, ".item-list", HTMLElement),
     inspector: getRequiredElement(jsonPane, ".property-inspector", HTMLElement),
@@ -70,12 +81,19 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     previewSurface: getRequiredElement(previewPane, ".preview-surface", HTMLElement),
     themeInput: getRequiredElement(previewPane, ".theme-input", HTMLTextAreaElement),
     themeStatus: getRequiredElement(previewPane, ".theme-status", HTMLElement),
-    importInput: getRequiredElement(exportPane, ".import-input", HTMLTextAreaElement),
-    exportOutput: getRequiredElement(exportPane, ".payload-output", HTMLTextAreaElement),
-    status: getRequiredElement(exportPane, ".status", HTMLElement),
-    copyButton: getRequiredElement(exportPane, ".copy-button", HTMLButtonElement),
+    transferPanel: getRequiredElement(transferPanel, ".transfer-panel", HTMLElement),
+    transferPanelTitle: getRequiredElement(transferPanel, ".transfer-panel-title", HTMLElement),
+    importSection: getRequiredElement(transferPanel, ".import-section", HTMLElement),
+    exportSection: getRequiredElement(transferPanel, ".export-section", HTMLElement),
+    importInput: getRequiredElement(transferPanel, ".import-input", HTMLTextAreaElement),
+    exportOutput: getRequiredElement(transferPanel, ".payload-output", HTMLTextAreaElement),
+    status: getRequiredElement(transferPanel, ".status", HTMLElement),
+    copyButton: getRequiredElement(transferPanel, ".copy-button", HTMLButtonElement),
     applyThemeButton: getRequiredElement(previewPane, ".apply-theme-button", HTMLButtonElement),
-    importButton: getRequiredElement(exportPane, ".import-button", HTMLButtonElement),
+    openImportButton: getRequiredElement(previewPane, ".open-import-button", HTMLButtonElement),
+    openExportButton: getRequiredElement(previewPane, ".open-export-button", HTMLButtonElement),
+    closeTransferPanelButton: getRequiredElement(transferPanel, ".transfer-panel-close", HTMLButtonElement),
+    importButton: getRequiredElement(transferPanel, ".import-button", HTMLButtonElement),
     jsonSectionToggle: getRequiredElement(jsonPane, '[data-section-toggle="json-editor-section"]', HTMLButtonElement),
     formatButton: getRequiredElement(jsonPane, ".format-button", HTMLButtonElement),
     resetButton: getRequiredElement(jsonPane, ".reset-button", HTMLButtonElement)
@@ -85,11 +103,15 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.jsonInput.addEventListener("input", () => updateFromJson(elements, documentRef));
   elements.copyButton.addEventListener("click", async () => copyExportedPayload(elements));
   elements.applyThemeButton.addEventListener("click", () => applyThemePreview(elements));
+  elements.openImportButton.addEventListener("click", () => openTransferPanel(elements, "import"));
+  elements.openExportButton.addEventListener("click", () => openTransferPanel(elements, "export"));
+  elements.closeTransferPanelButton.addEventListener("click", () => closeTransferPanel(elements));
   elements.importButton.addEventListener("click", () => importEncodedPayload(elements, documentRef));
   elements.formatButton.addEventListener("click", () => formatCurrentJson(elements, documentRef));
   elements.resetButton.addEventListener("click", () => resetDemoPayload(elements, documentRef));
+  shell.addEventListener("keydown", (event) => handleEditorKeyDown(elements, event, documentRef));
 
-  shell.append(jsonPane, previewPane, exportPane);
+  shell.append(jsonPane, resizeHandle, previewPane, transferPanel);
   updateFromJson(elements, documentRef);
 
   return shell;
@@ -293,9 +315,9 @@ function jumpToSelectedItemInJson(elements: EditorElements): void {
   }
 
   expandSection(elements.jsonSectionToggle, elements.jsonInput);
-  elements.jsonInput.focus();
   elements.jsonInput.setSelectionRange(matchIndex, matchIndex + elements.selectedItemId.length + 7);
   elements.jsonInput.scrollTop = estimateTextareaScrollTop(elements.jsonInput.value, matchIndex);
+  elements.editorRoot.focus();
 }
 
 function findItemIdIndex(json: string, itemId: string): number {
@@ -417,8 +439,120 @@ function updateSelectedItemField(
   updateFromJson(elements, documentRef);
 }
 
+function handleEditorKeyDown(elements: EditorElements, event: KeyboardEvent, documentRef: Document): void {
+  if (isTypingTarget(event.target)) {
+    return;
+  }
+
+  const delta = getKeyboardNudgeDelta(event);
+
+  if (!delta) {
+    return;
+  }
+
+  event.preventDefault();
+  nudgeSelectedItem(elements, delta.dx, delta.dy, documentRef);
+}
+
+function getKeyboardNudgeDelta(event: KeyboardEvent): { dx: number; dy: number } | undefined {
+  const amount = event.shiftKey ? 10 : 1;
+
+  switch (event.key) {
+    case "ArrowUp":
+      return { dx: 0, dy: -amount };
+    case "ArrowDown":
+      return { dx: 0, dy: amount };
+    case "ArrowLeft":
+      return { dx: -amount, dy: 0 };
+    case "ArrowRight":
+      return { dx: amount, dy: 0 };
+    default:
+      return undefined;
+  }
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+}
+
+function nudgeSelectedItem(elements: EditorElements, dx: number, dy: number, documentRef: Document): void {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  const item = result.payload.items.find((candidate) => candidate.id === elements.selectedItemId);
+
+  if (!item) {
+    elements.inspectorStatus.textContent = "Selected item was not found";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  if (!moveItem(item, dx, dy)) {
+    elements.inspectorStatus.textContent = `${item.type} cannot be nudged yet`;
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  updateFromJson(elements, documentRef);
+  elements.inspectorStatus.textContent = `Moved ${item.id}`;
+  elements.inspectorStatus.dataset.state = "valid";
+}
+
+function canMoveItem(item: SchematicItem): boolean {
+  return hasNumberField(item, "x")
+    || hasNumberField(item, "cx")
+    || hasNumberField(item, "x1")
+    || (item.type === "polyline" && item.points.length > 0);
+}
+
+function moveItem(item: SchematicItem, dx: number, dy: number): boolean {
+  if (hasNumberField(item, "x") && hasNumberField(item, "y")) {
+    item.x += dx;
+    item.y += dy;
+    return true;
+  }
+
+  if (hasNumberField(item, "cx") && hasNumberField(item, "cy")) {
+    item.cx += dx;
+    item.cy += dy;
+    return true;
+  }
+
+  if (
+    hasNumberField(item, "x1")
+    && hasNumberField(item, "y1")
+    && hasNumberField(item, "x2")
+    && hasNumberField(item, "y2")
+  ) {
+    item.x1 += dx;
+    item.y1 += dy;
+    item.x2 += dx;
+    item.y2 += dy;
+    return true;
+  }
+
+  if (item.type === "polyline") {
+    item.points = item.points.map((point) => ({
+      x: point.x + dx,
+      y: point.y + dy
+    }));
+    return item.points.length > 0;
+  }
+
+  return false;
+}
+
 function hasEditableField(item: SchematicItem, fieldName: "x" | "y" | "text"): boolean {
   return Object.prototype.hasOwnProperty.call(item, fieldName);
+}
+
+function hasNumberField<T extends string>(item: SchematicItem, fieldName: T): item is SchematicItem & Record<T, number> {
+  return typeof (item as Record<string, unknown>)[fieldName] === "number";
 }
 
 function getEditableFieldValue(
@@ -533,6 +667,59 @@ async function copyExportedPayload(elements: EditorElements): Promise<void> {
   }
 }
 
+function openTransferPanel(elements: EditorElements, mode: "import" | "export"): void {
+  elements.transferPanel.hidden = false;
+  elements.transferPanel.dataset.mode = mode;
+  elements.transferPanelTitle.textContent = mode === "import" ? "Import Payload" : "Export Payload";
+  elements.importSection.hidden = mode !== "import";
+  elements.exportSection.hidden = mode !== "export";
+}
+
+function closeTransferPanel(elements: EditorElements): void {
+  elements.transferPanel.hidden = true;
+  delete elements.transferPanel.dataset.mode;
+}
+
+function createResizeHandle(documentRef: Document, shell: HTMLElement): HTMLElement {
+  const handle = documentRef.createElement("div");
+  handle.className = "editor-resize-handle";
+  handle.setAttribute("role", "separator");
+  handle.setAttribute("aria-orientation", "vertical");
+
+  handle.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+    startEditorResize(documentRef, shell);
+  });
+
+  return handle;
+}
+
+function startEditorResize(documentRef: Document, shell: HTMLElement): void {
+  const onMove = (event: MouseEvent): void => {
+    const shellLeft = shell.getBoundingClientRect().left;
+    const availableWidth = getAvailableEditorWidth(documentRef, shell);
+    const maxWidth = Math.max(320, Math.min(760, availableWidth - 360));
+    const nextWidth = clamp(event.clientX - shellLeft, 300, maxWidth);
+    shell.style.setProperty("--editor-left-width", `${Math.round(nextWidth)}px`);
+  };
+
+  const stopResize = (): void => {
+    documentRef.removeEventListener("mousemove", onMove);
+    documentRef.removeEventListener("mouseup", stopResize);
+  };
+
+  documentRef.addEventListener("mousemove", onMove);
+  documentRef.addEventListener("mouseup", stopResize);
+}
+
+function getAvailableEditorWidth(documentRef: Document, shell: HTMLElement): number {
+  return shell.clientWidth || documentRef.defaultView?.innerWidth || 1100;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
 function createJsonPane(documentRef: Document): HTMLElement {
   const pane = createPane(documentRef, "Decoded JSON");
   const controls = documentRef.createElement("div");
@@ -633,6 +820,21 @@ function createCollapsibleSection(
 
 function createPreviewPane(documentRef: Document): HTMLElement {
   const pane = createPane(documentRef, "Preview");
+  const controls = documentRef.createElement("div");
+  controls.className = "preview-controls";
+
+  const openImportButton = documentRef.createElement("button");
+  openImportButton.className = "open-import-button utility-button";
+  openImportButton.type = "button";
+  openImportButton.textContent = "Import";
+
+  const openExportButton = documentRef.createElement("button");
+  openExportButton.className = "open-export-button utility-button";
+  openExportButton.type = "button";
+  openExportButton.textContent = "Export";
+
+  controls.append(openImportButton, openExportButton);
+  pane.querySelector(".pane-header")?.append(controls);
 
   const themeSection = documentRef.createElement("section");
   themeSection.className = "theme-section";
@@ -665,27 +867,34 @@ function createPreviewPane(documentRef: Document): HTMLElement {
   return pane;
 }
 
-function createExportPane(documentRef: Document): HTMLElement {
-  const pane = createPane(documentRef, "Export");
-  const controls = documentRef.createElement("div");
-  controls.className = "export-controls";
+function createTransferPanel(documentRef: Document): HTMLElement {
+  const wrapper = documentRef.createElement("div");
+  wrapper.className = "transfer-panel-wrapper";
 
+  const panel = documentRef.createElement("aside");
+  panel.className = "transfer-panel";
+  panel.hidden = true;
+
+  const header = documentRef.createElement("div");
+  header.className = "transfer-panel-header";
+
+  const title = documentRef.createElement("h2");
+  title.className = "transfer-panel-title";
+  title.textContent = "Export Payload";
+
+  const closeButton = documentRef.createElement("button");
+  closeButton.className = "transfer-panel-close";
+  closeButton.type = "button";
+  closeButton.textContent = "X";
+
+  header.append(title, closeButton);
+
+  const statusRow = documentRef.createElement("div");
+  statusRow.className = "transfer-status-row";
   const status = documentRef.createElement("span");
   status.className = "status";
   status.textContent = "Ready";
-
-  const copyButton = documentRef.createElement("button");
-  copyButton.className = "copy-button";
-  copyButton.type = "button";
-  copyButton.textContent = "Copy";
-
-  const payloadOutput = documentRef.createElement("textarea");
-  payloadOutput.className = "payload-output";
-  payloadOutput.readOnly = true;
-  payloadOutput.wrap = "soft";
-
-  controls.append(status, copyButton);
-  pane.querySelector(".pane-header")?.append(controls);
+  statusRow.append(status);
 
   const importSection = documentRef.createElement("section");
   importSection.className = "import-section";
@@ -705,9 +914,32 @@ function createExportPane(documentRef: Document): HTMLElement {
   importButton.type = "button";
   importButton.textContent = "Import";
 
+  const exportSection = documentRef.createElement("section");
+  exportSection.className = "export-section";
+
+  const exportHeader = documentRef.createElement("div");
+  exportHeader.className = "export-section-header";
+
+  const exportLabel = documentRef.createElement("label");
+  exportLabel.className = "field-label";
+  exportLabel.textContent = "Export hsc1 payload";
+
+  const copyButton = documentRef.createElement("button");
+  copyButton.className = "copy-button utility-button";
+  copyButton.type = "button";
+  copyButton.textContent = "Copy";
+
+  const payloadOutput = documentRef.createElement("textarea");
+  payloadOutput.className = "payload-output";
+  payloadOutput.readOnly = true;
+  payloadOutput.wrap = "soft";
+
   importSection.append(importLabel, importInput, importButton);
-  pane.append(importSection, payloadOutput);
-  return pane;
+  exportHeader.append(exportLabel, copyButton);
+  exportSection.append(exportHeader, payloadOutput);
+  panel.append(header, statusRow, importSection, exportSection);
+  wrapper.append(panel);
+  return wrapper;
 }
 
 function createPreviewSurface(documentRef: Document): HTMLElement {

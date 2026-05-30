@@ -28,10 +28,22 @@ textarea {
 
 .editor-shell {
   display: grid;
-  grid-template-columns: minmax(340px, 0.95fr) minmax(0, 1.15fr) minmax(320px, 0.9fr);
+  grid-template-columns: minmax(300px, var(--editor-left-width, 420px)) 8px minmax(0, 1fr);
   gap: 12px;
   height: 100vh;
   padding: 12px;
+}
+
+.editor-resize-handle {
+  min-width: 8px;
+  border-radius: 999px;
+  background: #d7dde4;
+  cursor: col-resize;
+}
+
+.editor-resize-handle:hover,
+.editor-resize-handle:focus-visible {
+  background: #2f6fed;
 }
 
 .pane {
@@ -121,19 +133,26 @@ textarea {
 }
 
 .json-controls,
+.preview-controls,
 .theme-controls,
-.export-controls {
+.transfer-status-row,
+.export-section-header {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
+.preview-controls,
+.export-section-header {
+  justify-content: flex-end;
+}
+
 .theme-section,
-.import-section {
+.import-section,
+.export-section {
   display: grid;
   gap: 8px;
   padding: 12px;
-  border-bottom: 1px solid #d7dde4;
 }
 
 .item-tools {
@@ -252,7 +271,7 @@ textarea {
   font-weight: 650;
 }
 
-.copy-button,
+.transfer-panel-close,
 .utility-button {
   border: 1px solid #9aa7b4;
   border-radius: 6px;
@@ -262,9 +281,9 @@ textarea {
   cursor: pointer;
 }
 
-.copy-button:focus-visible,
 .item-list-button:focus-visible,
 .subsection-toggle:focus-visible,
+.transfer-panel-close:focus-visible,
 .utility-button:focus-visible,
 .inspector-input:focus,
 .json-input:focus,
@@ -277,6 +296,75 @@ textarea {
 
 .status {
   max-width: 280px;
+}
+
+.transfer-panel-wrapper {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.transfer-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  width: min(420px, calc(100vw - 24px));
+  min-width: 0;
+  flex-direction: column;
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 16px 48px rgb(23 32 42 / 20%);
+  pointer-events: auto;
+}
+
+.transfer-panel[hidden] {
+  display: none;
+}
+
+.transfer-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #d7dde4;
+}
+
+.transfer-panel-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.transfer-status-row {
+  min-height: 38px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #d7dde4;
+}
+
+.import-section,
+.export-section {
+  min-height: 0;
+}
+
+.import-section[hidden],
+.export-section[hidden] {
+  display: none;
+}
+
+.export-section {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.payload-output {
+  min-height: 0;
 }
 
 .status,
@@ -305,6 +393,10 @@ textarea {
     height: auto;
     min-height: 100vh;
     grid-template-columns: 1fr;
+  }
+
+  .editor-resize-handle {
+    display: none;
   }
 
   .item-tools {
