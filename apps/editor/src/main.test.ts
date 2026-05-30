@@ -50,6 +50,82 @@ describe("editor app", () => {
     expect(app.querySelector<HTMLTextAreaElement>(".payload-output")?.value.startsWith("hsc1.")).toBe(true);
   });
 
+  it("lists top-level items and edits text through the inspector", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const titleButton = getButton(app, '[data-item-id="demo-title"]');
+
+    expect(app.querySelector(".item-list-section")).not.toBeNull();
+    expect(app.querySelectorAll(".item-list-button").length).toBe(getDemoPayload().items.length);
+    expect(titleButton.textContent).toBe("demo-title (text)");
+
+    titleButton.click();
+    getInspectorInput(app, "text").value = "Edited Demo";
+    getInspectorInput(app, "text").dispatchEvent(new Event("change"));
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"text\": \"Edited Demo\"");
+    expect(app.querySelector("svg")?.textContent).toContain("Edited Demo");
+    expect(app.querySelector<HTMLTextAreaElement>(".payload-output")?.value.startsWith("hsc1.")).toBe(true);
+  });
+
+  it("collapses and expands the item tools and JSON editor sections", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const itemTools = app.querySelector<HTMLElement>(".item-tools");
+    const jsonInput = getTextarea(app, ".json-input");
+    const itemToggle = getSubsectionToggle(app, "Items / Inspector");
+    const jsonToggle = getSubsectionToggle(app, "Decoded JSON");
+
+    if (!itemTools) {
+      throw new Error("item tools missing");
+    }
+
+    itemToggle.click();
+    expect(itemToggle.getAttribute("aria-expanded")).toBe("false");
+    expect(itemToggle.querySelector(".subsection-icon")?.textContent).toBe("vv");
+    expect(itemTools.hidden).toBe(true);
+
+    itemToggle.click();
+    expect(itemToggle.getAttribute("aria-expanded")).toBe("true");
+    expect(itemTools.hidden).toBe(false);
+
+    jsonToggle.click();
+    expect(jsonToggle.getAttribute("aria-expanded")).toBe("false");
+    expect(jsonInput.hidden).toBe(true);
+  });
+
+  it("edits x and y coordinates through the inspector", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const titleButton = getButton(app, '[data-item-id="demo-title"]');
+
+    titleButton.click();
+    getInspectorInput(app, "x").value = "42";
+    getInspectorInput(app, "x").dispatchEvent(new Event("change"));
+    getInspectorInput(app, "y").value = "24";
+    getInspectorInput(app, "y").dispatchEvent(new Event("change"));
+    const editedText = [...app.querySelectorAll("text")].find((element) => element.textContent === "Schematic Demo");
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 42");
+    expect(getTextarea(app, ".json-input").value).toContain("\"y\": 24");
+    expect(editedText?.getAttribute("x")).toBe("42");
+    expect(editedText?.getAttribute("y")).toBe("24");
+  });
+
+  it("shows an inspector error for invalid numeric values without changing JSON", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const titleButton = getButton(app, '[data-item-id="demo-title"]');
+
+    titleButton.click();
+    const originalJson = getTextarea(app, ".json-input").value;
+    getInspectorInput(app, "x").value = "not-a-number";
+    getInspectorInput(app, "x").dispatchEvent(new Event("change"));
+
+    expect(getTextarea(app, ".json-input").value).toBe(originalJson);
+    expect(app.querySelector<HTMLElement>(".inspector-status")?.textContent).toBe("x must be a finite number");
+  });
+
   it("shows an error for invalid JSON", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
@@ -238,4 +314,27 @@ function getButton(root: ParentNode, selector: string): HTMLButtonElement {
   }
 
   return element;
+}
+
+function getSubsectionToggle(root: ParentNode, title: string): HTMLButtonElement {
+  for (const button of root.querySelectorAll(".subsection-toggle")) {
+    if (button instanceof HTMLButtonElement && button.textContent?.includes(title)) {
+      return button;
+    }
+  }
+
+  throw new Error(`subsection toggle missing: ${title}`);
+}
+
+function getInspectorInput(root: ParentNode, fieldName: string): HTMLInputElement {
+  for (const field of root.querySelectorAll(".inspector-field")) {
+    const label = field.querySelector(".field-label");
+    const input = field.querySelector("input");
+
+    if (label?.textContent === fieldName && input instanceof HTMLInputElement) {
+      return input;
+    }
+  }
+
+  throw new Error(`inspector input missing: ${fieldName}`);
 }
