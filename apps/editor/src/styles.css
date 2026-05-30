@@ -112,6 +112,14 @@ textarea {
   height: auto;
 }
 
+.preview-surface [data-id] {
+  cursor: pointer;
+}
+
+.preview-surface [data-editor-selected="true"] {
+  filter: drop-shadow(0 0 4px #2f6fed);
+}
+
 .json-controls,
 .theme-controls,
 .export-controls {

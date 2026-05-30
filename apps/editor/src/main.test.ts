@@ -94,6 +94,71 @@ describe("editor app", () => {
     expect(jsonInput.hidden).toBe(true);
   });
 
+  it("selects a top-level item when clicking it in the preview", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const previewItem = app.querySelector('[data-id="demo-component-a"]');
+
+    if (!previewItem) {
+      throw new Error("preview item missing");
+    }
+
+    previewItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(getButton(app, '[data-item-id="demo-component-a"]').getAttribute("aria-pressed")).toBe("true");
+    expect(app.querySelector<HTMLElement>(".inspector-status")?.textContent).toBe("Selected demo-component-a");
+    expect(previewItem.getAttribute("data-editor-selected")).toBe("true");
+  });
+
+  it("jumps to the selected item in JSON when selecting from the item list", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const jsonInput = getTextarea(app, ".json-input");
+    const jsonToggle = getSubsectionToggle(app, "Decoded JSON");
+    const alarmLabelButton = getButton(app, '[data-item-id="demo-alarm-label"]');
+
+    jsonToggle.click();
+    expect(jsonInput.hidden).toBe(true);
+
+    alarmLabelButton.click();
+
+    expect(jsonInput.hidden).toBe(false);
+    expect(jsonToggle.getAttribute("aria-expanded")).toBe("true");
+    expect(jsonInput.selectionStart).toBe(jsonInput.value.indexOf("\"id\": \"demo-alarm-label\"", jsonInput.value.indexOf("\"items\": [")));
+    expect(jsonInput.scrollTop).toBeGreaterThan(0);
+  });
+
+  it("jumps to the selected item in JSON when selecting from the preview", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const jsonInput = getTextarea(app, ".json-input");
+    const previewItem = app.querySelector('[data-id="demo-component-b"]');
+
+    if (!previewItem) {
+      throw new Error("preview item missing");
+    }
+
+    previewItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(jsonInput.selectionStart).toBe(jsonInput.value.indexOf("\"id\": \"demo-component-b\"", jsonInput.value.indexOf("\"items\": [")));
+  });
+
+  it("selects a top-level symbol when clicking one of its rendered child elements", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const symbol = app.querySelector('[data-id="demo-component-a"]');
+    const child = symbol?.querySelector('[data-id="unit-box"]');
+
+    if (!child) {
+      throw new Error("symbol child missing");
+    }
+
+    child.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(getButton(app, '[data-item-id="demo-component-a"]').getAttribute("aria-pressed")).toBe("true");
+    expect(symbol?.getAttribute("data-editor-selected")).toBe("true");
+  });
+
   it("edits x and y coordinates through the inspector", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
