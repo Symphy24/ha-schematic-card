@@ -17,9 +17,11 @@ Manual test flow:
 
 1. Open the local URL.
 2. Edit the decoded JSON in the left textarea.
-3. Confirm the preview updates when the JSON is valid.
-4. Confirm invalid JSON or schema errors appear in the export panel status.
-5. Copy the generated `hsc1...` payload from the right textarea.
+3. Click `Format JSON` to reformat valid payload JSON.
+4. Click `Reset Demo` to reload the demo payload.
+5. Confirm the preview updates when the JSON is valid.
+6. Confirm invalid JSON or schema errors appear in the export panel status.
+7. Copy the generated `hsc1...` payload from the right textarea.
 
 ## Build
 
