@@ -372,6 +372,31 @@ describe("editor app", () => {
     expect(app.querySelector("[data-editor-rubber-band]")).toBeNull();
   });
 
+  it("locks polyline drawing to horizontal or vertical segments in orthogonal mode", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".toggle-orthogonal-button").click();
+    getButton(app, ".draw-polyline-button").click();
+    clickPreviewPoint(app, 13, 14);
+    movePreviewPointer(app, 56, 44);
+
+    const rubberBand = app.querySelector<SVGLineElement>("[data-editor-rubber-band]");
+
+    expect(getButton(app, ".toggle-orthogonal-button").getAttribute("aria-pressed")).toBe("true");
+    expect(rubberBand?.getAttribute("x1")).toBe("10");
+    expect(rubberBand?.getAttribute("y1")).toBe("10");
+    expect(rubberBand?.getAttribute("x2")).toBe("60");
+    expect(rubberBand?.getAttribute("y2")).toBe("10");
+
+    clickPreviewPoint(app, 56, 44);
+    getButton(app, ".finish-polyline-button").click();
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 60");
+    expect(getTextarea(app, ".json-input").value).toContain("\"y\": 10");
+    expect(getTextarea(app, ".json-input").value).not.toContain("\"y\": 40");
+  });
+
   it("cancels a draft polyline with Escape", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);

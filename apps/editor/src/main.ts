@@ -50,6 +50,7 @@ type EditorElements = {
   openExportButton: HTMLButtonElement;
   toggleGridButton: HTMLButtonElement;
   gridSizeInput: HTMLInputElement;
+  toggleOrthogonalButton: HTMLButtonElement;
   drawPolylineButton: HTMLButtonElement;
   finishPolylineButton: HTMLButtonElement;
   closeTransferPanelButton: HTMLButtonElement;
@@ -60,6 +61,7 @@ type EditorElements = {
   selectedItemId?: string;
   gridEnabled: boolean;
   gridSize: number;
+  orthogonalEnabled: boolean;
   dragState?: PreviewDragState;
   drawState?: PolylineDrawState;
 };
@@ -141,6 +143,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     openExportButton: getRequiredElement(previewPane, ".open-export-button", HTMLButtonElement),
     toggleGridButton: getRequiredElement(previewPane, ".toggle-grid-button", HTMLButtonElement),
     gridSizeInput: getRequiredElement(previewPane, ".grid-size-input", HTMLInputElement),
+    toggleOrthogonalButton: getRequiredElement(previewPane, ".toggle-orthogonal-button", HTMLButtonElement),
     drawPolylineButton: getRequiredElement(previewPane, ".draw-polyline-button", HTMLButtonElement),
     finishPolylineButton: getRequiredElement(previewPane, ".finish-polyline-button", HTMLButtonElement),
     closeTransferPanelButton: getRequiredElement(transferPanel, ".transfer-panel-close", HTMLButtonElement),
@@ -149,7 +152,8 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     formatButton: getRequiredElement(jsonPane, ".format-button", HTMLButtonElement),
     resetButton: getRequiredElement(jsonPane, ".reset-button", HTMLButtonElement),
     gridEnabled: true,
-    gridSize: DEFAULT_EDITOR_GRID_SIZE
+    gridSize: DEFAULT_EDITOR_GRID_SIZE,
+    orthogonalEnabled: false
   };
 
   elements.jsonInput.value = formatPayloadJson();
@@ -160,6 +164,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.openExportButton.addEventListener("click", () => openTransferPanel(elements, "export"));
   elements.toggleGridButton.addEventListener("click", () => togglePreviewGrid(elements, documentRef));
   elements.gridSizeInput.addEventListener("change", () => updateGridSize(elements, documentRef));
+  elements.toggleOrthogonalButton.addEventListener("click", () => toggleOrthogonalDrawing(elements));
   elements.drawPolylineButton.addEventListener("click", () => startPolylineDrawing(elements, documentRef));
   elements.finishPolylineButton.addEventListener("click", () => finishPolylineDrawing(elements, documentRef));
   elements.closeTransferPanelButton.addEventListener("click", () => closeTransferPanel(elements));
@@ -234,6 +239,12 @@ function updateGridSize(elements: EditorElements, documentRef: Document): void {
   elements.gridSize = nextGridSize;
   elements.gridSizeInput.setCustomValidity("");
   updateFromJson(elements, documentRef);
+}
+
+function toggleOrthogonalDrawing(elements: EditorElements): void {
+  elements.orthogonalEnabled = !elements.orthogonalEnabled;
+  elements.toggleOrthogonalButton.setAttribute("aria-pressed", String(elements.orthogonalEnabled));
+  elements.toggleOrthogonalButton.textContent = elements.orthogonalEnabled ? "Ortho On" : "Ortho Off";
 }
 
 function renderPreviewGrid(
@@ -567,7 +578,7 @@ function addPolylinePointFromEvent(
   event.preventDefault();
   event.stopPropagation();
 
-  const point = snapPointIfNeeded(elements, getSvgPoint(getSvgCoordinateSpace(svg), event));
+  const point = resolveDrawPoint(elements, getSvgPoint(getSvgCoordinateSpace(svg), event));
   const result = parseAndValidatePayload(elements.jsonInput.value);
 
   if (!result.ok) {
@@ -592,7 +603,7 @@ function updatePolylineRubberBand(elements: EditorElements, event: MouseEvent, d
     return;
   }
 
-  elements.drawState.previewPoint = snapPointIfNeeded(elements, getSvgPoint(getSvgCoordinateSpace(svg), event));
+  elements.drawState.previewPoint = resolveDrawPoint(elements, getSvgPoint(getSvgCoordinateSpace(svg), event));
   updatePolylineRubberBandElement(svg, elements.drawState, documentRef);
 }
 
@@ -712,6 +723,36 @@ function snapPointIfNeeded(elements: EditorElements, point: SchematicPoint): Sch
   return {
     x: snapNumber(point.x, elements.gridSize),
     y: snapNumber(point.y, elements.gridSize)
+  };
+}
+
+function resolveDrawPoint(elements: EditorElements, point: SchematicPoint): SchematicPoint {
+  const snappedPoint = snapPointIfNeeded(elements, point);
+
+  if (!elements.orthogonalEnabled || !elements.drawState || elements.drawState.points.length === 0) {
+    return snappedPoint;
+  }
+
+  return snapPointIfNeeded(elements, lockPointOrthogonally(
+    elements.drawState.points[elements.drawState.points.length - 1],
+    snappedPoint
+  ));
+}
+
+function lockPointOrthogonally(origin: SchematicPoint, point: SchematicPoint): SchematicPoint {
+  const dx = point.x - origin.x;
+  const dy = point.y - origin.y;
+
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return {
+      x: point.x,
+      y: origin.y
+    };
+  }
+
+  return {
+    x: origin.x,
+    y: point.y
   };
 }
 
@@ -1575,6 +1616,12 @@ function createPreviewPane(documentRef: Document): HTMLElement {
   toggleGridButton.textContent = "Grid On";
   toggleGridButton.setAttribute("aria-pressed", "true");
 
+  const toggleOrthogonalButton = documentRef.createElement("button");
+  toggleOrthogonalButton.className = "toggle-orthogonal-button utility-button";
+  toggleOrthogonalButton.type = "button";
+  toggleOrthogonalButton.textContent = "Ortho Off";
+  toggleOrthogonalButton.setAttribute("aria-pressed", "false");
+
   const drawPolylineButton = documentRef.createElement("button");
   drawPolylineButton.className = "draw-polyline-button utility-button";
   drawPolylineButton.type = "button";
@@ -1607,6 +1654,7 @@ function createPreviewPane(documentRef: Document): HTMLElement {
     drawPolylineButton,
     finishPolylineButton,
     toggleGridButton,
+    toggleOrthogonalButton,
     gridSizeLabel,
     openImportButton,
     openExportButton
