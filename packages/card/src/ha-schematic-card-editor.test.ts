@@ -151,6 +151,7 @@ describe("ha-schematic-card-editor", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     const editor = createEditor();
     editor.style.setProperty("--primary-text-color", "rgb(1, 2, 3)");
+    editor.style.setProperty("--primary-background-color", "rgb(7, 8, 9)");
     mockClipboard(writeText);
 
     editor.setConfig({
@@ -170,6 +171,7 @@ describe("ha-schematic-card-editor", () => {
     expect(copied.version).toBe(1);
     expect(typeof copied.capturedAt).toBe("string");
     expect(copied.variables["--primary-text-color"]).toBe("rgb(1, 2, 3)");
+    expect(copied.variables["--primary-background-color"]).toBe("rgb(7, 8, 9)");
     expect(editor.shadowRoot?.textContent).toContain("Theme variables copied.");
     expect(getThemeJsonTextarea(editor)).toBeNull();
   });
