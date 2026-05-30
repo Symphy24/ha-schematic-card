@@ -267,8 +267,8 @@ textarea {
   display: grid;
   grid-template-columns: minmax(0, 0.72fr) minmax(0, 0.9fr) minmax(0, 1.1fr);
   gap: 12px;
-  height: min(38vh, 360px);
-  min-height: 240px;
+  min-height: 0;
+  flex: 1;
   padding: 12px;
   overflow: hidden;
 }
@@ -280,8 +280,36 @@ textarea {
   border-bottom: 1px solid #d7dde4;
 }
 
+.item-tools-section {
+  flex: 1 1 auto;
+}
+
 .json-editor-section {
-  flex: 1;
+  flex: 0 0 min(var(--editor-json-height, 42%), 55vh);
+}
+
+.editor-subsection[data-collapsed="true"] {
+  flex: 0 0 auto;
+}
+
+.editor-subsection > .subsection-body {
+  min-height: 0;
+}
+
+.section-resize-handle {
+  flex: 0 0 8px;
+  border-bottom: 1px solid #d7dde4;
+  background: #edf1f5;
+  cursor: row-resize;
+}
+
+.section-resize-handle:hover,
+.section-resize-handle:focus-visible {
+  background: #2f6fed;
+}
+
+.section-resize-handle[hidden] {
+  display: none;
 }
 
 .subsection-toggle {
@@ -339,6 +367,20 @@ textarea {
   display: grid;
   gap: 8px;
   min-width: 0;
+  min-height: 0;
+  flex: 1;
+  align-content: start;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.style-inspector-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border-top: 1px solid #d7dde4;
+  padding-top: 8px;
 }
 
 .item-list {
@@ -525,5 +567,14 @@ textarea {
     grid-template-columns: 1fr;
     height: auto;
     max-height: none;
+    overflow: visible;
+  }
+
+  .json-editor-section {
+    flex: 1 1 auto;
+  }
+
+  .section-resize-handle {
+    display: none;
   }
 }
