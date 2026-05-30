@@ -60,6 +60,7 @@ textarea {
 }
 
 .json-input,
+.theme-input,
 .import-input,
 .payload-output {
   width: 100%;
@@ -81,11 +82,16 @@ textarea {
   min-height: 110px;
 }
 
+.theme-input {
+  min-height: 92px;
+}
+
 .json-input {
   white-space: pre;
   overflow: auto;
 }
 
+.theme-input,
 .import-input,
 .payload-output {
   overflow-wrap: anywhere;
@@ -105,12 +111,14 @@ textarea {
 }
 
 .json-controls,
+.theme-controls,
 .export-controls {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
+.theme-section,
 .import-section {
   display: grid;
   gap: 8px;
@@ -137,6 +145,7 @@ textarea {
 .copy-button:focus-visible,
 .utility-button:focus-visible,
 .json-input:focus,
+.theme-input:focus,
 .import-input:focus,
 .payload-output:focus {
   outline: 2px solid #2f6fed;
@@ -145,17 +154,23 @@ textarea {
 
 .status {
   max-width: 280px;
+}
+
+.status,
+.theme-status {
   color: #5b6470;
   font-size: 12px;
   line-height: 1.35;
   white-space: pre-wrap;
 }
 
-.status[data-state="error"] {
+.status[data-state="error"],
+.theme-status[data-state="error"] {
   color: #c81e3a;
 }
 
-.status[data-state="valid"] {
+.status[data-state="valid"],
+.theme-status[data-state="valid"] {
   color: #168a4a;
 }
 
