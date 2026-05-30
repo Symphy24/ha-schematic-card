@@ -23,6 +23,7 @@ describe("editor app", () => {
 
     expect(app.querySelector<HTMLTextAreaElement>(".json-input")?.value).toBe(formatPayloadJson());
     expect(app.querySelector("svg")).not.toBeNull();
+    expect(app.querySelector('[data-editor-grid="true"]')).not.toBeNull();
     expect(app.querySelector<HTMLTextAreaElement>(".payload-output")?.value.startsWith("hsc1.")).toBe(true);
     expect(app.querySelector<HTMLElement>(".status")?.textContent).toBe("Valid payload");
   });
@@ -250,17 +251,79 @@ describe("editor app", () => {
 
     setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
     title.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 16, clientY: 28, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 21, clientY: 33 }));
     documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 36, clientY: 43 }));
     documentRef.dispatchEvent(new MouseEvent("mouseup"));
 
     const movedTitle = [...app.querySelectorAll("text")].find((element) => element.textContent === "Schematic Demo");
 
-    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 36");
-    expect(getTextarea(app, ".json-input").value).toContain("\"y\": 43");
-    expect(movedTitle?.getAttribute("x")).toBe("36");
-    expect(movedTitle?.getAttribute("y")).toBe("43");
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 40");
+    expect(getTextarea(app, ".json-input").value).toContain("\"y\": 40");
+    expect(movedTitle?.getAttribute("x")).toBe("40");
+    expect(movedTitle?.getAttribute("y")).toBe("40");
     expect(getButton(app, '[data-item-id="demo-title"]').getAttribute("aria-pressed")).toBe("true");
     expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+  });
+
+  it("toggles the preview grid overlay", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const gridButton = getButton(app, ".toggle-grid-button");
+    const gridSizeInput = getInput(app, ".grid-size-input");
+
+    expect(gridButton.getAttribute("aria-pressed")).toBe("true");
+    expect(app.querySelector('[data-editor-grid="true"]')?.getAttribute("data-grid-size")).toBe("10");
+
+    gridSizeInput.value = "20";
+    gridSizeInput.dispatchEvent(new Event("change"));
+    expect(app.querySelector('[data-editor-grid="true"]')?.getAttribute("data-grid-size")).toBe("20");
+
+    gridButton.click();
+
+    expect(gridButton.getAttribute("aria-pressed")).toBe("false");
+    expect(gridButton.textContent).toBe("Grid Off");
+    expect(app.querySelector('[data-editor-grid="true"]')).toBeNull();
+  });
+
+  it("keeps the previous grid size when grid size input is invalid", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const gridSizeInput = getInput(app, ".grid-size-input");
+
+    gridSizeInput.value = "-1";
+    gridSizeInput.dispatchEvent(new Event("change"));
+
+    expect(gridSizeInput.value).toBe("10");
+    expect(gridSizeInput.validationMessage).toBe("Grid size must be a positive number");
+    expect(app.querySelector('[data-editor-grid="true"]')?.getAttribute("data-grid-size")).toBe("10");
+  });
+
+  it("uses custom grid size when snapping dragged items", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const gridSizeInput = getInput(app, ".grid-size-input");
+
+    gridSizeInput.value = "20";
+    gridSizeInput.dispatchEvent(new Event("change"));
+
+    const svg = app.querySelector("svg");
+    const title = [...app.querySelectorAll("text")].find((element) => element.textContent === "Schematic Demo");
+
+    if (!svg || !title) {
+      throw new Error("draggable preview item missing");
+    }
+
+    setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
+    title.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 16, clientY: 28, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 47, clientY: 47 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    const movedTitle = [...app.querySelectorAll("text")].find((element) => element.textContent === "Schematic Demo");
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 40");
+    expect(getTextarea(app, ".json-input").value).toContain("\"y\": 40");
+    expect(movedTitle?.getAttribute("x")).toBe("40");
+    expect(movedTitle?.getAttribute("y")).toBe("40");
   });
 
   it("opens and closes the import/export side panel from the preview header", () => {
@@ -517,6 +580,16 @@ function getButton(root: ParentNode, selector: string): HTMLButtonElement {
 
   if (!(element instanceof HTMLButtonElement)) {
     throw new Error(`button missing: ${selector}`);
+  }
+
+  return element;
+}
+
+function getInput(root: ParentNode, selector: string): HTMLInputElement {
+  const element = root.querySelector(selector);
+
+  if (!(element instanceof HTMLInputElement)) {
+    throw new Error(`input missing: ${selector}`);
   }
 
   return element;

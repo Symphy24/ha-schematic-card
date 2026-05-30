@@ -139,6 +139,12 @@ textarea {
   height: auto;
 }
 
+.editor-grid-overlay line {
+  stroke: var(--divider-color, #d7dde4);
+  stroke-width: 0.5;
+  opacity: 0.65;
+}
+
 .preview-surface [data-id] {
   cursor: move;
 }
@@ -160,6 +166,19 @@ textarea {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.grid-size-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.grid-size-input {
+  width: 64px;
+  border: 1px solid #d7dde4;
+  border-radius: 6px;
+  padding: 7px 8px;
 }
 
 .preview-controls,
@@ -313,6 +332,7 @@ textarea {
 .transfer-panel-close:focus-visible,
 .utility-button:focus-visible,
 .inspector-input:focus,
+.grid-size-input:focus,
 .json-input:focus,
 .theme-input:focus,
 .import-input:focus,

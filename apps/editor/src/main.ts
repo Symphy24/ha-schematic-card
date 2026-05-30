@@ -11,6 +11,8 @@ import {
 import demoPayloadJson from "../../../examples/demo-payloads/minimal.json";
 
 const demoPayload = demoPayloadJson as SchematicPayload;
+const DEFAULT_EDITOR_GRID_SIZE = 10;
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 const demoEntityStates = {
   "input_boolean.schematic_demo_alarm": "on",
@@ -46,18 +48,23 @@ type EditorElements = {
   applyThemeButton: HTMLButtonElement;
   openImportButton: HTMLButtonElement;
   openExportButton: HTMLButtonElement;
+  toggleGridButton: HTMLButtonElement;
+  gridSizeInput: HTMLInputElement;
   closeTransferPanelButton: HTMLButtonElement;
   importButton: HTMLButtonElement;
   jsonSectionToggle: HTMLButtonElement;
   formatButton: HTMLButtonElement;
   resetButton: HTMLButtonElement;
   selectedItemId?: string;
+  gridEnabled: boolean;
+  gridSize: number;
   dragState?: PreviewDragState;
 };
 
 type PreviewDragState = {
   itemId: string;
-  lastPoint: SchematicPoint;
+  startPoint: SchematicPoint;
+  startItem: SchematicItem;
   coordinateSpace: SvgCoordinateSpace;
 };
 
@@ -121,11 +128,15 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     applyThemeButton: getRequiredElement(previewPane, ".apply-theme-button", HTMLButtonElement),
     openImportButton: getRequiredElement(previewPane, ".open-import-button", HTMLButtonElement),
     openExportButton: getRequiredElement(previewPane, ".open-export-button", HTMLButtonElement),
+    toggleGridButton: getRequiredElement(previewPane, ".toggle-grid-button", HTMLButtonElement),
+    gridSizeInput: getRequiredElement(previewPane, ".grid-size-input", HTMLInputElement),
     closeTransferPanelButton: getRequiredElement(transferPanel, ".transfer-panel-close", HTMLButtonElement),
     importButton: getRequiredElement(transferPanel, ".import-button", HTMLButtonElement),
     jsonSectionToggle: getRequiredElement(jsonPane, '[data-section-toggle="json-editor-section"]', HTMLButtonElement),
     formatButton: getRequiredElement(jsonPane, ".format-button", HTMLButtonElement),
-    resetButton: getRequiredElement(jsonPane, ".reset-button", HTMLButtonElement)
+    resetButton: getRequiredElement(jsonPane, ".reset-button", HTMLButtonElement),
+    gridEnabled: true,
+    gridSize: DEFAULT_EDITOR_GRID_SIZE
   };
 
   elements.jsonInput.value = formatPayloadJson();
@@ -134,6 +145,8 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.applyThemeButton.addEventListener("click", () => applyThemePreview(elements));
   elements.openImportButton.addEventListener("click", () => openTransferPanel(elements, "import"));
   elements.openExportButton.addEventListener("click", () => openTransferPanel(elements, "export"));
+  elements.toggleGridButton.addEventListener("click", () => togglePreviewGrid(elements, documentRef));
+  elements.gridSizeInput.addEventListener("change", () => updateGridSize(elements, documentRef));
   elements.closeTransferPanelButton.addEventListener("click", () => closeTransferPanel(elements));
   elements.importButton.addEventListener("click", () => importEncodedPayload(elements, documentRef));
   elements.addTextButton.addEventListener("click", () => addItem(elements, "text", documentRef));
@@ -174,6 +187,7 @@ function updateFromJson(elements: EditorElements, documentRef: Document): void {
     document: documentRef,
     entityStates: demoEntityStates
   });
+  renderPreviewGrid(svg, result.payload, elements.gridEnabled, elements.gridSize, documentRef);
   svg.addEventListener("click", (event) => selectPreviewItem(elements, result.payload, event.target, documentRef));
   svg.addEventListener("mousedown", (event) => startPreviewDrag(elements, result.payload, event, documentRef));
   elements.previewSurface.append(svg);
@@ -181,6 +195,66 @@ function updateFromJson(elements: EditorElements, documentRef: Document): void {
   elements.status.textContent = "Valid payload";
   elements.status.dataset.state = "valid";
   renderItemTools(elements, result.payload, documentRef);
+}
+
+function togglePreviewGrid(elements: EditorElements, documentRef: Document): void {
+  elements.gridEnabled = !elements.gridEnabled;
+  elements.toggleGridButton.setAttribute("aria-pressed", String(elements.gridEnabled));
+  elements.toggleGridButton.textContent = elements.gridEnabled ? "Grid On" : "Grid Off";
+  updateFromJson(elements, documentRef);
+}
+
+function updateGridSize(elements: EditorElements, documentRef: Document): void {
+  const nextGridSize = Number(elements.gridSizeInput.value);
+
+  if (!Number.isFinite(nextGridSize) || nextGridSize <= 0) {
+    elements.gridSizeInput.value = String(elements.gridSize);
+    elements.gridSizeInput.setCustomValidity("Grid size must be a positive number");
+    elements.gridSizeInput.reportValidity();
+    return;
+  }
+
+  elements.gridSize = nextGridSize;
+  elements.gridSizeInput.setCustomValidity("");
+  updateFromJson(elements, documentRef);
+}
+
+function renderPreviewGrid(
+  svg: SVGSVGElement,
+  payload: SchematicPayload,
+  gridEnabled: boolean,
+  gridSize: number,
+  documentRef: Document
+): void {
+  if (!gridEnabled) {
+    return;
+  }
+
+  const grid = documentRef.createElementNS(SVG_NAMESPACE, "g");
+  grid.classList.add("editor-grid-overlay");
+  grid.setAttribute("data-editor-grid", "true");
+  grid.setAttribute("data-grid-size", String(gridSize));
+  grid.setAttribute("pointer-events", "none");
+
+  for (let x = 0; x <= payload.viewport.width; x += gridSize) {
+    const line = documentRef.createElementNS(SVG_NAMESPACE, "line");
+    line.setAttribute("x1", String(x));
+    line.setAttribute("y1", "0");
+    line.setAttribute("x2", String(x));
+    line.setAttribute("y2", String(payload.viewport.height));
+    grid.append(line);
+  }
+
+  for (let y = 0; y <= payload.viewport.height; y += gridSize) {
+    const line = documentRef.createElementNS(SVG_NAMESPACE, "line");
+    line.setAttribute("x1", "0");
+    line.setAttribute("y1", String(y));
+    line.setAttribute("x2", String(payload.viewport.width));
+    line.setAttribute("y2", String(y));
+    grid.append(line);
+  }
+
+  svg.prepend(grid);
 }
 
 function parseAndValidatePayload(value: string): { ok: true; payload: SchematicPayload } | { ok: false; message: string } {
@@ -442,7 +516,8 @@ function startPreviewDrag(
 
   elements.dragState = {
     itemId,
-    lastPoint: getSvgPoint(coordinateSpace, event),
+    startPoint: getSvgPoint(coordinateSpace, event),
+    startItem: cloneItem(item),
     coordinateSpace
   };
 
@@ -480,17 +555,16 @@ function dragSelectedPreviewItem(
   }
 
   const currentPoint = getSvgPoint(elements.dragState.coordinateSpace, event);
-  const dx = currentPoint.x - elements.dragState.lastPoint.x;
-  const dy = currentPoint.y - elements.dragState.lastPoint.y;
+  const dx = currentPoint.x - elements.dragState.startPoint.x;
+  const dy = currentPoint.y - elements.dragState.startPoint.y;
 
-  moveSelectedItemFromDrag(elements, dx, dy, currentPoint, documentRef);
+  moveSelectedItemFromDrag(elements, dx, dy, documentRef);
 }
 
 function moveSelectedItemFromDrag(
   elements: EditorElements,
   dx: number,
   dy: number,
-  currentPoint: SchematicPoint,
   documentRef: Document
 ): void {
   const result = parseAndValidatePayload(elements.jsonInput.value);
@@ -511,13 +585,16 @@ function moveSelectedItemFromDrag(
     return;
   }
 
-  if (!moveItem(item, dx, dy)) {
+  if (!moveItemFromStart(item, dragState.startItem, dx, dy)) {
     elements.inspectorStatus.textContent = `${item.type} cannot be dragged yet`;
     elements.inspectorStatus.dataset.state = "error";
     return;
   }
 
-  dragState.lastPoint = currentPoint;
+  if (elements.gridEnabled) {
+    snapItemToGrid(item, elements.gridSize);
+  }
+
   elements.selectedItemId = dragState.itemId;
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
@@ -564,6 +641,10 @@ function parseViewBox(value: string | null): { x: number; y: number; width: numb
 
   const [x, y, width, height] = parts;
   return { x, y, width, height };
+}
+
+function cloneItem(item: SchematicItem): SchematicItem {
+  return JSON.parse(JSON.stringify(item)) as SchematicItem;
 }
 
 function highlightSelectedPreviewItem(elements: EditorElements): void {
@@ -824,6 +905,98 @@ function moveItem(item: SchematicItem, dx: number, dy: number): boolean {
   }
 
   return false;
+}
+
+function moveItemFromStart(item: SchematicItem, startItem: SchematicItem, dx: number, dy: number): boolean {
+  if (
+    hasNumberField(startItem, "x")
+    && hasNumberField(startItem, "y")
+    && hasNumberField(item, "x")
+    && hasNumberField(item, "y")
+  ) {
+    item.x = startItem.x + dx;
+    item.y = startItem.y + dy;
+    return true;
+  }
+
+  if (
+    hasNumberField(startItem, "cx")
+    && hasNumberField(startItem, "cy")
+    && hasNumberField(item, "cx")
+    && hasNumberField(item, "cy")
+  ) {
+    item.cx = startItem.cx + dx;
+    item.cy = startItem.cy + dy;
+    return true;
+  }
+
+  if (
+    hasNumberField(startItem, "x1")
+    && hasNumberField(startItem, "y1")
+    && hasNumberField(startItem, "x2")
+    && hasNumberField(startItem, "y2")
+    && hasNumberField(item, "x1")
+    && hasNumberField(item, "y1")
+    && hasNumberField(item, "x2")
+    && hasNumberField(item, "y2")
+  ) {
+    item.x1 = startItem.x1 + dx;
+    item.y1 = startItem.y1 + dy;
+    item.x2 = startItem.x2 + dx;
+    item.y2 = startItem.y2 + dy;
+    return true;
+  }
+
+  if (item.type === "polyline" && startItem.type === "polyline" && startItem.points.length > 0) {
+    item.points = startItem.points.map((point) => ({
+      x: point.x + dx,
+      y: point.y + dy
+    }));
+    return true;
+  }
+
+  return false;
+}
+
+function snapItemToGrid(item: SchematicItem, gridSize: number): boolean {
+  if (hasNumberField(item, "x") && hasNumberField(item, "y")) {
+    item.x = snapNumber(item.x, gridSize);
+    item.y = snapNumber(item.y, gridSize);
+    return true;
+  }
+
+  if (hasNumberField(item, "cx") && hasNumberField(item, "cy")) {
+    item.cx = snapNumber(item.cx, gridSize);
+    item.cy = snapNumber(item.cy, gridSize);
+    return true;
+  }
+
+  if (
+    hasNumberField(item, "x1")
+    && hasNumberField(item, "y1")
+    && hasNumberField(item, "x2")
+    && hasNumberField(item, "y2")
+  ) {
+    item.x1 = snapNumber(item.x1, gridSize);
+    item.y1 = snapNumber(item.y1, gridSize);
+    item.x2 = snapNumber(item.x2, gridSize);
+    item.y2 = snapNumber(item.y2, gridSize);
+    return true;
+  }
+
+  if (item.type === "polyline") {
+    item.points = item.points.map((point) => ({
+      x: snapNumber(point.x, gridSize),
+      y: snapNumber(point.y, gridSize)
+    }));
+    return item.points.length > 0;
+  }
+
+  return false;
+}
+
+function snapNumber(value: number, gridSize: number): number {
+  return Math.round(value / gridSize) * gridSize;
 }
 
 function hasEditableField(item: SchematicItem, fieldName: "x" | "y" | "text"): boolean {
@@ -1140,7 +1313,29 @@ function createPreviewPane(documentRef: Document): HTMLElement {
   openExportButton.type = "button";
   openExportButton.textContent = "Export";
 
-  controls.append(openImportButton, openExportButton);
+  const toggleGridButton = documentRef.createElement("button");
+  toggleGridButton.className = "toggle-grid-button utility-button";
+  toggleGridButton.type = "button";
+  toggleGridButton.textContent = "Grid On";
+  toggleGridButton.setAttribute("aria-pressed", "true");
+
+  const gridSizeLabel = documentRef.createElement("label");
+  gridSizeLabel.className = "grid-size-field";
+
+  const gridSizeText = documentRef.createElement("span");
+  gridSizeText.className = "field-label";
+  gridSizeText.textContent = "Grid";
+
+  const gridSizeInput = documentRef.createElement("input");
+  gridSizeInput.className = "grid-size-input";
+  gridSizeInput.type = "number";
+  gridSizeInput.min = "1";
+  gridSizeInput.step = "1";
+  gridSizeInput.value = String(DEFAULT_EDITOR_GRID_SIZE);
+
+  gridSizeLabel.append(gridSizeText, gridSizeInput);
+
+  controls.append(toggleGridButton, gridSizeLabel, openImportButton, openExportButton);
   pane.querySelector(".pane-header")?.append(controls);
 
   const themeSection = documentRef.createElement("section");
