@@ -133,6 +133,46 @@ describe("editor app", () => {
     expect(app.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 420 180");
     expect(app.querySelector<HTMLTextAreaElement>(".payload-output")?.value.startsWith("hsc1.")).toBe(true);
   });
+
+  it("imports a valid hsc1 payload into the JSON editor", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const importInput = getTextarea(app, ".import-input");
+    const importButton = getButton(app, ".import-button");
+    const jsonInput = getTextarea(app, ".json-input");
+    const updatedPayload = {
+      ...getDemoPayload(),
+      viewport: {
+        width: 500,
+        height: 200
+      }
+    };
+
+    importInput.value = `  ${encodeDemoPayload(updatedPayload)}  `;
+    importButton.click();
+
+    expect(jsonInput.value).toBe(formatPayloadJson(updatedPayload));
+    expect(app.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 500 200");
+    expect(app.querySelector<HTMLTextAreaElement>(".payload-output")?.value.startsWith("hsc1.")).toBe(true);
+    expect(app.querySelector<HTMLElement>(".status")?.textContent).toBe("Imported payload");
+  });
+
+  it("does not overwrite JSON when importing an invalid hsc1 payload", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const importInput = getTextarea(app, ".import-input");
+    const importButton = getButton(app, ".import-button");
+    const jsonInput = getTextarea(app, ".json-input");
+    const originalJson = jsonInput.value;
+
+    importInput.value = "not-hsc1";
+    importButton.click();
+
+    expect(jsonInput.value).toBe(originalJson);
+    expect(app.querySelector("svg")).not.toBeNull();
+    expect(app.querySelector<HTMLTextAreaElement>(".payload-output")?.value.startsWith("hsc1.")).toBe(true);
+    expect(app.querySelector<HTMLElement>(".status")?.textContent).toContain("Import error:");
+  });
 });
 
 function getTextarea(root: ParentNode, selector: string): HTMLTextAreaElement {

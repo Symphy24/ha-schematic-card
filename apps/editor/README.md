@@ -2,7 +2,7 @@
 
 Early local web app foundation for the future external schematic editor/generator.
 
-The current app is intentionally small: it lets you edit decoded payload JSON manually, renders a live preview with `@ha-schematic-card/renderer`, and exports the payload as an `hsc1...` string with `@ha-schematic-card/codec`.
+The current app is intentionally small: it lets you edit decoded payload JSON manually, import/export `hsc1...` payload strings with `@ha-schematic-card/codec`, and renders a live preview with `@ha-schematic-card/renderer`.
 
 ## Run Locally
 
@@ -22,6 +22,9 @@ Manual test flow:
 5. Confirm the preview updates when the JSON is valid.
 6. Confirm invalid JSON or schema errors appear in the export panel status.
 7. Copy the generated `hsc1...` payload from the right textarea.
+8. Paste an existing `hsc1...` payload into the import field and click `Import`.
+9. Confirm valid imports replace the decoded JSON and update the preview.
+10. Confirm invalid imports show an error without overwriting the decoded JSON.
 
 ## Build
 
