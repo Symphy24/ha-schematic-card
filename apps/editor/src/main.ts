@@ -32,6 +32,8 @@ type EditorElements = {
   addTextButton: HTMLButtonElement;
   addRectButton: HTMLButtonElement;
   addCircleButton: HTMLButtonElement;
+  duplicateItemButton: HTMLButtonElement;
+  deleteItemButton: HTMLButtonElement;
   inspector: HTMLElement;
   inspectorStatus: HTMLElement;
   previewSurface: HTMLElement;
@@ -155,6 +157,8 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     addTextButton: getRequiredElement(jsonPane, ".add-text-button", HTMLButtonElement),
     addRectButton: getRequiredElement(jsonPane, ".add-rect-button", HTMLButtonElement),
     addCircleButton: getRequiredElement(jsonPane, ".add-circle-button", HTMLButtonElement),
+    duplicateItemButton: getRequiredElement(jsonPane, ".duplicate-item-button", HTMLButtonElement),
+    deleteItemButton: getRequiredElement(jsonPane, ".delete-item-button", HTMLButtonElement),
     inspector: getRequiredElement(jsonPane, ".property-inspector", HTMLElement),
     inspectorStatus: getRequiredElement(jsonPane, ".inspector-status", HTMLElement),
     previewSurface: getRequiredElement(previewPane, ".preview-surface", HTMLElement),
@@ -208,6 +212,8 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.addTextButton.addEventListener("click", () => addItem(elements, "text", documentRef));
   elements.addRectButton.addEventListener("click", () => addItem(elements, "rect", documentRef));
   elements.addCircleButton.addEventListener("click", () => addItem(elements, "circle", documentRef));
+  elements.duplicateItemButton.addEventListener("click", () => duplicateSelectedItem(elements, documentRef));
+  elements.deleteItemButton.addEventListener("click", () => deleteSelectedItem(elements, documentRef));
   elements.formatButton.addEventListener("click", () => formatCurrentJson(elements, documentRef));
   elements.resetButton.addEventListener("click", () => resetDemoPayload(elements, documentRef));
   elements.undoButton.addEventListener("click", () => undoEditorChange(elements, documentRef));
@@ -523,6 +529,7 @@ function resetDemoPayload(elements: EditorElements, documentRef: Document): void
 function renderDisabledItemTools(elements: EditorElements, message: string): void {
   elements.itemList.replaceChildren();
   elements.inspector.replaceChildren();
+  updateSelectedItemActionButtons(elements, false);
   elements.inspectorStatus.textContent = `Inspector unavailable:\n${message}`;
   elements.inspectorStatus.dataset.state = "error";
 }
@@ -609,12 +616,87 @@ function createUniqueItemId(payload: SchematicPayload, type: string): string {
   return `${type}-${index}`;
 }
 
+function createUniqueDuplicateItemId(payload: SchematicPayload, sourceId: string): string {
+  const existingIds = new Set(payload.items.map((item) => item.id));
+  const baseId = `${sourceId}-copy`;
+
+  if (!existingIds.has(baseId)) {
+    return baseId;
+  }
+
+  let index = 2;
+
+  while (existingIds.has(`${baseId}-${index}`)) {
+    index += 1;
+  }
+
+  return `${baseId}-${index}`;
+}
+
+function duplicateSelectedItem(elements: EditorElements, documentRef: Document): void {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  const sourceIndex = result.payload.items.findIndex((item) => item.id === elements.selectedItemId);
+  const sourceItem = result.payload.items[sourceIndex];
+
+  if (sourceIndex === -1 || !sourceItem) {
+    elements.inspectorStatus.textContent = "Selected item was not found";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  const duplicate = cloneItem(sourceItem);
+  duplicate.id = createUniqueDuplicateItemId(result.payload, sourceItem.id);
+  moveItem(duplicate, 10, 10);
+
+  recordHistory(elements);
+  result.payload.items.splice(sourceIndex + 1, 0, duplicate);
+  elements.selectedItemId = duplicate.id;
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  updateFromJson(elements, documentRef);
+  jumpToSelectedItemInJson(elements);
+  elements.inspectorStatus.textContent = `Duplicated ${sourceItem.id}`;
+  elements.inspectorStatus.dataset.state = "valid";
+}
+
+function deleteSelectedItem(elements: EditorElements, documentRef: Document): void {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  const selectedIndex = result.payload.items.findIndex((item) => item.id === elements.selectedItemId);
+  const selectedItem = result.payload.items[selectedIndex];
+
+  if (selectedIndex === -1 || !selectedItem) {
+    elements.inspectorStatus.textContent = "Selected item was not found";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  recordHistory(elements);
+  result.payload.items.splice(selectedIndex, 1);
+  elements.selectedItemId = result.payload.items[selectedIndex]?.id ?? result.payload.items[selectedIndex - 1]?.id;
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  updateFromJson(elements, documentRef);
+  elements.inspectorStatus.textContent = `Deleted ${selectedItem.id}`;
+  elements.inspectorStatus.dataset.state = "valid";
+}
+
 function renderItemTools(elements: EditorElements, payload: SchematicPayload, documentRef: Document): void {
   elements.itemList.replaceChildren();
 
   if (payload.items.length === 0) {
     elements.selectedItemId = undefined;
     elements.inspector.replaceChildren();
+    updateSelectedItemActionButtons(elements, false);
     elements.inspectorStatus.textContent = "No top-level items";
     elements.inspectorStatus.dataset.state = "error";
     return;
@@ -622,6 +704,7 @@ function renderItemTools(elements: EditorElements, payload: SchematicPayload, do
 
   const selectedItem = payload.items.find((item) => item.id === elements.selectedItemId) ?? payload.items[0];
   elements.selectedItemId = selectedItem.id;
+  updateSelectedItemActionButtons(elements, true);
 
   for (const item of payload.items) {
     const button = documentRef.createElement("button");
@@ -640,6 +723,11 @@ function renderItemTools(elements: EditorElements, payload: SchematicPayload, do
 
   renderInspector(elements, selectedItem, documentRef);
   highlightSelectedPreviewItem(elements);
+}
+
+function updateSelectedItemActionButtons(elements: EditorElements, hasSelection: boolean): void {
+  elements.duplicateItemButton.disabled = !hasSelection;
+  elements.deleteItemButton.disabled = !hasSelection;
 }
 
 function selectPreviewItem(
@@ -1639,6 +1727,12 @@ function handleEditorKeyDown(elements: EditorElements, event: KeyboardEvent, doc
     return;
   }
 
+  if (event.key === "Delete" || event.key === "Backspace") {
+    event.preventDefault();
+    deleteSelectedItem(elements, documentRef);
+    return;
+  }
+
   const delta = getKeyboardNudgeDelta(event);
 
   if (!delta) {
@@ -2093,6 +2187,31 @@ function createJsonPane(documentRef: Document): HTMLElement {
   addButtons.append(addTextButton, addRectButton, addCircleButton);
   addTools.append(addLabel, addButtons);
 
+  const selectedItemActions = documentRef.createElement("section");
+  selectedItemActions.className = "selected-item-actions";
+
+  const selectedItemActionsLabel = documentRef.createElement("div");
+  selectedItemActionsLabel.className = "field-label";
+  selectedItemActionsLabel.textContent = "Selected";
+
+  const selectedItemActionButtons = documentRef.createElement("div");
+  selectedItemActionButtons.className = "selected-item-action-buttons";
+
+  const duplicateItemButton = documentRef.createElement("button");
+  duplicateItemButton.className = "duplicate-item-button utility-button";
+  duplicateItemButton.type = "button";
+  duplicateItemButton.textContent = "Duplicate";
+  duplicateItemButton.disabled = true;
+
+  const deleteItemButton = documentRef.createElement("button");
+  deleteItemButton.className = "delete-item-button utility-button";
+  deleteItemButton.type = "button";
+  deleteItemButton.textContent = "Delete";
+  deleteItemButton.disabled = true;
+
+  selectedItemActionButtons.append(duplicateItemButton, deleteItemButton);
+  selectedItemActions.append(selectedItemActionsLabel, selectedItemActionButtons);
+
   const itemListSection = documentRef.createElement("section");
   itemListSection.className = "item-list-section";
 
@@ -2119,6 +2238,7 @@ function createJsonPane(documentRef: Document): HTMLElement {
 
   itemListSection.append(itemListLabel, itemList);
   inspectorSection.append(inspectorLabel, inspector, inspectorStatus);
+  addTools.append(selectedItemActions);
   itemTools.append(addTools, itemListSection, inspectorSection);
 
   controls.append(undoButton, redoButton, formatButton, resetButton);
