@@ -37,7 +37,7 @@ Manual test flow:
 20. Confirm valid imports replace the decoded JSON and update the preview.
 21. Confirm invalid imports show an error without overwriting the decoded JSON.
 22. Paste JSON from the Lovelace editor's `Copy current theme variables` button into `Theme preview JSON`.
-23. Click `Apply Theme` and confirm the preview uses the pasted CSS variables.
+23. Click `Apply Theme` and confirm the preview uses the pasted CSS variables, including dark/light card backgrounds.
 24. Confirm invalid theme JSON shows a theme error without changing the payload JSON or export.
 
 ## Build
