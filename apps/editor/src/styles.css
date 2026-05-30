@@ -116,6 +116,21 @@ textarea {
   flex: 1;
   min-height: 460px;
   padding: 12px;
+  color: var(--primary-text-color, #17202a);
+  background:
+    var(
+      --ha-card-background,
+      var(
+        --card-background-color,
+        var(
+          --paper-card-background-color,
+          var(
+            --lovelace-background,
+            var(--primary-background-color, #ffffff)
+          )
+        )
+      )
+    );
 }
 
 .preview-surface svg {

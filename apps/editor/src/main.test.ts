@@ -446,14 +446,16 @@ describe("editor app", () => {
       capturedAt: "2026-05-30T00:00:00.000Z",
       variables: {
         "--primary-text-color": "rgb(10, 20, 30)",
-        "--accent-color": "rgb(40, 50, 60)"
+        "--accent-color": "rgb(40, 50, 60)",
+        "--ha-card-background": "rgb(5, 6, 7)"
       }
     });
     applyThemeButton.click();
 
     expect(previewSurface.style.getPropertyValue("--primary-text-color")).toBe("rgb(10, 20, 30)");
     expect(previewSurface.style.getPropertyValue("--accent-color")).toBe("rgb(40, 50, 60)");
-    expect(app.querySelector<HTMLElement>(".theme-status")?.textContent).toBe("Applied 2 theme variables");
+    expect(previewSurface.style.getPropertyValue("--ha-card-background")).toBe("rgb(5, 6, 7)");
+    expect(app.querySelector<HTMLElement>(".theme-status")?.textContent).toBe("Applied 3 theme variables");
   });
 
   it("shows a theme error without changing payload JSON or preview", () => {

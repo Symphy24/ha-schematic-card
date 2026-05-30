@@ -42,6 +42,7 @@ Manual test flow:
 25. Click `Apply Theme` and confirm the preview uses the pasted CSS variables, including dark/light card backgrounds.
 26. Confirm invalid theme JSON shows a theme error without changing the payload JSON or export.
 
+
 ## Build
 
 ```sh
