@@ -140,7 +140,12 @@ textarea {
 }
 
 .preview-surface [data-id] {
-  cursor: pointer;
+  cursor: move;
+}
+
+.preview-surface[data-dragging="true"] {
+  cursor: move;
+  user-select: none;
 }
 
 .preview-surface [data-editor-selected="true"] {
