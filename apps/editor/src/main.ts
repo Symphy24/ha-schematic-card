@@ -60,9 +60,13 @@ type EditorElements = {
   jsonSectionToggle: HTMLButtonElement;
   formatButton: HTMLButtonElement;
   resetButton: HTMLButtonElement;
+  undoButton: HTMLButtonElement;
+  redoButton: HTMLButtonElement;
   selectedItemId?: string;
   gridEnabled: boolean;
   gridSize: number;
+  undoStack: EditorSnapshot[];
+  redoStack: EditorSnapshot[];
   dragState?: PreviewDragState;
   pointDragState?: PolylinePointDragState;
   drawState?: PolylineDrawState;
@@ -74,6 +78,7 @@ type PreviewDragState = {
   startPoint: SchematicPoint;
   startItem: SchematicItem;
   coordinateSpace: SvgCoordinateSpace;
+  historyRecorded: boolean;
 };
 
 type PolylinePointDragState = {
@@ -82,6 +87,7 @@ type PolylinePointDragState = {
   startPoint: SchematicPoint;
   startItem: SchematicItem;
   coordinateSpace: SvgCoordinateSpace;
+  historyRecorded: boolean;
 };
 
 type PolylineDrawState = {
@@ -99,6 +105,11 @@ type PolylineContextMenuState = {
 };
 
 type AddItemType = "text" | "rect" | "circle";
+
+type EditorSnapshot = {
+  json: string;
+  selectedItemId?: string;
+};
 
 type SvgCoordinateSpace = {
   viewBox?: {
@@ -172,8 +183,12 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     jsonSectionToggle: getRequiredElement(jsonPane, '[data-section-toggle="json-editor-section"]', HTMLButtonElement),
     formatButton: getRequiredElement(jsonPane, ".format-button", HTMLButtonElement),
     resetButton: getRequiredElement(jsonPane, ".reset-button", HTMLButtonElement),
+    undoButton: getRequiredElement(jsonPane, ".undo-button", HTMLButtonElement),
+    redoButton: getRequiredElement(jsonPane, ".redo-button", HTMLButtonElement),
     gridEnabled: true,
-    gridSize: DEFAULT_EDITOR_GRID_SIZE
+    gridSize: DEFAULT_EDITOR_GRID_SIZE,
+    undoStack: [],
+    redoStack: []
   };
 
   elements.jsonInput.value = formatPayloadJson();
@@ -195,6 +210,8 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.addCircleButton.addEventListener("click", () => addItem(elements, "circle", documentRef));
   elements.formatButton.addEventListener("click", () => formatCurrentJson(elements, documentRef));
   elements.resetButton.addEventListener("click", () => resetDemoPayload(elements, documentRef));
+  elements.undoButton.addEventListener("click", () => undoEditorChange(elements, documentRef));
+  elements.redoButton.addEventListener("click", () => redoEditorChange(elements, documentRef));
   shell.addEventListener("keydown", (event) => handleEditorKeyDown(elements, event, documentRef));
 
   shell.append(jsonPane, resizeHandle, previewPane, transferPanel);
@@ -216,6 +233,7 @@ function updateFromJson(elements: EditorElements, documentRef: Document): void {
 
   elements.previewSurface.replaceChildren();
   elements.exportOutput.value = "";
+  updateHistoryControls(elements);
 
   if (!result.ok) {
     renderDisabledItemTools(elements, result.message);
@@ -240,6 +258,70 @@ function updateFromJson(elements: EditorElements, documentRef: Document): void {
   elements.status.textContent = "Valid payload";
   elements.status.dataset.state = "valid";
   renderItemTools(elements, result.payload, documentRef);
+}
+
+function getCurrentSnapshot(elements: EditorElements): EditorSnapshot {
+  return {
+    json: elements.jsonInput.value,
+    selectedItemId: elements.selectedItemId
+  };
+}
+
+function recordHistory(elements: EditorElements): void {
+  const snapshot = getCurrentSnapshot(elements);
+  const lastSnapshot = elements.undoStack[elements.undoStack.length - 1];
+
+  if (lastSnapshot?.json === snapshot.json && lastSnapshot.selectedItemId === snapshot.selectedItemId) {
+    return;
+  }
+
+  elements.undoStack.push(snapshot);
+
+  if (elements.undoStack.length > 100) {
+    elements.undoStack.shift();
+  }
+
+  elements.redoStack = [];
+  updateHistoryControls(elements);
+}
+
+function undoEditorChange(elements: EditorElements, documentRef: Document): void {
+  const snapshot = elements.undoStack.pop();
+
+  if (!snapshot) {
+    return;
+  }
+
+  elements.redoStack.push(getCurrentSnapshot(elements));
+  applyEditorSnapshot(elements, snapshot, documentRef);
+}
+
+function redoEditorChange(elements: EditorElements, documentRef: Document): void {
+  const snapshot = elements.redoStack.pop();
+
+  if (!snapshot) {
+    return;
+  }
+
+  elements.undoStack.push(getCurrentSnapshot(elements));
+  applyEditorSnapshot(elements, snapshot, documentRef);
+}
+
+function applyEditorSnapshot(elements: EditorElements, snapshot: EditorSnapshot, documentRef: Document): void {
+  elements.jsonInput.value = snapshot.json;
+  elements.selectedItemId = snapshot.selectedItemId;
+  delete elements.dragState;
+  delete elements.pointDragState;
+  delete elements.drawState;
+  closePolylineContextMenu(elements);
+  updateDrawControls(elements);
+  updateFromJson(elements, documentRef);
+  updateHistoryControls(elements);
+}
+
+function updateHistoryControls(elements: EditorElements): void {
+  elements.undoButton.disabled = elements.undoStack.length === 0;
+  elements.redoButton.disabled = elements.redoStack.length === 0;
 }
 
 function togglePreviewGrid(elements: EditorElements, documentRef: Document): void {
@@ -418,11 +500,21 @@ function formatCurrentJson(elements: EditorElements, documentRef: Document): voi
     return;
   }
 
-  elements.jsonInput.value = formatPayloadJson(result.payload);
+  const formattedJson = formatPayloadJson(result.payload);
+
+  if (elements.jsonInput.value !== formattedJson) {
+    recordHistory(elements);
+  }
+
+  elements.jsonInput.value = formattedJson;
   updateFromJson(elements, documentRef);
 }
 
 function resetDemoPayload(elements: EditorElements, documentRef: Document): void {
+  if (elements.jsonInput.value !== formatPayloadJson() || elements.selectedItemId !== undefined) {
+    recordHistory(elements);
+  }
+
   elements.selectedItemId = undefined;
   elements.jsonInput.value = formatPayloadJson();
   updateFromJson(elements, documentRef);
@@ -444,6 +536,7 @@ function addItem(elements: EditorElements, type: AddItemType, documentRef: Docum
   }
 
   const item = createDefaultItem(result.payload, type);
+  recordHistory(elements);
   result.payload.items.push(item);
   elements.selectedItemId = item.id;
   elements.jsonInput.value = formatPayloadJson(result.payload);
@@ -670,6 +763,7 @@ function addPolylinePointFromContextMenu(elements: EditorElements, documentRef: 
     return;
   }
 
+  recordHistory(elements);
   item.points.splice(state.insertIndex, 0, state.point);
   elements.selectedItemId = item.id;
   elements.jsonInput.value = formatPayloadJson(result.payload);
@@ -707,6 +801,7 @@ function deletePolylinePointFromContextMenu(elements: EditorElements, documentRe
     return;
   }
 
+  recordHistory(elements);
   item.points.splice(state.nearestPointIndex, 1);
   elements.selectedItemId = item.id;
   elements.jsonInput.value = formatPayloadJson(result.payload);
@@ -829,6 +924,10 @@ function addPolylinePointFromEvent(
   if (!result.ok) {
     renderDisabledItemTools(elements, result.message);
     return;
+  }
+
+  if (elements.drawState.points.length === 0) {
+    recordHistory(elements);
   }
 
   elements.drawState.points.push(point);
@@ -1053,7 +1152,8 @@ function startPreviewDrag(
     itemId,
     startPoint: getSvgPoint(coordinateSpace, event),
     startItem: cloneItem(item),
-    coordinateSpace
+    coordinateSpace,
+    historyRecorded: false
   };
 
   elements.previewSurface.dataset.dragging = "true";
@@ -1119,7 +1219,8 @@ function startPolylinePointDrag(
     pointIndex,
     startPoint: getSvgPoint(getSvgCoordinateSpace(svg), event),
     startItem: cloneItem(item),
-    coordinateSpace: getSvgCoordinateSpace(svg)
+    coordinateSpace: getSvgCoordinateSpace(svg),
+    historyRecorded: false
   };
   elements.previewSurface.dataset.dragging = "true";
   event.preventDefault();
@@ -1180,6 +1281,11 @@ function dragPolylinePoint(elements: EditorElements, event: MouseEvent, document
   const orthogonalAnchor = event.shiftKey
     ? getPolylinePointOrthoAnchor(pointDragState.startItem, pointDragState.pointIndex)
     : undefined;
+
+  if (!pointDragState.historyRecorded) {
+    recordHistory(elements);
+    pointDragState.historyRecorded = true;
+  }
 
   item.points[pointDragState.pointIndex] = snapPointIfNeeded(
     elements,
@@ -1282,6 +1388,11 @@ function moveSelectedItemFromDrag(
     elements.inspectorStatus.textContent = `${item.type} cannot be dragged yet`;
     elements.inspectorStatus.dataset.state = "error";
     return;
+  }
+
+  if (!dragState.historyRecorded) {
+    recordHistory(elements);
+    dragState.historyRecorded = true;
   }
 
   if (elements.gridEnabled) {
@@ -1482,6 +1593,11 @@ function updateSelectedItemField(
     return;
   }
 
+  if ((item as Record<string, unknown>)[fieldName] === nextValue) {
+    return;
+  }
+
+  recordHistory(elements);
   (item as Record<string, unknown>)[fieldName] = nextValue;
 
   if (fieldName === "id") {
@@ -1493,6 +1609,20 @@ function updateSelectedItemField(
 }
 
 function handleEditorKeyDown(elements: EditorElements, event: KeyboardEvent, documentRef: Document): void {
+  const historyShortcut = getHistoryShortcut(event);
+
+  if (historyShortcut) {
+    event.preventDefault();
+
+    if (historyShortcut === "undo") {
+      undoEditorChange(elements, documentRef);
+      return;
+    }
+
+    redoEditorChange(elements, documentRef);
+    return;
+  }
+
   if (isTypingTarget(event.target)) {
     return;
   }
@@ -1517,6 +1647,28 @@ function handleEditorKeyDown(elements: EditorElements, event: KeyboardEvent, doc
 
   event.preventDefault();
   nudgeSelectedItem(elements, delta.dx, delta.dy, documentRef);
+}
+
+function getHistoryShortcut(event: KeyboardEvent): "undo" | "redo" | undefined {
+  if (!event.ctrlKey && !event.metaKey) {
+    return undefined;
+  }
+
+  const key = event.key.toLowerCase();
+
+  if (key === "z" && event.shiftKey) {
+    return "redo";
+  }
+
+  if (key === "z") {
+    return "undo";
+  }
+
+  if (key === "y") {
+    return "redo";
+  }
+
+  return undefined;
 }
 
 function getKeyboardNudgeDelta(event: KeyboardEvent): { dx: number; dy: number } | undefined {
@@ -1562,6 +1714,7 @@ function nudgeSelectedItem(elements: EditorElements, dx: number, dy: number, doc
     return;
   }
 
+  recordHistory(elements);
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
   elements.inspectorStatus.textContent = `Moved ${item.id}`;
@@ -1737,6 +1890,7 @@ function importEncodedPayload(elements: EditorElements, documentRef: Document): 
     return;
   }
 
+  recordHistory(elements);
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
   elements.status.textContent = "Imported payload";
@@ -1882,6 +2036,18 @@ function createJsonPane(documentRef: Document): HTMLElement {
   const controls = documentRef.createElement("div");
   controls.className = "json-controls";
 
+  const undoButton = documentRef.createElement("button");
+  undoButton.className = "undo-button utility-button";
+  undoButton.type = "button";
+  undoButton.textContent = "Undo";
+  undoButton.disabled = true;
+
+  const redoButton = documentRef.createElement("button");
+  redoButton.className = "redo-button utility-button";
+  redoButton.type = "button";
+  redoButton.textContent = "Redo";
+  redoButton.disabled = true;
+
   const formatButton = documentRef.createElement("button");
   formatButton.className = "format-button utility-button";
   formatButton.type = "button";
@@ -1955,7 +2121,7 @@ function createJsonPane(documentRef: Document): HTMLElement {
   inspectorSection.append(inspectorLabel, inspector, inspectorStatus);
   itemTools.append(addTools, itemListSection, inspectorSection);
 
-  controls.append(formatButton, resetButton);
+  controls.append(undoButton, redoButton, formatButton, resetButton);
   pane.querySelector(".pane-header")?.append(controls);
   pane.append(
     createCollapsibleSection(documentRef, "Items / Inspector", "item-tools-section", itemTools),
