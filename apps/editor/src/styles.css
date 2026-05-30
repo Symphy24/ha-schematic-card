@@ -94,13 +94,15 @@ textarea {
   height: auto;
 }
 
+.json-controls,
 .export-controls {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.copy-button {
+.copy-button,
+.utility-button {
   border: 1px solid #9aa7b4;
   border-radius: 6px;
   background: #ffffff;
@@ -110,6 +112,7 @@ textarea {
 }
 
 .copy-button:focus-visible,
+.utility-button:focus-visible,
 .json-input:focus,
 .payload-output:focus {
   outline: 2px solid #2f6fed;
@@ -120,6 +123,7 @@ textarea {
   max-width: 280px;
   color: #5b6470;
   font-size: 12px;
+  line-height: 1.35;
   white-space: pre-wrap;
 }
 

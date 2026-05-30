@@ -27,6 +27,8 @@ type EditorElements = {
   exportOutput: HTMLTextAreaElement;
   status: HTMLElement;
   copyButton: HTMLButtonElement;
+  formatButton: HTMLButtonElement;
+  resetButton: HTMLButtonElement;
 };
 
 export function getDemoPayload(): SchematicPayload {
@@ -54,13 +56,17 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     previewSurface: createPreviewSurface(documentRef),
     exportOutput: getRequiredElement(exportPane, ".payload-output", HTMLTextAreaElement),
     status: getRequiredElement(exportPane, ".status", HTMLElement),
-    copyButton: getRequiredElement(exportPane, ".copy-button", HTMLButtonElement)
+    copyButton: getRequiredElement(exportPane, ".copy-button", HTMLButtonElement),
+    formatButton: getRequiredElement(jsonPane, ".format-button", HTMLButtonElement),
+    resetButton: getRequiredElement(jsonPane, ".reset-button", HTMLButtonElement)
   };
 
   previewPane.append(elements.previewSurface);
   elements.jsonInput.value = formatPayloadJson();
   elements.jsonInput.addEventListener("input", () => updateFromJson(elements, documentRef));
   elements.copyButton.addEventListener("click", async () => copyExportedPayload(elements));
+  elements.formatButton.addEventListener("click", () => formatCurrentJson(elements, documentRef));
+  elements.resetButton.addEventListener("click", () => resetDemoPayload(elements, documentRef));
 
   shell.append(jsonPane, previewPane, exportPane);
   updateFromJson(elements, documentRef);
@@ -83,7 +89,7 @@ function updateFromJson(elements: EditorElements, documentRef: Document): void {
   elements.exportOutput.value = "";
 
   if (!result.ok) {
-    elements.status.textContent = result.errors.join("\n");
+    elements.status.textContent = result.message;
     elements.status.dataset.state = "error";
     return;
   }
@@ -97,7 +103,7 @@ function updateFromJson(elements: EditorElements, documentRef: Document): void {
   elements.status.dataset.state = "valid";
 }
 
-function parseAndValidatePayload(value: string): { ok: true; payload: SchematicPayload } | { ok: false; errors: string[] } {
+function parseAndValidatePayload(value: string): { ok: true; payload: SchematicPayload } | { ok: false; message: string } {
   let parsed: unknown;
 
   try {
@@ -105,7 +111,7 @@ function parseAndValidatePayload(value: string): { ok: true; payload: SchematicP
   } catch (error) {
     return {
       ok: false,
-      errors: [`Invalid JSON: ${error instanceof Error ? error.message : String(error)}`]
+      message: `JSON error: ${error instanceof Error ? error.message : String(error)}`
     };
   }
 
@@ -114,14 +120,14 @@ function parseAndValidatePayload(value: string): { ok: true; payload: SchematicP
   if (!validation.valid) {
     return {
       ok: false,
-      errors: validation.errors
+      message: `Schema error:\n${validation.errors.map((validationError) => `- ${validationError}`).join("\n")}`
     };
   }
 
   if (!isSchematicPayload(parsed)) {
     return {
       ok: false,
-      errors: ["Payload did not match schema"]
+      message: "Schema error:\n- Payload did not match schema"
     };
   }
 
@@ -129,6 +135,26 @@ function parseAndValidatePayload(value: string): { ok: true; payload: SchematicP
     ok: true,
     payload: parsed
   };
+}
+
+function formatCurrentJson(elements: EditorElements, documentRef: Document): void {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    elements.previewSurface.replaceChildren();
+    elements.exportOutput.value = "";
+    elements.status.textContent = result.message;
+    elements.status.dataset.state = "error";
+    return;
+  }
+
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  updateFromJson(elements, documentRef);
+}
+
+function resetDemoPayload(elements: EditorElements, documentRef: Document): void {
+  elements.jsonInput.value = formatPayloadJson();
+  updateFromJson(elements, documentRef);
 }
 
 async function copyExportedPayload(elements: EditorElements): Promise<void> {
@@ -151,9 +177,25 @@ async function copyExportedPayload(elements: EditorElements): Promise<void> {
 
 function createJsonPane(documentRef: Document): HTMLElement {
   const pane = createPane(documentRef, "Decoded JSON");
+  const controls = documentRef.createElement("div");
+  controls.className = "json-controls";
+
+  const formatButton = documentRef.createElement("button");
+  formatButton.className = "format-button utility-button";
+  formatButton.type = "button";
+  formatButton.textContent = "Format JSON";
+
+  const resetButton = documentRef.createElement("button");
+  resetButton.className = "reset-button utility-button";
+  resetButton.type = "button";
+  resetButton.textContent = "Reset Demo";
+
   const jsonInput = documentRef.createElement("textarea");
   jsonInput.className = "json-input";
   jsonInput.spellcheck = false;
+
+  controls.append(formatButton, resetButton);
+  pane.querySelector(".pane-header")?.append(controls);
   pane.append(jsonInput);
   return pane;
 }
