@@ -50,9 +50,11 @@ type EditorElements = {
   openExportButton: HTMLButtonElement;
   toggleGridButton: HTMLButtonElement;
   gridSizeInput: HTMLInputElement;
-  toggleOrthogonalButton: HTMLButtonElement;
   drawPolylineButton: HTMLButtonElement;
   finishPolylineButton: HTMLButtonElement;
+  polylineContextMenu: HTMLElement;
+  addPolylinePointButton: HTMLButtonElement;
+  deletePolylinePointButton: HTMLButtonElement;
   closeTransferPanelButton: HTMLButtonElement;
   importButton: HTMLButtonElement;
   jsonSectionToggle: HTMLButtonElement;
@@ -61,9 +63,10 @@ type EditorElements = {
   selectedItemId?: string;
   gridEnabled: boolean;
   gridSize: number;
-  orthogonalEnabled: boolean;
   dragState?: PreviewDragState;
+  pointDragState?: PolylinePointDragState;
   drawState?: PolylineDrawState;
+  contextMenuState?: PolylineContextMenuState;
 };
 
 type PreviewDragState = {
@@ -73,10 +76,26 @@ type PreviewDragState = {
   coordinateSpace: SvgCoordinateSpace;
 };
 
+type PolylinePointDragState = {
+  itemId: string;
+  pointIndex: number;
+  startPoint: SchematicPoint;
+  startItem: SchematicItem;
+  coordinateSpace: SvgCoordinateSpace;
+};
+
 type PolylineDrawState = {
   itemId: string;
   points: SchematicPoint[];
   previewPoint?: SchematicPoint;
+  shiftKey?: boolean;
+};
+
+type PolylineContextMenuState = {
+  itemId: string;
+  insertIndex: number;
+  nearestPointIndex: number;
+  point: SchematicPoint;
 };
 
 type AddItemType = "text" | "rect" | "circle";
@@ -143,17 +162,18 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     openExportButton: getRequiredElement(previewPane, ".open-export-button", HTMLButtonElement),
     toggleGridButton: getRequiredElement(previewPane, ".toggle-grid-button", HTMLButtonElement),
     gridSizeInput: getRequiredElement(previewPane, ".grid-size-input", HTMLInputElement),
-    toggleOrthogonalButton: getRequiredElement(previewPane, ".toggle-orthogonal-button", HTMLButtonElement),
     drawPolylineButton: getRequiredElement(previewPane, ".draw-polyline-button", HTMLButtonElement),
     finishPolylineButton: getRequiredElement(previewPane, ".finish-polyline-button", HTMLButtonElement),
+    polylineContextMenu: getRequiredElement(previewPane, ".polyline-context-menu", HTMLElement),
+    addPolylinePointButton: getRequiredElement(previewPane, ".add-polyline-point-button", HTMLButtonElement),
+    deletePolylinePointButton: getRequiredElement(previewPane, ".delete-polyline-point-button", HTMLButtonElement),
     closeTransferPanelButton: getRequiredElement(transferPanel, ".transfer-panel-close", HTMLButtonElement),
     importButton: getRequiredElement(transferPanel, ".import-button", HTMLButtonElement),
     jsonSectionToggle: getRequiredElement(jsonPane, '[data-section-toggle="json-editor-section"]', HTMLButtonElement),
     formatButton: getRequiredElement(jsonPane, ".format-button", HTMLButtonElement),
     resetButton: getRequiredElement(jsonPane, ".reset-button", HTMLButtonElement),
     gridEnabled: true,
-    gridSize: DEFAULT_EDITOR_GRID_SIZE,
-    orthogonalEnabled: false
+    gridSize: DEFAULT_EDITOR_GRID_SIZE
   };
 
   elements.jsonInput.value = formatPayloadJson();
@@ -164,9 +184,10 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.openExportButton.addEventListener("click", () => openTransferPanel(elements, "export"));
   elements.toggleGridButton.addEventListener("click", () => togglePreviewGrid(elements, documentRef));
   elements.gridSizeInput.addEventListener("change", () => updateGridSize(elements, documentRef));
-  elements.toggleOrthogonalButton.addEventListener("click", () => toggleOrthogonalDrawing(elements));
   elements.drawPolylineButton.addEventListener("click", () => startPolylineDrawing(elements, documentRef));
   elements.finishPolylineButton.addEventListener("click", () => finishPolylineDrawing(elements, documentRef));
+  elements.addPolylinePointButton.addEventListener("click", () => addPolylinePointFromContextMenu(elements, documentRef));
+  elements.deletePolylinePointButton.addEventListener("click", () => deletePolylinePointFromContextMenu(elements, documentRef));
   elements.closeTransferPanelButton.addEventListener("click", () => closeTransferPanel(elements));
   elements.importButton.addEventListener("click", () => importEncodedPayload(elements, documentRef));
   elements.addTextButton.addEventListener("click", () => addItem(elements, "text", documentRef));
@@ -209,9 +230,11 @@ function updateFromJson(elements: EditorElements, documentRef: Document): void {
   });
   renderPreviewGrid(svg, result.payload, elements.gridEnabled, elements.gridSize, documentRef);
   renderPolylineRubberBand(svg, elements.drawState, documentRef);
+  renderPolylineHandles(svg, result.payload, elements.selectedItemId, elements.drawState, documentRef);
   svg.addEventListener("click", (event) => handlePreviewClick(elements, result.payload, event, documentRef));
   svg.addEventListener("mousemove", (event) => updatePolylineRubberBand(elements, event, documentRef));
-  svg.addEventListener("mousedown", (event) => startPreviewDrag(elements, result.payload, event, documentRef));
+  svg.addEventListener("mousedown", (event) => handlePreviewMouseDown(elements, result.payload, event, documentRef));
+  svg.addEventListener("contextmenu", (event) => openPolylineContextMenu(elements, result.payload, event, documentRef));
   elements.previewSurface.append(svg);
   elements.exportOutput.value = encodePayload(result.payload);
   elements.status.textContent = "Valid payload";
@@ -239,12 +262,6 @@ function updateGridSize(elements: EditorElements, documentRef: Document): void {
   elements.gridSize = nextGridSize;
   elements.gridSizeInput.setCustomValidity("");
   updateFromJson(elements, documentRef);
-}
-
-function toggleOrthogonalDrawing(elements: EditorElements): void {
-  elements.orthogonalEnabled = !elements.orthogonalEnabled;
-  elements.toggleOrthogonalButton.setAttribute("aria-pressed", String(elements.orthogonalEnabled));
-  elements.toggleOrthogonalButton.textContent = elements.orthogonalEnabled ? "Ortho On" : "Ortho Off";
 }
 
 function renderPreviewGrid(
@@ -304,6 +321,56 @@ function renderPolylineRubberBand(
   rubberBand.setAttribute("x2", String(drawState.previewPoint.x));
   rubberBand.setAttribute("y2", String(drawState.previewPoint.y));
   svg.append(rubberBand);
+}
+
+function renderPolylineHandles(
+  svg: SVGSVGElement,
+  payload: SchematicPayload,
+  selectedItemId: string | undefined,
+  drawState: PolylineDrawState | undefined,
+  documentRef: Document
+): void {
+  if (drawState || !selectedItemId) {
+    return;
+  }
+
+  const item = payload.items.find((candidate) => candidate.id === selectedItemId);
+
+  if (!item || item.type !== "polyline") {
+    return;
+  }
+
+  const handles = documentRef.createElementNS(SVG_NAMESPACE, "g");
+  handles.classList.add("editor-polyline-handles");
+  handles.setAttribute("data-editor-polyline-handles", "true");
+
+  item.points.forEach((point, index) => {
+    const hitbox = documentRef.createElementNS(SVG_NAMESPACE, "circle");
+    hitbox.classList.add("editor-polyline-handle-hitbox");
+    setPolylineHandleAttrs(hitbox, selectedItemId, index, point, 5);
+
+    const dot = documentRef.createElementNS(SVG_NAMESPACE, "circle");
+    dot.classList.add("editor-polyline-handle-dot");
+    setPolylineHandleAttrs(dot, selectedItemId, index, point, 1.5);
+
+    handles.append(hitbox, dot);
+  });
+
+  svg.append(handles);
+}
+
+function setPolylineHandleAttrs(
+  handle: SVGCircleElement,
+  itemId: string,
+  pointIndex: number,
+  point: SchematicPoint,
+  radius: number
+): void {
+  handle.setAttribute("data-polyline-handle", itemId);
+  handle.setAttribute("data-point-index", String(pointIndex));
+  handle.setAttribute("cx", String(point.x));
+  handle.setAttribute("cy", String(point.y));
+  handle.setAttribute("r", String(radius));
 }
 
 function parseAndValidatePayload(value: string): { ok: true; payload: SchematicPayload } | { ok: false; message: string } {
@@ -538,6 +605,180 @@ function findSelectablePreviewItemId(
   return undefined;
 }
 
+function openPolylineContextMenu(
+  elements: EditorElements,
+  payload: SchematicPayload,
+  event: MouseEvent,
+  documentRef: Document
+): void {
+  if (elements.drawState) {
+    return;
+  }
+
+  const svg = event.currentTarget;
+  const handleTarget = getPolylineHandleTarget(event.target);
+  const itemId = handleTarget?.getAttribute("data-polyline-handle")
+    ?? findSelectablePreviewItemId(elements, payload, event.target);
+  const item = itemId ? payload.items.find((candidate) => candidate.id === itemId) : undefined;
+
+  if (!item || item.type !== "polyline" || !isSvgElement(svg, documentRef)) {
+    closePolylineContextMenu(elements);
+    return;
+  }
+
+  event.preventDefault();
+  const point = snapPointIfNeeded(elements, getSvgPoint(getSvgCoordinateSpace(svg), event));
+  const insertIndex = findNearestSegmentInsertIndex(item.points, point);
+  const handlePointIndex = handleTarget ? Number(handleTarget.getAttribute("data-point-index")) : undefined;
+  const nearestPointIndex = typeof handlePointIndex === "number" && Number.isInteger(handlePointIndex)
+    ? handlePointIndex
+    : findNearestPointIndex(item.points, point);
+
+  elements.selectedItemId = item.id;
+  elements.contextMenuState = {
+    itemId: item.id,
+    insertIndex,
+    nearestPointIndex,
+    point
+  };
+  elements.polylineContextMenu.hidden = false;
+  elements.polylineContextMenu.style.left = `${event.clientX}px`;
+  elements.polylineContextMenu.style.top = `${event.clientY}px`;
+  elements.deletePolylinePointButton.disabled = item.points.length <= 2;
+  renderItemTools(elements, payload, documentRef);
+}
+
+function addPolylinePointFromContextMenu(elements: EditorElements, documentRef: Document): void {
+  const state = elements.contextMenuState;
+
+  if (!state) {
+    return;
+  }
+
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  const item = result.payload.items.find((candidate) => candidate.id === state.itemId);
+
+  if (!item || item.type !== "polyline") {
+    elements.inspectorStatus.textContent = "Selected polyline was not found";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  item.points.splice(state.insertIndex, 0, state.point);
+  elements.selectedItemId = item.id;
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  closePolylineContextMenu(elements);
+  updateFromJson(elements, documentRef);
+  elements.inspectorStatus.textContent = `Added point to ${item.id}`;
+  elements.inspectorStatus.dataset.state = "valid";
+}
+
+function deletePolylinePointFromContextMenu(elements: EditorElements, documentRef: Document): void {
+  const state = elements.contextMenuState;
+
+  if (!state) {
+    return;
+  }
+
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  const item = result.payload.items.find((candidate) => candidate.id === state.itemId);
+
+  if (!item || item.type !== "polyline") {
+    elements.inspectorStatus.textContent = "Selected polyline was not found";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  if (item.points.length <= 2) {
+    elements.inspectorStatus.textContent = "Polyline needs at least two points";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  item.points.splice(state.nearestPointIndex, 1);
+  elements.selectedItemId = item.id;
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  closePolylineContextMenu(elements);
+  updateFromJson(elements, documentRef);
+  elements.inspectorStatus.textContent = `Deleted point from ${item.id}`;
+  elements.inspectorStatus.dataset.state = "valid";
+}
+
+function closePolylineContextMenu(elements: EditorElements): void {
+  elements.polylineContextMenu.hidden = true;
+  delete elements.contextMenuState;
+}
+
+function findNearestSegmentInsertIndex(points: SchematicPoint[], point: SchematicPoint): number {
+  if (points.length < 2) {
+    return points.length;
+  }
+
+  let nearestIndex = 1;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const distance = distanceToSegment(point, points[index], points[index + 1]);
+
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index + 1;
+    }
+  }
+
+  return nearestIndex;
+}
+
+function findNearestPointIndex(points: SchematicPoint[], point: SchematicPoint): number {
+  let nearestIndex = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  points.forEach((candidate, index) => {
+    const distance = squaredDistance(point, candidate);
+
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  });
+
+  return nearestIndex;
+}
+
+function distanceToSegment(point: SchematicPoint, start: SchematicPoint, end: SchematicPoint): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lengthSquared = dx * dx + dy * dy;
+
+  if (lengthSquared === 0) {
+    return squaredDistance(point, start);
+  }
+
+  const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared));
+  return squaredDistance(point, {
+    x: start.x + t * dx,
+    y: start.y + t * dy
+  });
+}
+
+function squaredDistance(left: SchematicPoint, right: SchematicPoint): number {
+  const dx = left.x - right.x;
+  const dy = left.y - right.y;
+  return dx * dx + dy * dy;
+}
+
 function startPolylineDrawing(elements: EditorElements, documentRef: Document): void {
   if (elements.drawState) {
     cancelPolylineDrawing(elements, documentRef);
@@ -578,6 +819,10 @@ function addPolylinePointFromEvent(
   event.preventDefault();
   event.stopPropagation();
 
+  if (elements.drawState) {
+    elements.drawState.shiftKey = event.shiftKey;
+  }
+
   const point = resolveDrawPoint(elements, getSvgPoint(getSvgCoordinateSpace(svg), event));
   const result = parseAndValidatePayload(elements.jsonInput.value);
 
@@ -603,6 +848,7 @@ function updatePolylineRubberBand(elements: EditorElements, event: MouseEvent, d
     return;
   }
 
+  elements.drawState.shiftKey = event.shiftKey;
   elements.drawState.previewPoint = resolveDrawPoint(elements, getSvgPoint(getSvgCoordinateSpace(svg), event));
   updatePolylineRubberBandElement(svg, elements.drawState, documentRef);
 }
@@ -729,7 +975,7 @@ function snapPointIfNeeded(elements: EditorElements, point: SchematicPoint): Sch
 function resolveDrawPoint(elements: EditorElements, point: SchematicPoint): SchematicPoint {
   const snappedPoint = snapPointIfNeeded(elements, point);
 
-  if (!elements.orthogonalEnabled || !elements.drawState || elements.drawState.points.length === 0) {
+  if (!elements.drawState?.shiftKey || elements.drawState.points.length === 0) {
     return snappedPoint;
   }
 
@@ -767,6 +1013,10 @@ function startPreviewDrag(
   }
 
   if (event.button !== 0) {
+    return;
+  }
+
+  if (isPolylineHandleTarget(event.target)) {
     return;
   }
 
@@ -821,6 +1071,164 @@ function startPreviewDrag(
 
   documentRef.addEventListener("mousemove", onMove);
   documentRef.addEventListener("mouseup", stopDrag);
+}
+
+function handlePreviewMouseDown(
+  elements: EditorElements,
+  payload: SchematicPayload,
+  event: MouseEvent,
+  documentRef: Document
+): void {
+  closePolylineContextMenu(elements);
+
+  if (startPolylinePointDrag(elements, payload, event, documentRef)) {
+    return;
+  }
+
+  startPreviewDrag(elements, payload, event, documentRef);
+}
+
+function startPolylinePointDrag(
+  elements: EditorElements,
+  payload: SchematicPayload,
+  event: MouseEvent,
+  documentRef: Document
+): boolean {
+  if (elements.drawState || event.button !== 0 || !isPolylineHandleTarget(event.target)) {
+    return false;
+  }
+
+  const svg = event.currentTarget;
+
+  if (!isSvgElement(svg, documentRef)) {
+    return false;
+  }
+
+  const handleTarget = getPolylineHandleTarget(event.target);
+  const itemId = handleTarget?.getAttribute("data-polyline-handle");
+  const pointIndex = Number(handleTarget?.getAttribute("data-point-index"));
+  const item = itemId ? payload.items.find((candidate) => candidate.id === itemId) : undefined;
+
+  if (!item || item.type !== "polyline" || !Number.isInteger(pointIndex) || !item.points[pointIndex]) {
+    return false;
+  }
+
+  elements.selectedItemId = item.id;
+  elements.pointDragState = {
+    itemId: item.id,
+    pointIndex,
+    startPoint: getSvgPoint(getSvgCoordinateSpace(svg), event),
+    startItem: cloneItem(item),
+    coordinateSpace: getSvgCoordinateSpace(svg)
+  };
+  elements.previewSurface.dataset.dragging = "true";
+  event.preventDefault();
+  event.stopPropagation();
+
+  const onMove = (moveEvent: MouseEvent): void => {
+    dragPolylinePoint(elements, moveEvent, documentRef);
+  };
+  const stopDrag = (): void => {
+    documentRef.removeEventListener("mousemove", onMove);
+    documentRef.removeEventListener("mouseup", stopDrag);
+    delete elements.pointDragState;
+    delete elements.previewSurface.dataset.dragging;
+  };
+
+  documentRef.addEventListener("mousemove", onMove);
+  documentRef.addEventListener("mouseup", stopDrag);
+  return true;
+}
+
+function dragPolylinePoint(elements: EditorElements, event: MouseEvent, documentRef: Document): void {
+  const pointDragState = elements.pointDragState;
+
+  if (!pointDragState) {
+    return;
+  }
+
+  const currentPoint = getSvgPoint(pointDragState.coordinateSpace, event);
+  const dx = currentPoint.x - pointDragState.startPoint.x;
+  const dy = currentPoint.y - pointDragState.startPoint.y;
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  const item = result.payload.items.find((candidate) => candidate.id === pointDragState.itemId);
+
+  if (!item || item.type !== "polyline" || pointDragState.startItem.type !== "polyline") {
+    elements.inspectorStatus.textContent = "Selected polyline point was not found";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  const startPoint = pointDragState.startItem.points[pointDragState.pointIndex];
+
+  if (!startPoint) {
+    elements.inspectorStatus.textContent = "Selected polyline point was not found";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  const movedPoint = {
+    x: startPoint.x + dx,
+    y: startPoint.y + dy
+  };
+  const orthogonalAnchor = event.shiftKey
+    ? getPolylinePointOrthoAnchor(pointDragState.startItem, pointDragState.pointIndex)
+    : undefined;
+
+  item.points[pointDragState.pointIndex] = snapPointIfNeeded(
+    elements,
+    orthogonalAnchor ? lockPointOrthogonally(orthogonalAnchor, movedPoint) : movedPoint
+  );
+  elements.selectedItemId = item.id;
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  updateFromJson(elements, documentRef);
+  elements.inspectorStatus.textContent = `Moved point ${pointDragState.pointIndex + 1} of ${item.id}`;
+  elements.inspectorStatus.dataset.state = "valid";
+}
+
+function getPolylinePointOrthoAnchor(item: SchematicItem, pointIndex: number): SchematicPoint | undefined {
+  if (item.type !== "polyline") {
+    return undefined;
+  }
+
+  const previousPoint = item.points[pointIndex - 1];
+  const nextPoint = item.points[pointIndex + 1];
+
+  if (!previousPoint) {
+    return nextPoint;
+  }
+
+  if (!nextPoint) {
+    return previousPoint;
+  }
+
+  const currentPoint = item.points[pointIndex];
+
+  if (!currentPoint) {
+    return previousPoint;
+  }
+
+  return squaredDistance(currentPoint, previousPoint) <= squaredDistance(currentPoint, nextPoint)
+    ? previousPoint
+    : nextPoint;
+}
+
+function getPolylineHandleTarget(target: EventTarget | null): Element | undefined {
+  if (!(target instanceof Element)) {
+    return undefined;
+  }
+
+  return target.closest("[data-polyline-handle]") ?? undefined;
+}
+
+function isPolylineHandleTarget(target: EventTarget | null): target is Element {
+  return getPolylineHandleTarget(target) !== undefined;
 }
 
 function isSvgElement(value: EventTarget | null, documentRef: Document): value is SVGSVGElement {
@@ -1616,12 +2024,6 @@ function createPreviewPane(documentRef: Document): HTMLElement {
   toggleGridButton.textContent = "Grid On";
   toggleGridButton.setAttribute("aria-pressed", "true");
 
-  const toggleOrthogonalButton = documentRef.createElement("button");
-  toggleOrthogonalButton.className = "toggle-orthogonal-button utility-button";
-  toggleOrthogonalButton.type = "button";
-  toggleOrthogonalButton.textContent = "Ortho Off";
-  toggleOrthogonalButton.setAttribute("aria-pressed", "false");
-
   const drawPolylineButton = documentRef.createElement("button");
   drawPolylineButton.className = "draw-polyline-button utility-button";
   drawPolylineButton.type = "button";
@@ -1654,7 +2056,6 @@ function createPreviewPane(documentRef: Document): HTMLElement {
     drawPolylineButton,
     finishPolylineButton,
     toggleGridButton,
-    toggleOrthogonalButton,
     gridSizeLabel,
     openImportButton,
     openExportButton
@@ -1688,8 +2089,27 @@ function createPreviewPane(documentRef: Document): HTMLElement {
 
   themeControls.append(applyThemeButton, themeStatus);
   themeSection.append(themeLabel, themeInput, themeControls);
-  pane.append(themeSection, createPreviewSurface(documentRef));
+  pane.append(themeSection, createPreviewSurface(documentRef), createPolylineContextMenu(documentRef));
   return pane;
+}
+
+function createPolylineContextMenu(documentRef: Document): HTMLElement {
+  const menu = documentRef.createElement("div");
+  menu.className = "polyline-context-menu";
+  menu.hidden = true;
+
+  const addPointButton = documentRef.createElement("button");
+  addPointButton.className = "add-polyline-point-button";
+  addPointButton.type = "button";
+  addPointButton.textContent = "Add point here";
+
+  const deletePointButton = documentRef.createElement("button");
+  deletePointButton.className = "delete-polyline-point-button";
+  deletePointButton.type = "button";
+  deletePointButton.textContent = "Delete nearest point";
+
+  menu.append(addPointButton, deletePointButton);
+  return menu;
 }
 
 function createTransferPanel(documentRef: Document): HTMLElement {

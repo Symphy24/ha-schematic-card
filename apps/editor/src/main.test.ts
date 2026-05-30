@@ -372,29 +372,120 @@ describe("editor app", () => {
     expect(app.querySelector("[data-editor-rubber-band]")).toBeNull();
   });
 
-  it("locks polyline drawing to horizontal or vertical segments in orthogonal mode", () => {
+  it("locks polyline drawing to horizontal or vertical segments while holding Shift", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
 
-    getButton(app, ".toggle-orthogonal-button").click();
     getButton(app, ".draw-polyline-button").click();
     clickPreviewPoint(app, 13, 14);
-    movePreviewPointer(app, 56, 44);
+    movePreviewPointer(app, 56, 44, { shiftKey: true });
 
     const rubberBand = app.querySelector<SVGLineElement>("[data-editor-rubber-band]");
 
-    expect(getButton(app, ".toggle-orthogonal-button").getAttribute("aria-pressed")).toBe("true");
     expect(rubberBand?.getAttribute("x1")).toBe("10");
     expect(rubberBand?.getAttribute("y1")).toBe("10");
     expect(rubberBand?.getAttribute("x2")).toBe("60");
     expect(rubberBand?.getAttribute("y2")).toBe("10");
 
-    clickPreviewPoint(app, 56, 44);
+    clickPreviewPoint(app, 56, 44, { shiftKey: true });
     getButton(app, ".finish-polyline-button").click();
 
     expect(getTextarea(app, ".json-input").value).toContain("\"x\": 60");
     expect(getTextarea(app, ".json-input").value).toContain("\"y\": 10");
     expect(getTextarea(app, ".json-input").value).not.toContain("\"y\": 40");
+  });
+
+  it("shows handles for a selected polyline and drags one point", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    drawTwoPointPolyline(app);
+
+    const handle = app.querySelector<SVGCircleElement>('.editor-polyline-handle-hitbox[data-polyline-handle="polyline-1"][data-point-index="1"]');
+
+    if (!handle) {
+      throw new Error("polyline handle missing");
+    }
+
+    const svg = app.querySelector("svg");
+
+    if (!svg) {
+      throw new Error("preview svg missing");
+    }
+
+    setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
+    handle.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 60, clientY: 40, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 82, clientY: 74 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    const movedHandle = app.querySelector<SVGCircleElement>('.editor-polyline-handle-hitbox[data-polyline-handle="polyline-1"][data-point-index="1"]');
+    const visibleDot = app.querySelector<SVGCircleElement>('.editor-polyline-handle-dot[data-polyline-handle="polyline-1"][data-point-index="1"]');
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 80");
+    expect(getTextarea(app, ".json-input").value).toContain("\"y\": 70");
+    expect(movedHandle?.getAttribute("cx")).toBe("80");
+    expect(movedHandle?.getAttribute("cy")).toBe("70");
+    expect(movedHandle?.getAttribute("r")).toBe("5");
+    expect(visibleDot?.getAttribute("r")).toBe("1.5");
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+  });
+
+  it("locks dragged polyline points horizontally or vertically while holding Shift", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    drawTwoPointPolyline(app);
+
+    const handle = app.querySelector<SVGCircleElement>('.editor-polyline-handle-hitbox[data-polyline-handle="polyline-1"][data-point-index="1"]');
+    const svg = app.querySelector("svg");
+
+    if (!handle || !svg) {
+      throw new Error("polyline handle missing");
+    }
+
+    setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
+    handle.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 60, clientY: 40, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 82, clientY: 74, shiftKey: true }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    const movedHandle = app.querySelector<SVGCircleElement>('.editor-polyline-handle-hitbox[data-polyline-handle="polyline-1"][data-point-index="1"]');
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 80");
+    expect(getTextarea(app, ".json-input").value).toContain("\"y\": 10");
+    expect(movedHandle?.getAttribute("cx")).toBe("80");
+    expect(movedHandle?.getAttribute("cy")).toBe("10");
+  });
+
+  it("adds and deletes polyline points from the context menu", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    drawTwoPointPolyline(app);
+    openPolylineContextMenu(app, 30, 20);
+    getButton(app, ".add-polyline-point-button").click();
+
+    expect(getPolylinePoints(app, "polyline-1")).toHaveLength(3);
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 30");
+    expect(getTextarea(app, ".json-input").value).toContain("\"y\": 20");
+
+    openPolylineContextMenu(app, 30, 20);
+    getButton(app, ".delete-polyline-point-button").click();
+
+    expect(getPolylinePoints(app, "polyline-1")).toHaveLength(2);
+
+    openPolylineContextMenu(app, 10, 10);
+    expect(getButton(app, ".delete-polyline-point-button").disabled).toBe(true);
+  });
+
+  it("opens the custom context menu when right-clicking a polyline handle", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    drawTwoPointPolyline(app);
+    openPolylineHandleContextMenu(app, 1);
+
+    expect(app.querySelector<HTMLElement>(".polyline-context-menu")?.hidden).toBe(false);
+    expect(getButton(app, ".delete-polyline-point-button").disabled).toBe(true);
   });
 
   it("cancels a draft polyline with Escape", () => {
@@ -703,7 +794,12 @@ function getInspectorInput(root: ParentNode, fieldName: string): HTMLInputElemen
   throw new Error(`inspector input missing: ${fieldName}`);
 }
 
-function clickPreviewPoint(app: HTMLElement, clientX: number, clientY: number): void {
+function clickPreviewPoint(
+  app: HTMLElement,
+  clientX: number,
+  clientY: number,
+  options: MouseEventInit = {}
+): void {
   const svg = app.querySelector("svg");
 
   if (!svg) {
@@ -711,10 +807,15 @@ function clickPreviewPoint(app: HTMLElement, clientX: number, clientY: number): 
   }
 
   setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
-  svg.dispatchEvent(new MouseEvent("click", { clientX, clientY, bubbles: true }));
+  svg.dispatchEvent(new MouseEvent("click", { clientX, clientY, bubbles: true, ...options }));
 }
 
-function movePreviewPointer(app: HTMLElement, clientX: number, clientY: number): void {
+function movePreviewPointer(
+  app: HTMLElement,
+  clientX: number,
+  clientY: number,
+  options: MouseEventInit = {}
+): void {
   const svg = app.querySelector("svg");
 
   if (!svg) {
@@ -722,7 +823,45 @@ function movePreviewPointer(app: HTMLElement, clientX: number, clientY: number):
   }
 
   setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
-  svg.dispatchEvent(new MouseEvent("mousemove", { clientX, clientY, bubbles: true }));
+  svg.dispatchEvent(new MouseEvent("mousemove", { clientX, clientY, bubbles: true, ...options }));
+}
+
+function openPolylineContextMenu(app: HTMLElement, clientX: number, clientY: number): void {
+  const polyline = app.querySelector('[data-id="polyline-1"]');
+  const svg = app.querySelector("svg");
+
+  if (!polyline || !svg) {
+    throw new Error("polyline preview item missing");
+  }
+
+  setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
+  polyline.dispatchEvent(new MouseEvent("contextmenu", { clientX, clientY, bubbles: true }));
+}
+
+function openPolylineHandleContextMenu(app: HTMLElement, pointIndex: number): void {
+  const handle = app.querySelector(`.editor-polyline-handle-hitbox[data-polyline-handle="polyline-1"][data-point-index="${pointIndex}"]`);
+  const svg = app.querySelector("svg");
+
+  if (!handle || !svg) {
+    throw new Error("polyline handle missing");
+  }
+
+  setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
+  handle.dispatchEvent(new MouseEvent("contextmenu", { clientX: 60, clientY: 40, bubbles: true }));
+}
+
+function drawTwoPointPolyline(app: HTMLElement): void {
+  getButton(app, ".draw-polyline-button").click();
+  clickPreviewPoint(app, 13, 14);
+  clickPreviewPoint(app, 56, 44);
+  getButton(app, ".finish-polyline-button").click();
+}
+
+function getPolylinePoints(app: HTMLElement, itemId: string): unknown[] {
+  const parsed = JSON.parse(getTextarea(app, ".json-input").value) as {
+    items: Array<{ id: string; points?: unknown[] }>;
+  };
+  return parsed.items.find((item) => item.id === itemId)?.points ?? [];
 }
 
 function setSvgBounds(
