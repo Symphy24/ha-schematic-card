@@ -3,6 +3,7 @@ import { renderSchematicSvg } from "@ha-schematic-card/renderer";
 import {
   isSchematicPayload,
   type SchematicPayload,
+  type SchematicItem,
   validateSchematicPayload
 } from "@ha-schematic-card/schema";
 
@@ -23,6 +24,9 @@ const demoEntityStates = {
 
 type EditorElements = {
   jsonInput: HTMLTextAreaElement;
+  itemList: HTMLElement;
+  inspector: HTMLElement;
+  inspectorStatus: HTMLElement;
   previewSurface: HTMLElement;
   themeInput: HTMLTextAreaElement;
   themeStatus: HTMLElement;
@@ -34,6 +38,7 @@ type EditorElements = {
   importButton: HTMLButtonElement;
   formatButton: HTMLButtonElement;
   resetButton: HTMLButtonElement;
+  selectedItemId?: string;
 };
 
 export function getDemoPayload(): SchematicPayload {
@@ -58,6 +63,9 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
 
   const elements: EditorElements = {
     jsonInput: getRequiredElement(jsonPane, ".json-input", HTMLTextAreaElement),
+    itemList: getRequiredElement(jsonPane, ".item-list", HTMLElement),
+    inspector: getRequiredElement(jsonPane, ".property-inspector", HTMLElement),
+    inspectorStatus: getRequiredElement(jsonPane, ".inspector-status", HTMLElement),
     previewSurface: getRequiredElement(previewPane, ".preview-surface", HTMLElement),
     themeInput: getRequiredElement(previewPane, ".theme-input", HTMLTextAreaElement),
     themeStatus: getRequiredElement(previewPane, ".theme-status", HTMLElement),
@@ -100,6 +108,7 @@ function updateFromJson(elements: EditorElements, documentRef: Document): void {
   elements.exportOutput.value = "";
 
   if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
     elements.status.textContent = result.message;
     elements.status.dataset.state = "error";
     return;
@@ -112,6 +121,7 @@ function updateFromJson(elements: EditorElements, documentRef: Document): void {
   elements.exportOutput.value = encodePayload(result.payload);
   elements.status.textContent = "Valid payload";
   elements.status.dataset.state = "valid";
+  renderItemTools(elements, result.payload, documentRef);
 }
 
 function parseAndValidatePayload(value: string): { ok: true; payload: SchematicPayload } | { ok: false; message: string } {
@@ -164,8 +174,159 @@ function formatCurrentJson(elements: EditorElements, documentRef: Document): voi
 }
 
 function resetDemoPayload(elements: EditorElements, documentRef: Document): void {
+  elements.selectedItemId = undefined;
   elements.jsonInput.value = formatPayloadJson();
   updateFromJson(elements, documentRef);
+}
+
+function renderDisabledItemTools(elements: EditorElements, message: string): void {
+  elements.itemList.replaceChildren();
+  elements.inspector.replaceChildren();
+  elements.inspectorStatus.textContent = `Inspector unavailable:\n${message}`;
+  elements.inspectorStatus.dataset.state = "error";
+}
+
+function renderItemTools(elements: EditorElements, payload: SchematicPayload, documentRef: Document): void {
+  elements.itemList.replaceChildren();
+
+  if (payload.items.length === 0) {
+    elements.selectedItemId = undefined;
+    elements.inspector.replaceChildren();
+    elements.inspectorStatus.textContent = "No top-level items";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  const selectedItem = payload.items.find((item) => item.id === elements.selectedItemId) ?? payload.items[0];
+  elements.selectedItemId = selectedItem.id;
+
+  for (const item of payload.items) {
+    const button = documentRef.createElement("button");
+    button.className = "item-list-button";
+    button.type = "button";
+    button.dataset.itemId = item.id;
+    button.textContent = `${item.id} (${item.type})`;
+    button.setAttribute("aria-pressed", String(item.id === elements.selectedItemId));
+    button.addEventListener("click", () => {
+      elements.selectedItemId = item.id;
+      renderItemTools(elements, payload, documentRef);
+    });
+    elements.itemList.append(button);
+  }
+
+  renderInspector(elements, selectedItem, documentRef);
+}
+
+function renderInspector(elements: EditorElements, item: SchematicItem, documentRef: Document): void {
+  elements.inspector.replaceChildren();
+  elements.inspectorStatus.textContent = `Selected ${item.id}`;
+  elements.inspectorStatus.dataset.state = "valid";
+
+  appendInspectorField(elements, documentRef, item, "id", "text");
+  appendInspectorField(elements, documentRef, item, "layer", "number");
+
+  if (hasEditableField(item, "x")) {
+    appendInspectorField(elements, documentRef, item, "x", "number");
+  }
+
+  if (hasEditableField(item, "y")) {
+    appendInspectorField(elements, documentRef, item, "y", "number");
+  }
+
+  if (hasEditableField(item, "text")) {
+    appendInspectorField(elements, documentRef, item, "text", "text");
+  }
+}
+
+function appendInspectorField(
+  elements: EditorElements,
+  documentRef: Document,
+  item: SchematicItem,
+  fieldName: "id" | "layer" | "x" | "y" | "text",
+  valueType: "number" | "text"
+): void {
+  const label = documentRef.createElement("label");
+  label.className = "inspector-field";
+
+  const labelText = documentRef.createElement("span");
+  labelText.className = "field-label";
+  labelText.textContent = fieldName;
+
+  const input = documentRef.createElement("input");
+  input.className = "inspector-input";
+  input.type = "text";
+  input.value = String(getEditableFieldValue(item, fieldName));
+
+  if (valueType === "number") {
+    input.inputMode = "decimal";
+  }
+
+  input.addEventListener("change", () => {
+    updateSelectedItemField(elements, fieldName, input.value, valueType, documentRef);
+  });
+
+  label.append(labelText, input);
+  elements.inspector.append(label);
+}
+
+function updateSelectedItemField(
+  elements: EditorElements,
+  fieldName: "id" | "layer" | "x" | "y" | "text",
+  rawValue: string,
+  valueType: "number" | "text",
+  documentRef: Document
+): void {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  const item = result.payload.items.find((candidate) => candidate.id === elements.selectedItemId);
+
+  if (!item) {
+    elements.inspectorStatus.textContent = "Selected item was not found";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  const nextValue = valueType === "number" ? Number(rawValue) : rawValue;
+
+  if (valueType === "number" && !Number.isFinite(nextValue)) {
+    elements.inspectorStatus.textContent = `${fieldName} must be a finite number`;
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  (item as Record<string, unknown>)[fieldName] = nextValue;
+
+  if (fieldName === "id") {
+    elements.selectedItemId = rawValue;
+  }
+
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  updateFromJson(elements, documentRef);
+}
+
+function hasEditableField(item: SchematicItem, fieldName: "x" | "y" | "text"): boolean {
+  return Object.prototype.hasOwnProperty.call(item, fieldName);
+}
+
+function getEditableFieldValue(
+  item: SchematicItem,
+  fieldName: "id" | "layer" | "x" | "y" | "text"
+): string | number {
+  if (fieldName === "id" || fieldName === "layer") {
+    return item[fieldName];
+  }
+
+  if (hasEditableField(item, fieldName)) {
+    const value = (item as Record<string, unknown>)[fieldName];
+    return typeof value === "string" || typeof value === "number" ? value : "";
+  }
+
+  return "";
 }
 
 function importEncodedPayload(elements: EditorElements, documentRef: Document): void {
@@ -283,10 +444,82 @@ function createJsonPane(documentRef: Document): HTMLElement {
   jsonInput.className = "json-input";
   jsonInput.spellcheck = false;
 
+  const itemTools = documentRef.createElement("section");
+  itemTools.className = "item-tools";
+
+  const itemListSection = documentRef.createElement("section");
+  itemListSection.className = "item-list-section";
+
+  const itemListLabel = documentRef.createElement("div");
+  itemListLabel.className = "field-label";
+  itemListLabel.textContent = "Items";
+
+  const itemList = documentRef.createElement("div");
+  itemList.className = "item-list";
+
+  const inspectorSection = documentRef.createElement("section");
+  inspectorSection.className = "inspector-section";
+
+  const inspectorLabel = documentRef.createElement("div");
+  inspectorLabel.className = "field-label";
+  inspectorLabel.textContent = "Inspector";
+
+  const inspector = documentRef.createElement("div");
+  inspector.className = "property-inspector";
+
+  const inspectorStatus = documentRef.createElement("span");
+  inspectorStatus.className = "inspector-status";
+  inspectorStatus.textContent = "Select an item";
+
+  itemListSection.append(itemListLabel, itemList);
+  inspectorSection.append(inspectorLabel, inspector, inspectorStatus);
+  itemTools.append(itemListSection, inspectorSection);
+
   controls.append(formatButton, resetButton);
   pane.querySelector(".pane-header")?.append(controls);
-  pane.append(jsonInput);
+  pane.append(
+    createCollapsibleSection(documentRef, "Items / Inspector", "item-tools-section", itemTools),
+    createCollapsibleSection(documentRef, "Decoded JSON", "json-editor-section", jsonInput)
+  );
   return pane;
+}
+
+function createCollapsibleSection(
+  documentRef: Document,
+  title: string,
+  className: string,
+  body: HTMLElement
+): HTMLElement {
+  const section = documentRef.createElement("section");
+  section.className = `editor-subsection ${className}`;
+
+  const toggle = documentRef.createElement("button");
+  toggle.className = "subsection-toggle";
+  toggle.type = "button";
+  toggle.setAttribute("aria-expanded", "true");
+
+  const titleElement = documentRef.createElement("span");
+  titleElement.className = "subsection-title";
+  titleElement.textContent = title;
+
+  const icon = documentRef.createElement("span");
+  icon.className = "subsection-icon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "^^";
+
+  body.classList.add("subsection-body");
+
+  toggle.addEventListener("click", () => {
+    const collapsed = !body.hidden;
+    body.hidden = collapsed;
+    section.dataset.collapsed = String(collapsed);
+    toggle.setAttribute("aria-expanded", String(!collapsed));
+    icon.textContent = collapsed ? "vv" : "^^";
+  });
+
+  toggle.append(titleElement, icon);
+  section.append(toggle, body);
+  return section;
 }
 
 function createPreviewPane(documentRef: Document): HTMLElement {
