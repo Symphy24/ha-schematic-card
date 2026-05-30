@@ -5,6 +5,7 @@ import {
   type SchematicPayload,
   type SchematicItem,
   type SchematicPoint,
+  type SchematicStyle,
   validateSchematicPayload
 } from "@ha-schematic-card/schema";
 
@@ -113,6 +114,39 @@ type PolylineContextMenuState = {
 type LayerAction = "forward" | "backward" | "front" | "back";
 
 type AddItemType = "text" | "rect" | "circle";
+
+type StyleFieldName = keyof SchematicStyle;
+
+type StyleFieldValueType = "number" | "string" | "fontWeight" | "textAnchor";
+
+type StyleFieldConfig = {
+  name: StyleFieldName;
+  valueType: StyleFieldValueType;
+};
+
+const PAINT_STYLE_FIELDS: StyleFieldConfig[] = [
+  { name: "stroke", valueType: "string" },
+  { name: "fill", valueType: "string" },
+  { name: "strokeWidth", valueType: "number" },
+  { name: "opacity", valueType: "number" }
+];
+
+const LINE_STYLE_FIELDS: StyleFieldConfig[] = [
+  { name: "stroke", valueType: "string" },
+  { name: "strokeWidth", valueType: "number" },
+  { name: "strokeDasharray", valueType: "string" },
+  { name: "fill", valueType: "string" },
+  { name: "opacity", valueType: "number" }
+];
+
+const TEXT_STYLE_FIELDS: StyleFieldConfig[] = [
+  { name: "fill", valueType: "string" },
+  { name: "stroke", valueType: "string" },
+  { name: "fontSize", valueType: "number" },
+  { name: "fontWeight", valueType: "fontWeight" },
+  { name: "textAnchor", valueType: "textAnchor" },
+  { name: "opacity", valueType: "number" }
+];
 
 type EditorSnapshot = {
   json: string;
@@ -1720,6 +1754,8 @@ function renderInspector(elements: EditorElements, item: SchematicItem, document
   if (hasEditableField(item, "text")) {
     appendInspectorField(elements, documentRef, item, "text", "text");
   }
+
+  appendStyleInspector(elements, documentRef, item);
 }
 
 function appendInspectorField(
@@ -1751,6 +1787,81 @@ function appendInspectorField(
 
   label.append(labelText, input);
   elements.inspector.append(label);
+}
+
+function appendStyleInspector(elements: EditorElements, documentRef: Document, item: SchematicItem): void {
+  const fields = getStyleFieldConfigs(item);
+
+  if (fields.length === 0) {
+    return;
+  }
+
+  const section = documentRef.createElement("section");
+  section.className = "style-inspector-section";
+
+  const heading = documentRef.createElement("div");
+  heading.className = "field-label";
+  heading.textContent = "Style";
+
+  section.append(heading);
+
+  for (const field of fields) {
+    appendStyleField(elements, documentRef, section, item, field);
+  }
+
+  elements.inspector.append(section);
+}
+
+function appendStyleField(
+  elements: EditorElements,
+  documentRef: Document,
+  section: HTMLElement,
+  item: SchematicItem,
+  field: StyleFieldConfig
+): void {
+  const label = documentRef.createElement("label");
+  label.className = "inspector-field style-inspector-field";
+
+  const labelText = documentRef.createElement("span");
+  labelText.className = "field-label";
+  labelText.textContent = field.name;
+
+  const input = documentRef.createElement("input");
+  input.className = "inspector-input style-inspector-input";
+  input.type = "text";
+  input.value = formatStyleFieldValue(item.style?.[field.name]);
+
+  if (field.valueType === "number") {
+    input.inputMode = "decimal";
+  }
+
+  input.addEventListener("change", () => {
+    updateSelectedItemStyleField(elements, field, input.value, documentRef);
+  });
+
+  label.append(labelText, input);
+  section.append(label);
+}
+
+function getStyleFieldConfigs(item: SchematicItem): StyleFieldConfig[] {
+  switch (item.type) {
+    case "text":
+    case "entityValue":
+      return TEXT_STYLE_FIELDS;
+    case "line":
+    case "polyline":
+    case "path":
+      return LINE_STYLE_FIELDS;
+    case "rect":
+    case "circle":
+    case "group":
+    case "symbol":
+      return PAINT_STYLE_FIELDS;
+  }
+}
+
+function formatStyleFieldValue(value: SchematicStyle[StyleFieldName] | undefined): string {
+  return value === undefined ? "" : String(value);
 }
 
 function updateSelectedItemField(
@@ -1796,6 +1907,127 @@ function updateSelectedItemField(
 
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
+}
+
+function updateSelectedItemStyleField(
+  elements: EditorElements,
+  field: StyleFieldConfig,
+  rawValue: string,
+  documentRef: Document
+): void {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  const item = result.payload.items.find((candidate) => candidate.id === elements.selectedItemId);
+
+  if (!item) {
+    elements.inspectorStatus.textContent = "Selected item was not found";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  const parsedValue = parseStyleFieldValue(field, rawValue);
+
+  if (!parsedValue.ok) {
+    elements.inspectorStatus.textContent = parsedValue.message;
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  const currentValue = item.style?.[field.name];
+
+  if (currentValue === parsedValue.value) {
+    return;
+  }
+
+  recordHistory(elements);
+
+  if (parsedValue.value === undefined) {
+    delete item.style?.[field.name];
+
+    if (item.style && Object.keys(item.style).length === 0) {
+      delete item.style;
+    }
+  } else {
+    item.style = {
+      ...item.style,
+      [field.name]: parsedValue.value
+    };
+  }
+
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  updateFromJson(elements, documentRef);
+  elements.inspectorStatus.textContent = `Updated ${field.name} for ${item.id}`;
+  elements.inspectorStatus.dataset.state = "valid";
+}
+
+function parseStyleFieldValue(
+  field: StyleFieldConfig,
+  rawValue: string
+): { ok: true; value: SchematicStyle[StyleFieldName] | undefined } | { ok: false; message: string } {
+  const value = rawValue.trim();
+
+  if (value.length === 0) {
+    return {
+      ok: true,
+      value: undefined
+    };
+  }
+
+  if (field.valueType === "number") {
+    const numberValue = Number(value);
+
+    if (!Number.isFinite(numberValue)) {
+      return {
+        ok: false,
+        message: `${field.name} must be a finite number`
+      };
+    }
+
+    return {
+      ok: true,
+      value: numberValue
+    };
+  }
+
+  if (field.valueType === "fontWeight") {
+    if (value === "normal" || value === "bold") {
+      return {
+        ok: true,
+        value
+      };
+    }
+
+    const numberValue = Number(value);
+
+    if (!Number.isFinite(numberValue)) {
+      return {
+        ok: false,
+        message: `${field.name} must be normal, bold, or a finite number`
+      };
+    }
+
+    return {
+      ok: true,
+      value: numberValue
+    };
+  }
+
+  if (field.valueType === "textAnchor" && value !== "start" && value !== "middle" && value !== "end") {
+    return {
+      ok: false,
+      message: `${field.name} must be start, middle, or end`
+    };
+  }
+
+  return {
+    ok: true,
+    value
+  };
 }
 
 function handleEditorKeyDown(elements: EditorElements, event: KeyboardEvent, documentRef: Document): void {
@@ -2343,13 +2575,55 @@ function createJsonPane(documentRef: Document): HTMLElement {
   addTools.append(selectedItemActions);
   itemTools.append(addTools, itemListSection, inspectorSection);
 
+  const itemToolsSection = createCollapsibleSection(documentRef, "Items / Inspector", "item-tools-section", itemTools);
+  const jsonEditorSection = createCollapsibleSection(documentRef, "Decoded JSON", "json-editor-section", jsonInput);
+  const sectionResizeHandle = createSectionResizeHandle(documentRef, pane);
+  const updateSectionResizeHandle = (): void => {
+    sectionResizeHandle.hidden = itemTools.hidden || jsonInput.hidden;
+  };
+
+  itemToolsSection.querySelector(".subsection-toggle")?.addEventListener("click", updateSectionResizeHandle);
+  jsonEditorSection.querySelector(".subsection-toggle")?.addEventListener("click", updateSectionResizeHandle);
   controls.append(undoButton, redoButton, formatButton, resetButton);
   pane.querySelector(".pane-header")?.append(controls);
-  pane.append(
-    createCollapsibleSection(documentRef, "Items / Inspector", "item-tools-section", itemTools),
-    createCollapsibleSection(documentRef, "Decoded JSON", "json-editor-section", jsonInput)
-  );
+  pane.append(itemToolsSection, sectionResizeHandle, jsonEditorSection);
   return pane;
+}
+
+function createSectionResizeHandle(documentRef: Document, pane: HTMLElement): HTMLElement {
+  const handle = documentRef.createElement("div");
+  handle.className = "section-resize-handle";
+  handle.setAttribute("role", "separator");
+  handle.setAttribute("aria-orientation", "horizontal");
+
+  handle.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+    startSectionResize(documentRef, pane);
+  });
+
+  return handle;
+}
+
+function startSectionResize(documentRef: Document, pane: HTMLElement): void {
+  const onMove = (event: MouseEvent): void => {
+    const paneRect = pane.getBoundingClientRect();
+    const header = pane.querySelector<HTMLElement>(".pane-header");
+    const availableHeight = pane.clientHeight || paneRect.height;
+    const headerHeight = header?.getBoundingClientRect().height ?? 52;
+    const contentHeight = Math.max(0, availableHeight - headerHeight);
+    const minSectionHeight = 120;
+    const maxJsonHeight = Math.max(minSectionHeight, contentHeight - minSectionHeight);
+    const nextJsonHeight = clamp(paneRect.bottom - event.clientY, minSectionHeight, maxJsonHeight);
+    pane.style.setProperty("--editor-json-height", `${Math.round(nextJsonHeight)}px`);
+  };
+
+  const stopResize = (): void => {
+    documentRef.removeEventListener("mousemove", onMove);
+    documentRef.removeEventListener("mouseup", stopResize);
+  };
+
+  documentRef.addEventListener("mousemove", onMove);
+  documentRef.addEventListener("mouseup", stopResize);
 }
 
 function createCollapsibleSection(

@@ -74,10 +74,11 @@ describe("editor app", () => {
     const app = createEditorApp(documentRef);
     const itemTools = app.querySelector<HTMLElement>(".item-tools");
     const jsonInput = getTextarea(app, ".json-input");
+    const sectionResizeHandle = app.querySelector<HTMLElement>(".section-resize-handle");
     const itemToggle = getSubsectionToggle(app, "Items / Inspector");
     const jsonToggle = getSubsectionToggle(app, "Decoded JSON");
 
-    if (!itemTools) {
+    if (!itemTools || !sectionResizeHandle) {
       throw new Error("item tools missing");
     }
 
@@ -85,14 +86,17 @@ describe("editor app", () => {
     expect(itemToggle.getAttribute("aria-expanded")).toBe("false");
     expect(itemToggle.querySelector(".subsection-icon")?.textContent).toBe("vv");
     expect(itemTools.hidden).toBe(true);
+    expect(sectionResizeHandle.hidden).toBe(true);
 
     itemToggle.click();
     expect(itemToggle.getAttribute("aria-expanded")).toBe("true");
     expect(itemTools.hidden).toBe(false);
+    expect(sectionResizeHandle.hidden).toBe(false);
 
     jsonToggle.click();
     expect(jsonToggle.getAttribute("aria-expanded")).toBe("false");
     expect(jsonInput.hidden).toBe(true);
+    expect(sectionResizeHandle.hidden).toBe(true);
   });
 
   it("selects a top-level item when clicking it in the preview", () => {
@@ -195,6 +199,86 @@ describe("editor app", () => {
     getButton(app, ".redo-button").click();
 
     expect(getTextarea(app, ".json-input").value).toContain("\"x\": 42");
+  });
+
+  it("edits text item style fields and supports undo and redo", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, '[data-item-id="demo-title"]').click();
+    getInspectorInput(app, "fill").value = "#ff0000";
+    getInspectorInput(app, "fill").dispatchEvent(new Event("change"));
+    getInspectorInput(app, "fontSize").value = "18";
+    getInspectorInput(app, "fontSize").dispatchEvent(new Event("change"));
+    getInspectorInput(app, "textAnchor").value = "start";
+    getInspectorInput(app, "textAnchor").dispatchEvent(new Event("change"));
+
+    const title = app.querySelector('[data-id="demo-title"]');
+
+    expect(getPayloadItem(app, "demo-title")?.style).toMatchObject({
+      fill: "#ff0000",
+      fontSize: 18,
+      textAnchor: "start"
+    });
+    expect(title?.getAttribute("fill")).toBe("#ff0000");
+    expect(title?.getAttribute("font-size")).toBe("18");
+    expect(title?.getAttribute("text-anchor")).toBe("start");
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+
+    getButton(app, ".undo-button").click();
+
+    expect(getPayloadItem(app, "demo-title")?.style?.textAnchor).toBeUndefined();
+
+    getButton(app, ".redo-button").click();
+
+    expect(getPayloadItem(app, "demo-title")?.style?.textAnchor).toBe("start");
+  });
+
+  it("edits rect, circle, and polyline style fields", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".add-rect-button").click();
+    getInspectorInput(app, "strokeWidth").value = "5";
+    getInspectorInput(app, "strokeWidth").dispatchEvent(new Event("change"));
+    expect(getPayloadItem(app, "rect-1")?.style?.strokeWidth).toBe(5);
+    expect(app.querySelector('[data-id="rect-1"]')?.getAttribute("stroke-width")).toBe("5");
+
+    getButton(app, '[data-item-id="demo-status-dot"]').click();
+    getInspectorInput(app, "opacity").value = "0.5";
+    getInspectorInput(app, "opacity").dispatchEvent(new Event("change"));
+    expect(getPayloadItem(app, "demo-status-dot")?.style?.opacity).toBe(0.5);
+    expect(app.querySelector('[data-id="demo-status-dot"]')?.getAttribute("opacity")).toBe("0.5");
+
+    getButton(app, '[data-item-id="demo-flow-line"]').click();
+    getInspectorInput(app, "stroke").value = "#00ff00";
+    getInspectorInput(app, "stroke").dispatchEvent(new Event("change"));
+    expect(getPayloadItem(app, "demo-flow-line")?.style?.stroke).toBe("#00ff00");
+    expect(app.querySelector('[data-id="demo-flow-line"]')?.getAttribute("stroke")).toBe("#00ff00");
+  });
+
+  it("removes style values when a style field is emptied", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, '[data-item-id="demo-title"]').click();
+    getInspectorInput(app, "fill").value = "";
+    getInspectorInput(app, "fill").dispatchEvent(new Event("change"));
+
+    expect(getPayloadItem(app, "demo-title")?.style?.fill).toBeUndefined();
+  });
+
+  it("shows style validation errors without changing JSON", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, '[data-item-id="demo-title"]').click();
+    const originalJson = getTextarea(app, ".json-input").value;
+    getInspectorInput(app, "fontSize").value = "huge";
+    getInspectorInput(app, "fontSize").dispatchEvent(new Event("change"));
+
+    expect(getTextarea(app, ".json-input").value).toBe(originalJson);
+    expect(app.querySelector<HTMLElement>(".inspector-status")?.textContent).toBe("fontSize must be a finite number");
   });
 
   it("adds a text item and selects it for editing", () => {
@@ -779,6 +863,31 @@ describe("editor app", () => {
     expect(app.style.getPropertyValue("--editor-left-width")).toBe("560px");
   });
 
+  it("resizes the item tools and decoded JSON sections vertically", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const pane = app.querySelector<HTMLElement>(".pane");
+    const paneHeader = app.querySelector<HTMLElement>(".pane-header");
+    const handle = app.querySelector<HTMLElement>(".section-resize-handle");
+
+    if (!pane || !paneHeader || !handle) {
+      throw new Error("section resize handle missing");
+    }
+
+    setElementBounds(pane, { left: 0, top: 0, width: 420, height: 800 });
+    Object.defineProperty(pane, "clientHeight", {
+      configurable: true,
+      value: 800
+    });
+    setElementBounds(paneHeader, { left: 0, top: 0, width: 420, height: 52 });
+
+    handle.dispatchEvent(new MouseEvent("mousedown", { clientY: 520, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientY: 560 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(pane.style.getPropertyValue("--editor-json-height")).toBe("240px");
+  });
+
   it("keeps the copy button with the export payload field", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
@@ -1109,9 +1218,12 @@ function getPolylinePoints(app: HTMLElement, itemId: string): unknown[] {
   return parsed.items.find((item) => item.id === itemId)?.points ?? [];
 }
 
-function getPayloadItem(app: HTMLElement, itemId: string): { id: string; layer: number } | undefined {
+function getPayloadItem(
+  app: HTMLElement,
+  itemId: string
+): { id: string; layer: number; style?: Record<string, unknown> } | undefined {
   const parsed = JSON.parse(getTextarea(app, ".json-input").value) as {
-    items: Array<{ id: string; layer: number }>;
+    items: Array<{ id: string; layer: number; style?: Record<string, unknown> }>;
   };
   return parsed.items.find((item) => item.id === itemId);
 }
@@ -1120,7 +1232,14 @@ function setSvgBounds(
   svg: SVGSVGElement,
   rect: { left: number; top: number; width: number; height: number }
 ): void {
-  Object.defineProperty(svg, "getBoundingClientRect", {
+  setElementBounds(svg, rect);
+}
+
+function setElementBounds(
+  element: Element,
+  rect: { left: number; top: number; width: number; height: number }
+): void {
+  Object.defineProperty(element, "getBoundingClientRect", {
     configurable: true,
     value: () => ({
       ...rect,
