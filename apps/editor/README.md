@@ -2,7 +2,7 @@
 
 Early local web app foundation for the future external schematic editor/generator.
 
-The current app is intentionally small: it lets you edit decoded payload JSON manually, import/export `hsc1...` payload strings with `@ha-schematic-card/codec`, and renders a live preview with `@ha-schematic-card/renderer`.
+The current app is intentionally small: it lets you edit decoded payload JSON manually, import/export `hsc1...` payload strings with `@ha-schematic-card/codec`, paste Home Assistant theme variables for preview, and renders a live preview with `@ha-schematic-card/renderer`.
 
 ## Run Locally
 
@@ -25,6 +25,9 @@ Manual test flow:
 8. Paste an existing `hsc1...` payload into the import field and click `Import`.
 9. Confirm valid imports replace the decoded JSON and update the preview.
 10. Confirm invalid imports show an error without overwriting the decoded JSON.
+11. Paste JSON from the Lovelace editor's `Copy current theme variables` button into `Theme preview JSON`.
+12. Click `Apply Theme` and confirm the preview uses the pasted CSS variables.
+13. Confirm invalid theme JSON shows a theme error without changing the payload JSON or export.
 
 ## Build
 

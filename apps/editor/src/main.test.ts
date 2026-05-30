@@ -173,6 +173,51 @@ describe("editor app", () => {
     expect(app.querySelector<HTMLTextAreaElement>(".payload-output")?.value.startsWith("hsc1.")).toBe(true);
     expect(app.querySelector<HTMLElement>(".status")?.textContent).toContain("Import error:");
   });
+
+  it("applies pasted theme variables to the preview surface", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const themeInput = getTextarea(app, ".theme-input");
+    const applyThemeButton = getButton(app, ".apply-theme-button");
+    const previewSurface = app.querySelector<HTMLElement>(".preview-surface");
+
+    if (!previewSurface) {
+      throw new Error("preview surface missing");
+    }
+
+    themeInput.value = JSON.stringify({
+      type: "ha-schematic-card-theme-variables",
+      version: 1,
+      capturedAt: "2026-05-30T00:00:00.000Z",
+      variables: {
+        "--primary-text-color": "rgb(10, 20, 30)",
+        "--accent-color": "rgb(40, 50, 60)"
+      }
+    });
+    applyThemeButton.click();
+
+    expect(previewSurface.style.getPropertyValue("--primary-text-color")).toBe("rgb(10, 20, 30)");
+    expect(previewSurface.style.getPropertyValue("--accent-color")).toBe("rgb(40, 50, 60)");
+    expect(app.querySelector<HTMLElement>(".theme-status")?.textContent).toBe("Applied 2 theme variables");
+  });
+
+  it("shows a theme error without changing payload JSON or preview", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const themeInput = getTextarea(app, ".theme-input");
+    const applyThemeButton = getButton(app, ".apply-theme-button");
+    const jsonInput = getTextarea(app, ".json-input");
+    const originalJson = jsonInput.value;
+    const originalExport = getTextarea(app, ".payload-output").value;
+
+    themeInput.value = "{";
+    applyThemeButton.click();
+
+    expect(jsonInput.value).toBe(originalJson);
+    expect(getTextarea(app, ".payload-output").value).toBe(originalExport);
+    expect(app.querySelector("svg")).not.toBeNull();
+    expect(app.querySelector<HTMLElement>(".theme-status")?.textContent).toContain("Theme JSON error:");
+  });
 });
 
 function getTextarea(root: ParentNode, selector: string): HTMLTextAreaElement {
