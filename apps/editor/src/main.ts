@@ -57,6 +57,10 @@ type EditorElements = {
   polylineContextMenu: HTMLElement;
   addPolylinePointButton: HTMLButtonElement;
   deletePolylinePointButton: HTMLButtonElement;
+  bringForwardButton: HTMLButtonElement;
+  sendBackwardButton: HTMLButtonElement;
+  bringToFrontButton: HTMLButtonElement;
+  sendToBackButton: HTMLButtonElement;
   closeTransferPanelButton: HTMLButtonElement;
   importButton: HTMLButtonElement;
   jsonSectionToggle: HTMLButtonElement;
@@ -101,10 +105,12 @@ type PolylineDrawState = {
 
 type PolylineContextMenuState = {
   itemId: string;
-  insertIndex: number;
-  nearestPointIndex: number;
-  point: SchematicPoint;
+  insertIndex?: number;
+  nearestPointIndex?: number;
+  point?: SchematicPoint;
 };
+
+type LayerAction = "forward" | "backward" | "front" | "back";
 
 type AddItemType = "text" | "rect" | "circle";
 
@@ -182,6 +188,10 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     polylineContextMenu: getRequiredElement(previewPane, ".polyline-context-menu", HTMLElement),
     addPolylinePointButton: getRequiredElement(previewPane, ".add-polyline-point-button", HTMLButtonElement),
     deletePolylinePointButton: getRequiredElement(previewPane, ".delete-polyline-point-button", HTMLButtonElement),
+    bringForwardButton: getRequiredElement(previewPane, ".bring-forward-button", HTMLButtonElement),
+    sendBackwardButton: getRequiredElement(previewPane, ".send-backward-button", HTMLButtonElement),
+    bringToFrontButton: getRequiredElement(previewPane, ".bring-to-front-button", HTMLButtonElement),
+    sendToBackButton: getRequiredElement(previewPane, ".send-to-back-button", HTMLButtonElement),
     closeTransferPanelButton: getRequiredElement(transferPanel, ".transfer-panel-close", HTMLButtonElement),
     importButton: getRequiredElement(transferPanel, ".import-button", HTMLButtonElement),
     jsonSectionToggle: getRequiredElement(jsonPane, '[data-section-toggle="json-editor-section"]', HTMLButtonElement),
@@ -207,6 +217,10 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.finishPolylineButton.addEventListener("click", () => finishPolylineDrawing(elements, documentRef));
   elements.addPolylinePointButton.addEventListener("click", () => addPolylinePointFromContextMenu(elements, documentRef));
   elements.deletePolylinePointButton.addEventListener("click", () => deletePolylinePointFromContextMenu(elements, documentRef));
+  elements.bringForwardButton.addEventListener("click", () => changeSelectedItemLayer(elements, "forward", documentRef));
+  elements.sendBackwardButton.addEventListener("click", () => changeSelectedItemLayer(elements, "backward", documentRef));
+  elements.bringToFrontButton.addEventListener("click", () => changeSelectedItemLayer(elements, "front", documentRef));
+  elements.sendToBackButton.addEventListener("click", () => changeSelectedItemLayer(elements, "back", documentRef));
   elements.closeTransferPanelButton.addEventListener("click", () => closeTransferPanel(elements));
   elements.importButton.addEventListener("click", () => importEncodedPayload(elements, documentRef));
   elements.addTextButton.addEventListener("click", () => addItem(elements, "text", documentRef));
@@ -802,30 +816,39 @@ function openPolylineContextMenu(
     ?? findSelectablePreviewItemId(elements, payload, event.target);
   const item = itemId ? payload.items.find((candidate) => candidate.id === itemId) : undefined;
 
-  if (!item || item.type !== "polyline" || !isSvgElement(svg, documentRef)) {
+  if (!item || !isSvgElement(svg, documentRef)) {
     closePolylineContextMenu(elements);
     return;
   }
 
   event.preventDefault();
-  const point = snapPointIfNeeded(elements, getSvgPoint(getSvgCoordinateSpace(svg), event));
-  const insertIndex = findNearestSegmentInsertIndex(item.points, point);
-  const handlePointIndex = handleTarget ? Number(handleTarget.getAttribute("data-point-index")) : undefined;
-  const nearestPointIndex = typeof handlePointIndex === "number" && Number.isInteger(handlePointIndex)
-    ? handlePointIndex
-    : findNearestPointIndex(item.points, point);
-
   elements.selectedItemId = item.id;
   elements.contextMenuState = {
-    itemId: item.id,
-    insertIndex,
-    nearestPointIndex,
-    point
+    itemId: item.id
   };
+
+  if (item.type === "polyline") {
+    const point = snapPointIfNeeded(elements, getSvgPoint(getSvgCoordinateSpace(svg), event));
+    const insertIndex = findNearestSegmentInsertIndex(item.points, point);
+    const handlePointIndex = handleTarget ? Number(handleTarget.getAttribute("data-point-index")) : undefined;
+    const nearestPointIndex = typeof handlePointIndex === "number" && Number.isInteger(handlePointIndex)
+      ? handlePointIndex
+      : findNearestPointIndex(item.points, point);
+
+    elements.contextMenuState = {
+      itemId: item.id,
+      insertIndex,
+      nearestPointIndex,
+      point
+    };
+  }
+
   elements.polylineContextMenu.hidden = false;
   elements.polylineContextMenu.style.left = `${event.clientX}px`;
   elements.polylineContextMenu.style.top = `${event.clientY}px`;
-  elements.deletePolylinePointButton.disabled = item.points.length <= 2;
+  elements.addPolylinePointButton.hidden = item.type !== "polyline";
+  elements.deletePolylinePointButton.hidden = item.type !== "polyline";
+  elements.deletePolylinePointButton.disabled = item.type !== "polyline" || item.points.length <= 2;
   renderItemTools(elements, payload, documentRef);
 }
 
@@ -833,6 +856,12 @@ function addPolylinePointFromContextMenu(elements: EditorElements, documentRef: 
   const state = elements.contextMenuState;
 
   if (!state) {
+    return;
+  }
+
+  if (state.insertIndex === undefined || !state.point) {
+    elements.inspectorStatus.textContent = "No polyline point target selected";
+    elements.inspectorStatus.dataset.state = "error";
     return;
   }
 
@@ -868,6 +897,12 @@ function deletePolylinePointFromContextMenu(elements: EditorElements, documentRe
     return;
   }
 
+  if (state.nearestPointIndex === undefined) {
+    elements.inspectorStatus.textContent = "No polyline point target selected";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
   const result = parseAndValidatePayload(elements.jsonInput.value);
 
   if (!result.ok) {
@@ -897,6 +932,73 @@ function deletePolylinePointFromContextMenu(elements: EditorElements, documentRe
   updateFromJson(elements, documentRef);
   elements.inspectorStatus.textContent = `Deleted point from ${item.id}`;
   elements.inspectorStatus.dataset.state = "valid";
+}
+
+function changeSelectedItemLayer(elements: EditorElements, action: LayerAction, documentRef: Document): void {
+  const state = elements.contextMenuState;
+
+  if (!state) {
+    return;
+  }
+
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  const item = result.payload.items.find((candidate) => candidate.id === state.itemId);
+
+  if (!item) {
+    elements.inspectorStatus.textContent = "Selected item was not found";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  const nextLayer = getNextLayerForAction(result.payload.items, item, action);
+
+  if (nextLayer === item.layer) {
+    closePolylineContextMenu(elements);
+    elements.inspectorStatus.textContent = `${item.id} is already at that layer edge`;
+    elements.inspectorStatus.dataset.state = "valid";
+    return;
+  }
+
+  recordHistory(elements);
+  item.layer = nextLayer;
+  elements.selectedItemId = item.id;
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  closePolylineContextMenu(elements);
+  updateFromJson(elements, documentRef);
+  elements.inspectorStatus.textContent = `Updated layer for ${item.id}`;
+  elements.inspectorStatus.dataset.state = "valid";
+}
+
+function getNextLayerForAction(items: SchematicItem[], item: SchematicItem, action: LayerAction): number {
+  const otherLayers = items
+    .filter((candidate) => candidate.id !== item.id)
+    .map((candidate) => candidate.layer)
+    .filter((layer) => Number.isFinite(layer));
+
+  if (otherLayers.length === 0) {
+    return item.layer;
+  }
+
+  switch (action) {
+    case "forward": {
+      const nextHigherLayer = Math.min(...otherLayers.filter((layer) => layer > item.layer));
+      return Number.isFinite(nextHigherLayer) ? nextHigherLayer + 1 : item.layer;
+    }
+    case "backward": {
+      const nextLowerLayer = Math.max(...otherLayers.filter((layer) => layer < item.layer));
+      return Number.isFinite(nextLowerLayer) ? nextLowerLayer - 1 : item.layer;
+    }
+    case "front":
+      return Math.max(...otherLayers, item.layer) + 1;
+    case "back":
+      return Math.min(...otherLayers, item.layer) - 1;
+  }
 }
 
 function closePolylineContextMenu(elements: EditorElements): void {
@@ -2384,6 +2486,26 @@ function createPolylineContextMenu(documentRef: Document): HTMLElement {
   menu.className = "polyline-context-menu";
   menu.hidden = true;
 
+  const bringForwardButton = documentRef.createElement("button");
+  bringForwardButton.className = "bring-forward-button";
+  bringForwardButton.type = "button";
+  bringForwardButton.textContent = "Bring forward";
+
+  const sendBackwardButton = documentRef.createElement("button");
+  sendBackwardButton.className = "send-backward-button";
+  sendBackwardButton.type = "button";
+  sendBackwardButton.textContent = "Send backward";
+
+  const bringToFrontButton = documentRef.createElement("button");
+  bringToFrontButton.className = "bring-to-front-button";
+  bringToFrontButton.type = "button";
+  bringToFrontButton.textContent = "Bring to front";
+
+  const sendToBackButton = documentRef.createElement("button");
+  sendToBackButton.className = "send-to-back-button";
+  sendToBackButton.type = "button";
+  sendToBackButton.textContent = "Send to back";
+
   const addPointButton = documentRef.createElement("button");
   addPointButton.className = "add-polyline-point-button";
   addPointButton.type = "button";
@@ -2394,7 +2516,7 @@ function createPolylineContextMenu(documentRef: Document): HTMLElement {
   deletePointButton.type = "button";
   deletePointButton.textContent = "Delete nearest point";
 
-  menu.append(addPointButton, deletePointButton);
+  menu.append(bringForwardButton, sendBackwardButton, bringToFrontButton, sendToBackButton, addPointButton, deletePointButton);
   return menu;
 }
 

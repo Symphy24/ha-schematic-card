@@ -664,6 +664,63 @@ describe("editor app", () => {
     expect(getButton(app, ".delete-polyline-point-button").disabled).toBe(true);
   });
 
+  it("opens layer controls when right-clicking a preview item", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    openItemContextMenu(app, "demo-title");
+
+    expect(app.querySelector<HTMLElement>(".polyline-context-menu")?.hidden).toBe(false);
+    expect(getButton(app, ".bring-forward-button").textContent).toBe("Bring forward");
+    expect(getButton(app, ".send-backward-button").textContent).toBe("Send backward");
+    expect(getButton(app, ".bring-to-front-button").textContent).toBe("Bring to front");
+    expect(getButton(app, ".send-to-back-button").textContent).toBe("Send to back");
+    expect(getButton(app, ".add-polyline-point-button").hidden).toBe(true);
+    expect(getButton(app, ".delete-polyline-point-button").hidden).toBe(true);
+    expect(getButton(app, '[data-item-id="demo-title"]').getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("changes item layer from the context menu and supports undo and redo", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    openItemContextMenu(app, "demo-title");
+    getButton(app, ".bring-forward-button").click();
+
+    expect(getPayloadItem(app, "demo-title")?.layer).toBe(621);
+    expect(getInspectorInput(app, "layer").value).toBe("621");
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+
+    getButton(app, ".undo-button").click();
+
+    expect(getPayloadItem(app, "demo-title")?.layer).toBe(600);
+
+    getButton(app, ".redo-button").click();
+
+    expect(getPayloadItem(app, "demo-title")?.layer).toBe(621);
+  });
+
+  it("supports front, back, forward, and backward layer actions", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    openItemContextMenu(app, "demo-title");
+    getButton(app, ".bring-to-front-button").click();
+    expect(getPayloadItem(app, "demo-title")?.layer).toBe(721);
+
+    openItemContextMenu(app, "demo-title");
+    getButton(app, ".send-to-back-button").click();
+    expect(getPayloadItem(app, "demo-title")?.layer).toBe(119);
+
+    openItemContextMenu(app, "demo-component-a");
+    getButton(app, ".bring-forward-button").click();
+    expect(getPayloadItem(app, "demo-component-a")?.layer).toBe(521);
+
+    openItemContextMenu(app, "demo-component-a");
+    getButton(app, ".send-backward-button").click();
+    expect(getPayloadItem(app, "demo-component-a")?.layer).toBe(519);
+  });
+
   it("cancels a draft polyline with Escape", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
@@ -1026,6 +1083,18 @@ function openPolylineHandleContextMenu(app: HTMLElement, pointIndex: number): vo
   handle.dispatchEvent(new MouseEvent("contextmenu", { clientX: 60, clientY: 40, bubbles: true }));
 }
 
+function openItemContextMenu(app: HTMLElement, itemId: string): void {
+  const item = app.querySelector(`[data-id="${itemId}"]`);
+  const svg = app.querySelector("svg");
+
+  if (!item || !svg) {
+    throw new Error(`preview item missing: ${itemId}`);
+  }
+
+  setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
+  item.dispatchEvent(new MouseEvent("contextmenu", { clientX: 80, clientY: 50, bubbles: true }));
+}
+
 function drawTwoPointPolyline(app: HTMLElement): void {
   getButton(app, ".draw-polyline-button").click();
   clickPreviewPoint(app, 13, 14);
@@ -1038,6 +1107,13 @@ function getPolylinePoints(app: HTMLElement, itemId: string): unknown[] {
     items: Array<{ id: string; points?: unknown[] }>;
   };
   return parsed.items.find((item) => item.id === itemId)?.points ?? [];
+}
+
+function getPayloadItem(app: HTMLElement, itemId: string): { id: string; layer: number } | undefined {
+  const parsed = JSON.parse(getTextarea(app, ".json-input").value) as {
+    items: Array<{ id: string; layer: number }>;
+  };
+  return parsed.items.find((item) => item.id === itemId);
 }
 
 function setSvgBounds(
