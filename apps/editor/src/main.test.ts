@@ -177,6 +177,85 @@ describe("editor app", () => {
     expect(editedText?.getAttribute("y")).toBe("24");
   });
 
+  it("does not render nudge buttons in the inspector", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const titleButton = getButton(app, '[data-item-id="demo-title"]');
+
+    titleButton.click();
+
+    expect(app.querySelector(".nudge-button")).toBeNull();
+  });
+
+  it("nudges a selected positioned item with arrow keys", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const titleButton = getButton(app, '[data-item-id="demo-title"]');
+
+    titleButton.click();
+    app.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+    app.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", shiftKey: true, bubbles: true }));
+    const editedText = [...app.querySelectorAll("text")].find((element) => element.textContent === "Schematic Demo");
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 15");
+    expect(getTextarea(app, ".json-input").value).toContain("\"y\": 18");
+    expect(editedText?.getAttribute("x")).toBe("15");
+    expect(editedText?.getAttribute("y")).toBe("18");
+  });
+
+  it("opens and closes the import/export side panel from the preview header", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const panel = app.querySelector<HTMLElement>(".transfer-panel");
+    const importSection = app.querySelector<HTMLElement>(".import-section");
+    const exportSection = app.querySelector<HTMLElement>(".export-section");
+
+    if (!panel || !importSection || !exportSection) {
+      throw new Error("transfer panel missing");
+    }
+
+    expect(panel.hidden).toBe(true);
+
+    getButton(app, ".open-import-button").click();
+    expect(panel.hidden).toBe(false);
+    expect(panel.dataset.mode).toBe("import");
+    expect(importSection.hidden).toBe(false);
+    expect(exportSection.hidden).toBe(true);
+
+    getButton(app, ".open-export-button").click();
+    expect(panel.dataset.mode).toBe("export");
+    expect(importSection.hidden).toBe(true);
+    expect(exportSection.hidden).toBe(false);
+
+    getButton(app, ".transfer-panel-close").click();
+    expect(panel.hidden).toBe(true);
+  });
+
+  it("resizes the left editor panel with the resize handle", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const handle = app.querySelector<HTMLElement>(".editor-resize-handle");
+
+    if (!handle) {
+      throw new Error("resize handle missing");
+    }
+
+    handle.dispatchEvent(new MouseEvent("mousedown", { clientX: 420, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 560 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(app.style.getPropertyValue("--editor-left-width")).toBe("560px");
+  });
+
+  it("keeps the copy button with the export payload field", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const exportSection = app.querySelector<HTMLElement>(".export-section");
+
+    expect(exportSection?.querySelector(".copy-button")).not.toBeNull();
+    expect(exportSection?.querySelector(".payload-output")).not.toBeNull();
+  });
+
   it("shows an inspector error for invalid numeric values without changing JSON", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);

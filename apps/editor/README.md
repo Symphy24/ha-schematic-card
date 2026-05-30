@@ -21,21 +21,24 @@ Manual test flow:
 4. Click `Reset Demo` to reload the demo payload.
 5. Select a top-level item from `Items`.
 6. Edit simple fields such as `text`, `x`, `y`, or `layer` in the inspector.
-7. Click visible top-level items in the preview and confirm the matching item is selected.
-8. Confirm selecting an item scrolls the decoded JSON to that item's `id`.
-9. Confirm the decoded JSON section opens automatically if it was collapsed.
-10. Confirm the decoded JSON, preview, and exported payload update together.
-11. Collapse and expand `Items / Inspector` and `Decoded JSON` with the header buttons.
-12. Confirm the item list scrolls inside its section when there are many top-level items.
-13. Confirm invalid numeric inspector values show an inspector error without changing the JSON.
-14. Confirm invalid JSON or schema errors appear in the export panel status.
-15. Copy the generated `hsc1...` payload from the right textarea.
-16. Paste an existing `hsc1...` payload into the import field and click `Import`.
-17. Confirm valid imports replace the decoded JSON and update the preview.
-18. Confirm invalid imports show an error without overwriting the decoded JSON.
-19. Paste JSON from the Lovelace editor's `Copy current theme variables` button into `Theme preview JSON`.
-20. Click `Apply Theme` and confirm the preview uses the pasted CSS variables.
-21. Confirm invalid theme JSON shows a theme error without changing the payload JSON or export.
+7. Use keyboard arrow keys to move positioned items.
+8. Hold `Shift` while pressing an arrow key to nudge by 10 units.
+9. Click visible top-level items in the preview and confirm the matching item is selected.
+10. Confirm selecting an item scrolls the decoded JSON to that item's `id`.
+11. Confirm the decoded JSON section opens automatically if it was collapsed.
+12. Confirm the decoded JSON, preview, and exported payload update together.
+13. Collapse and expand `Items / Inspector` and `Decoded JSON` with the header buttons.
+14. Drag the vertical handle between the editor and preview to resize the left panel.
+15. Confirm the item list scrolls inside its section when there are many top-level items.
+16. Confirm invalid numeric inspector values show an inspector error without changing the JSON.
+17. Confirm invalid JSON or schema errors appear in the export panel status.
+18. Open the export side panel from the preview header and copy the generated `hsc1...` payload.
+19. Open the import side panel from the preview header, paste an existing `hsc1...` payload, and click `Import`.
+20. Confirm valid imports replace the decoded JSON and update the preview.
+21. Confirm invalid imports show an error without overwriting the decoded JSON.
+22. Paste JSON from the Lovelace editor's `Copy current theme variables` button into `Theme preview JSON`.
+23. Click `Apply Theme` and confirm the preview uses the pasted CSS variables.
+24. Confirm invalid theme JSON shows a theme error without changing the payload JSON or export.
 
 ## Build
 
