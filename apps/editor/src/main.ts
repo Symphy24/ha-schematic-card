@@ -1,4 +1,4 @@
-import { encodePayload } from "@ha-schematic-card/codec";
+import { decodePayload, encodePayload } from "@ha-schematic-card/codec";
 import { renderSchematicSvg } from "@ha-schematic-card/renderer";
 import {
   isSchematicPayload,
@@ -24,9 +24,11 @@ const demoEntityStates = {
 type EditorElements = {
   jsonInput: HTMLTextAreaElement;
   previewSurface: HTMLElement;
+  importInput: HTMLTextAreaElement;
   exportOutput: HTMLTextAreaElement;
   status: HTMLElement;
   copyButton: HTMLButtonElement;
+  importButton: HTMLButtonElement;
   formatButton: HTMLButtonElement;
   resetButton: HTMLButtonElement;
 };
@@ -54,9 +56,11 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   const elements: EditorElements = {
     jsonInput: getRequiredElement(jsonPane, ".json-input", HTMLTextAreaElement),
     previewSurface: createPreviewSurface(documentRef),
+    importInput: getRequiredElement(exportPane, ".import-input", HTMLTextAreaElement),
     exportOutput: getRequiredElement(exportPane, ".payload-output", HTMLTextAreaElement),
     status: getRequiredElement(exportPane, ".status", HTMLElement),
     copyButton: getRequiredElement(exportPane, ".copy-button", HTMLButtonElement),
+    importButton: getRequiredElement(exportPane, ".import-button", HTMLButtonElement),
     formatButton: getRequiredElement(jsonPane, ".format-button", HTMLButtonElement),
     resetButton: getRequiredElement(jsonPane, ".reset-button", HTMLButtonElement)
   };
@@ -65,6 +69,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.jsonInput.value = formatPayloadJson();
   elements.jsonInput.addEventListener("input", () => updateFromJson(elements, documentRef));
   elements.copyButton.addEventListener("click", async () => copyExportedPayload(elements));
+  elements.importButton.addEventListener("click", () => importEncodedPayload(elements, documentRef));
   elements.formatButton.addEventListener("click", () => formatCurrentJson(elements, documentRef));
   elements.resetButton.addEventListener("click", () => resetDemoPayload(elements, documentRef));
 
@@ -157,6 +162,21 @@ function resetDemoPayload(elements: EditorElements, documentRef: Document): void
   updateFromJson(elements, documentRef);
 }
 
+function importEncodedPayload(elements: EditorElements, documentRef: Document): void {
+  const result = decodePayload(elements.importInput.value);
+
+  if (!result.ok) {
+    elements.status.textContent = `Import error:\n${result.errors.map((error) => `- ${error}`).join("\n")}`;
+    elements.status.dataset.state = "error";
+    return;
+  }
+
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  updateFromJson(elements, documentRef);
+  elements.status.textContent = "Imported payload";
+  elements.status.dataset.state = "valid";
+}
+
 async function copyExportedPayload(elements: EditorElements): Promise<void> {
   if (!elements.exportOutput.value) {
     elements.status.textContent = "No valid export to copy";
@@ -221,7 +241,27 @@ function createExportPane(documentRef: Document): HTMLElement {
 
   controls.append(status, copyButton);
   pane.querySelector(".pane-header")?.append(controls);
-  pane.append(payloadOutput);
+
+  const importSection = documentRef.createElement("section");
+  importSection.className = "import-section";
+
+  const importLabel = documentRef.createElement("label");
+  importLabel.className = "field-label";
+  importLabel.textContent = "Import hsc1 payload";
+
+  const importInput = documentRef.createElement("textarea");
+  importInput.className = "import-input";
+  importInput.placeholder = "Paste hsc1... payload here";
+  importInput.spellcheck = false;
+  importInput.wrap = "soft";
+
+  const importButton = documentRef.createElement("button");
+  importButton.className = "import-button utility-button";
+  importButton.type = "button";
+  importButton.textContent = "Import";
+
+  importSection.append(importLabel, importInput, importButton);
+  pane.append(importSection, payloadOutput);
   return pane;
 }
 

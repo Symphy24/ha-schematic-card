@@ -60,10 +60,9 @@ textarea {
 }
 
 .json-input,
+.import-input,
 .payload-output {
-  flex: 1;
   width: 100%;
-  min-height: 460px;
   resize: none;
   border: 0;
   padding: 12px;
@@ -72,11 +71,22 @@ textarea {
   line-height: 1.45;
 }
 
+.json-input,
+.payload-output {
+  flex: 1;
+  min-height: 360px;
+}
+
+.import-input {
+  min-height: 110px;
+}
+
 .json-input {
   white-space: pre;
   overflow: auto;
 }
 
+.import-input,
 .payload-output {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -101,6 +111,19 @@ textarea {
   gap: 10px;
 }
 
+.import-section {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid #d7dde4;
+}
+
+.field-label {
+  color: #5b6470;
+  font-size: 12px;
+  font-weight: 650;
+}
+
 .copy-button,
 .utility-button {
   border: 1px solid #9aa7b4;
@@ -114,6 +137,7 @@ textarea {
 .copy-button:focus-visible,
 .utility-button:focus-visible,
 .json-input:focus,
+.import-input:focus,
 .payload-output:focus {
   outline: 2px solid #2f6fed;
   outline-offset: 2px;
