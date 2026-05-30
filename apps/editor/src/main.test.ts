@@ -177,6 +177,41 @@ describe("editor app", () => {
     expect(editedText?.getAttribute("y")).toBe("24");
   });
 
+  it("adds a text item and selects it for editing", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".add-text-button").click();
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"id\": \"text-1\"");
+    expect(getTextarea(app, ".json-input").value).toContain("\"text\": \"New text\"");
+    expect(getButton(app, '[data-item-id="text-1"]').getAttribute("aria-pressed")).toBe("true");
+    expect(app.querySelector("svg")?.textContent).toContain("New text");
+
+    getInspectorInput(app, "text").value = "Added label";
+    getInspectorInput(app, "text").dispatchEvent(new Event("change"));
+    app.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"text\": \"Added label\"");
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 211");
+    expect(app.querySelector("svg")?.textContent).toContain("Added label");
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+  });
+
+  it("adds rect and circle items with visible defaults", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".add-rect-button").click();
+    expect(getTextarea(app, ".json-input").value).toContain("\"id\": \"rect-1\"");
+    expect(app.querySelector('[data-id="rect-1"]')).not.toBeNull();
+
+    getButton(app, ".add-circle-button").click();
+    expect(getTextarea(app, ".json-input").value).toContain("\"id\": \"circle-1\"");
+    expect(getButton(app, '[data-item-id="circle-1"]').getAttribute("aria-pressed")).toBe("true");
+    expect(app.querySelector('[data-id="circle-1"]')).not.toBeNull();
+  });
+
   it("does not render nudge buttons in the inspector", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
