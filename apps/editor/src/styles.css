@@ -145,6 +145,12 @@ textarea {
   opacity: 0.65;
 }
 
+.editor-polyline-rubber-band {
+  stroke: var(--accent-color, #2f6fed);
+  stroke-width: 3;
+  opacity: 0.85;
+}
+
 .preview-surface [data-id] {
   cursor: move;
 }
@@ -152,6 +158,12 @@ textarea {
 .preview-surface[data-dragging="true"] {
   cursor: move;
   user-select: none;
+}
+
+.preview-surface[data-draw-mode="polyline"],
+.preview-surface[data-draw-mode="polyline"] svg,
+.preview-surface[data-draw-mode="polyline"] [data-id] {
+  cursor: crosshair;
 }
 
 .preview-surface [data-editor-selected="true"] {

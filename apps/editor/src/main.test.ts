@@ -326,6 +326,66 @@ describe("editor app", () => {
     expect(movedTitle?.getAttribute("y")).toBe("40");
   });
 
+  it("draws a snapped polyline in the preview and selects it", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".draw-polyline-button").click();
+    expect(getButton(app, ".draw-polyline-button").getAttribute("aria-pressed")).toBe("true");
+    expect(getButton(app, ".finish-polyline-button").hidden).toBe(false);
+
+    clickPreviewPoint(app, 13, 14);
+    clickPreviewPoint(app, 56, 44);
+    getButton(app, ".finish-polyline-button").click();
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"id\": \"polyline-1\"");
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 10");
+    expect(getTextarea(app, ".json-input").value).toContain("\"y\": 10");
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 60");
+    expect(getTextarea(app, ".json-input").value).toContain("\"y\": 40");
+    expect(app.querySelector('[data-id="polyline-1"]')).not.toBeNull();
+    expect(getButton(app, '[data-item-id="polyline-1"]').getAttribute("aria-pressed")).toBe("true");
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+    expect(getButton(app, ".draw-polyline-button").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("shows a rubber-band preview while drawing a polyline", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".draw-polyline-button").click();
+    clickPreviewPoint(app, 13, 14);
+    movePreviewPointer(app, 56, 44);
+
+    const rubberBand = app.querySelector<SVGLineElement>("[data-editor-rubber-band]");
+
+    expect(rubberBand).not.toBeNull();
+    expect(rubberBand?.getAttribute("x1")).toBe("10");
+    expect(rubberBand?.getAttribute("y1")).toBe("10");
+    expect(rubberBand?.getAttribute("x2")).toBe("60");
+    expect(rubberBand?.getAttribute("y2")).toBe("40");
+    expect(getTextarea(app, ".json-input").value).not.toContain("\"x\": 60");
+
+    clickPreviewPoint(app, 56, 44);
+    getButton(app, ".finish-polyline-button").click();
+
+    expect(app.querySelector("[data-editor-rubber-band]")).toBeNull();
+  });
+
+  it("cancels a draft polyline with Escape", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".draw-polyline-button").click();
+    clickPreviewPoint(app, 20, 20);
+    app.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+    expect(getTextarea(app, ".json-input").value).not.toContain("\"id\": \"polyline-1\"");
+    expect(app.querySelector('[data-id="polyline-1"]')).toBeNull();
+    expect(getButton(app, ".draw-polyline-button").getAttribute("aria-pressed")).toBe("false");
+    expect(app.querySelector<HTMLElement>(".inspector-status")?.textContent).toBe("Polyline drawing cancelled");
+  });
+
   it("opens and closes the import/export side panel from the preview header", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
@@ -616,6 +676,28 @@ function getInspectorInput(root: ParentNode, fieldName: string): HTMLInputElemen
   }
 
   throw new Error(`inspector input missing: ${fieldName}`);
+}
+
+function clickPreviewPoint(app: HTMLElement, clientX: number, clientY: number): void {
+  const svg = app.querySelector("svg");
+
+  if (!svg) {
+    throw new Error("preview svg missing");
+  }
+
+  setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
+  svg.dispatchEvent(new MouseEvent("click", { clientX, clientY, bubbles: true }));
+}
+
+function movePreviewPointer(app: HTMLElement, clientX: number, clientY: number): void {
+  const svg = app.querySelector("svg");
+
+  if (!svg) {
+    throw new Error("preview svg missing");
+  }
+
+  setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
+  svg.dispatchEvent(new MouseEvent("mousemove", { clientX, clientY, bubbles: true }));
 }
 
 function setSvgBounds(
