@@ -26,6 +26,9 @@ type EditorElements = {
   editorRoot: HTMLElement;
   jsonInput: HTMLTextAreaElement;
   itemList: HTMLElement;
+  addTextButton: HTMLButtonElement;
+  addRectButton: HTMLButtonElement;
+  addCircleButton: HTMLButtonElement;
   inspector: HTMLElement;
   inspectorStatus: HTMLElement;
   previewSurface: HTMLElement;
@@ -76,6 +79,9 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     editorRoot: shell,
     jsonInput: getRequiredElement(jsonPane, ".json-input", HTMLTextAreaElement),
     itemList: getRequiredElement(jsonPane, ".item-list", HTMLElement),
+    addTextButton: getRequiredElement(jsonPane, ".add-text-button", HTMLButtonElement),
+    addRectButton: getRequiredElement(jsonPane, ".add-rect-button", HTMLButtonElement),
+    addCircleButton: getRequiredElement(jsonPane, ".add-circle-button", HTMLButtonElement),
     inspector: getRequiredElement(jsonPane, ".property-inspector", HTMLElement),
     inspectorStatus: getRequiredElement(jsonPane, ".inspector-status", HTMLElement),
     previewSurface: getRequiredElement(previewPane, ".preview-surface", HTMLElement),
@@ -107,6 +113,9 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.openExportButton.addEventListener("click", () => openTransferPanel(elements, "export"));
   elements.closeTransferPanelButton.addEventListener("click", () => closeTransferPanel(elements));
   elements.importButton.addEventListener("click", () => importEncodedPayload(elements, documentRef));
+  elements.addTextButton.addEventListener("click", () => addItem(elements, "text", documentRef));
+  elements.addRectButton.addEventListener("click", () => addItem(elements, "rect", documentRef));
+  elements.addCircleButton.addEventListener("click", () => addItem(elements, "circle", documentRef));
   elements.formatButton.addEventListener("click", () => formatCurrentJson(elements, documentRef));
   elements.resetButton.addEventListener("click", () => resetDemoPayload(elements, documentRef));
   shell.addEventListener("keydown", (event) => handleEditorKeyDown(elements, event, documentRef));
@@ -210,6 +219,87 @@ function renderDisabledItemTools(elements: EditorElements, message: string): voi
   elements.inspector.replaceChildren();
   elements.inspectorStatus.textContent = `Inspector unavailable:\n${message}`;
   elements.inspectorStatus.dataset.state = "error";
+}
+
+function addItem(elements: EditorElements, type: "text" | "rect" | "circle", documentRef: Document): void {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  const item = createDefaultItem(result.payload, type);
+  result.payload.items.push(item);
+  elements.selectedItemId = item.id;
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  updateFromJson(elements, documentRef);
+  jumpToSelectedItemInJson(elements);
+}
+
+function createDefaultItem(payload: SchematicPayload, type: "text" | "rect" | "circle"): SchematicItem {
+  const centerX = Math.round(payload.viewport.width / 2);
+  const centerY = Math.round(payload.viewport.height / 2);
+  const id = createUniqueItemId(payload, type);
+
+  switch (type) {
+    case "text":
+      return {
+        id,
+        type: "text",
+        layer: 600,
+        x: centerX,
+        y: centerY,
+        text: "New text",
+        style: {
+          fill: "var(--primary-text-color)",
+          fontSize: 14,
+          textAnchor: "middle"
+        }
+      };
+    case "rect":
+      return {
+        id,
+        type: "rect",
+        layer: 300,
+        x: centerX - 32,
+        y: centerY - 20,
+        width: 64,
+        height: 40,
+        rx: 4,
+        ry: 4,
+        style: {
+          stroke: "var(--primary-text-color)",
+          strokeWidth: 2,
+          fill: "var(--divider-color)"
+        }
+      };
+    case "circle":
+      return {
+        id,
+        type: "circle",
+        layer: 300,
+        cx: centerX,
+        cy: centerY,
+        r: 18,
+        style: {
+          stroke: "var(--primary-text-color)",
+          strokeWidth: 2,
+          fill: "var(--divider-color)"
+        }
+      };
+  }
+}
+
+function createUniqueItemId(payload: SchematicPayload, type: "text" | "rect" | "circle"): string {
+  const existingIds = new Set(payload.items.map((item) => item.id));
+  let index = 1;
+
+  while (existingIds.has(`${type}-${index}`)) {
+    index += 1;
+  }
+
+  return `${type}-${index}`;
 }
 
 function renderItemTools(elements: EditorElements, payload: SchematicPayload, documentRef: Document): void {
@@ -742,6 +832,34 @@ function createJsonPane(documentRef: Document): HTMLElement {
   const itemTools = documentRef.createElement("section");
   itemTools.className = "item-tools";
 
+  const addTools = documentRef.createElement("section");
+  addTools.className = "add-item-tools";
+
+  const addLabel = documentRef.createElement("div");
+  addLabel.className = "field-label";
+  addLabel.textContent = "Add";
+
+  const addButtons = documentRef.createElement("div");
+  addButtons.className = "add-item-buttons";
+
+  const addTextButton = documentRef.createElement("button");
+  addTextButton.className = "add-text-button utility-button";
+  addTextButton.type = "button";
+  addTextButton.textContent = "Text";
+
+  const addRectButton = documentRef.createElement("button");
+  addRectButton.className = "add-rect-button utility-button";
+  addRectButton.type = "button";
+  addRectButton.textContent = "Rect";
+
+  const addCircleButton = documentRef.createElement("button");
+  addCircleButton.className = "add-circle-button utility-button";
+  addCircleButton.type = "button";
+  addCircleButton.textContent = "Circle";
+
+  addButtons.append(addTextButton, addRectButton, addCircleButton);
+  addTools.append(addLabel, addButtons);
+
   const itemListSection = documentRef.createElement("section");
   itemListSection.className = "item-list-section";
 
@@ -768,7 +886,7 @@ function createJsonPane(documentRef: Document): HTMLElement {
 
   itemListSection.append(itemListLabel, itemList);
   inspectorSection.append(inspectorLabel, inspector, inspectorStatus);
-  itemTools.append(itemListSection, inspectorSection);
+  itemTools.append(addTools, itemListSection, inspectorSection);
 
   controls.append(formatButton, resetButton);
   pane.querySelector(".pane-header")?.append(controls);
