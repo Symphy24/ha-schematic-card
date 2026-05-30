@@ -323,10 +323,16 @@ textarea {
   gap: 8px;
 }
 
-.add-item-buttons {
+.add-item-buttons,
+.selected-item-action-buttons {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.selected-item-actions {
+  display: grid;
+  gap: 8px;
 }
 
 .property-inspector {

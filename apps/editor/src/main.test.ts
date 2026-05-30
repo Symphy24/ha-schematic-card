@@ -247,6 +247,76 @@ describe("editor app", () => {
     expect(getButton(app, '[data-item-id="text-1"]').getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("duplicates the selected item with a new id and offset", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, '[data-item-id="demo-title"]').click();
+    getButton(app, ".duplicate-item-button").click();
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"id\": \"demo-title-copy\"");
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 26");
+    expect(getTextarea(app, ".json-input").value).toContain("\"y\": 38");
+    expect(getButton(app, '[data-item-id="demo-title-copy"]').getAttribute("aria-pressed")).toBe("true");
+    expect(app.querySelector('[data-id="demo-title-copy"]')).not.toBeNull();
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+  });
+
+  it("undoes and redoes duplicating an item", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, '[data-item-id="demo-title"]').click();
+    getButton(app, ".duplicate-item-button").click();
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"id\": \"demo-title-copy\"");
+
+    getButton(app, ".undo-button").click();
+
+    expect(getTextarea(app, ".json-input").value).not.toContain("\"id\": \"demo-title-copy\"");
+
+    getButton(app, ".redo-button").click();
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"id\": \"demo-title-copy\"");
+    expect(getButton(app, '[data-item-id="demo-title-copy"]').getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("deletes the selected item and supports undo and redo", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, '[data-item-id="demo-title"]').click();
+    getButton(app, ".delete-item-button").click();
+
+    expect(getTextarea(app, ".json-input").value).not.toContain("\"id\": \"demo-title\"");
+    expect(app.querySelector('[data-id="demo-title"]')).toBeNull();
+    expect(getButton(app, '[data-item-id="demo-flow-line"]').getAttribute("aria-pressed")).toBe("true");
+
+    getButton(app, ".undo-button").click();
+
+    expect(getTextarea(app, ".json-input").value).toContain("\"id\": \"demo-title\"");
+    expect(getButton(app, '[data-item-id="demo-title"]').getAttribute("aria-pressed")).toBe("true");
+
+    getButton(app, ".redo-button").click();
+
+    expect(getTextarea(app, ".json-input").value).not.toContain("\"id\": \"demo-title\"");
+  });
+
+  it("deletes the selected item with Delete or Backspace shortcuts", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, '[data-item-id="demo-title"]').click();
+    app.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true }));
+
+    expect(getTextarea(app, ".json-input").value).not.toContain("\"id\": \"demo-title\"");
+
+    getButton(app, ".undo-button").click();
+    app.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }));
+
+    expect(getTextarea(app, ".json-input").value).not.toContain("\"id\": \"demo-title\"");
+  });
+
   it("adds rect and circle items with visible defaults", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
