@@ -66,6 +66,8 @@ type EditorElements = {
   openThemeButton: HTMLButtonElement;
   toggleGridButton: HTMLButtonElement;
   toggleSnapButton: HTMLButtonElement;
+  panToolButton: HTMLButtonElement;
+  resetViewButton: HTMLButtonElement;
   gridSizeInput: HTMLInputElement;
   drawPolylineButton: HTMLButtonElement;
   finishPolylineButton: HTMLButtonElement;
@@ -83,9 +85,12 @@ type EditorElements = {
   undoButton: HTMLButtonElement;
   redoButton: HTMLButtonElement;
   selectedItemId?: string;
+  selectedItemIds: string[];
   gridEnabled: boolean;
   snapEnabled: boolean;
   gridSize: number;
+  panMode: boolean;
+  previewViewBox?: PreviewViewBox;
   activeTab: EditorTabName;
   dockedTab?: EditorTabName;
   draggedTab?: EditorTabName;
@@ -94,7 +99,17 @@ type EditorElements = {
   dragState?: PreviewDragState;
   pointDragState?: PolylinePointDragState;
   drawState?: PolylineDrawState;
+  panState?: PreviewPanState;
+  selectionRectState?: SelectionRectState;
+  selectionRectClickSuppressionPoint?: { clientX: number; clientY: number };
   contextMenuState?: PolylineContextMenuState;
+};
+
+type PreviewViewBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };
 
 type PreviewDragState = {
@@ -126,6 +141,21 @@ type PolylineContextMenuState = {
   insertIndex?: number;
   nearestPointIndex?: number;
   point?: SchematicPoint;
+};
+
+type PreviewPanState = {
+  svg: SVGSVGElement;
+  startClientX: number;
+  startClientY: number;
+  startViewBox: PreviewViewBox;
+  moved: boolean;
+};
+
+type SelectionRectState = {
+  svg: SVGSVGElement;
+  startPoint: SchematicPoint;
+  currentPoint: SchematicPoint;
+  moved: boolean;
 };
 
 type LayerAction = "forward" | "backward" | "front" | "back";
@@ -222,15 +252,11 @@ const TEXT_STYLE_FIELDS: StyleFieldConfig[] = [
 type EditorSnapshot = {
   json: string;
   selectedItemId?: string;
+  selectedItemIds?: string[];
 };
 
 type SvgCoordinateSpace = {
-  viewBox?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
+  viewBox?: PreviewViewBox;
   bounds: {
     left: number;
     top: number;
@@ -301,6 +327,8 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     openThemeButton: getRequiredElement(toolbar, ".open-theme-button", HTMLButtonElement),
     toggleGridButton: getRequiredElement(previewPane, ".toggle-grid-button", HTMLButtonElement),
     toggleSnapButton: getRequiredElement(previewPane, ".toggle-snap-button", HTMLButtonElement),
+    panToolButton: getRequiredElement(toolbar, ".pan-tool-button", HTMLButtonElement),
+    resetViewButton: getRequiredElement(previewPane, ".reset-view-button", HTMLButtonElement),
     gridSizeInput: getRequiredElement(previewPane, ".grid-size-input", HTMLInputElement),
     drawPolylineButton: getRequiredElement(toolbar, ".draw-polyline-button", HTMLButtonElement),
     finishPolylineButton: getRequiredElement(toolbar, ".finish-polyline-button", HTMLButtonElement),
@@ -317,9 +345,11 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     resetButton: getRequiredElement(toolbar, ".reset-button", HTMLButtonElement),
     undoButton: getRequiredElement(toolbar, ".undo-button", HTMLButtonElement),
     redoButton: getRequiredElement(toolbar, ".redo-button", HTMLButtonElement),
+    selectedItemIds: [],
     gridEnabled: true,
     snapEnabled: true,
     gridSize: DEFAULT_EDITOR_GRID_SIZE,
+    panMode: false,
     activeTab: "items",
     undoStack: [],
     redoStack: []
@@ -336,6 +366,8 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.selectToolButton.addEventListener("click", () => activateSelectTool(elements, documentRef));
   elements.toggleGridButton.addEventListener("click", () => togglePreviewGrid(elements, documentRef));
   elements.toggleSnapButton.addEventListener("click", () => toggleSnap(elements));
+  elements.panToolButton.addEventListener("click", () => togglePanMode(elements));
+  elements.resetViewButton.addEventListener("click", () => resetPreviewView(elements));
   elements.gridSizeInput.addEventListener("change", () => updateGridSize(elements, documentRef));
   elements.drawPolylineButton.addEventListener("click", () => startPolylineDrawing(elements, documentRef));
   elements.finishPolylineButton.addEventListener("click", () => finishPolylineDrawing(elements, documentRef));
@@ -399,10 +431,13 @@ function updateFromJson(
     document: documentRef,
     entityStates: demoEntityStates
   });
+  applyPreviewViewBox(elements, svg, result.payload);
   renderPreviewGrid(svg, result.payload, elements.gridEnabled, elements.gridSize, documentRef);
   renderPolylineRubberBand(svg, elements.drawState, documentRef);
+  renderSelectionRectangle(svg, elements.selectionRectState, documentRef);
   renderPolylineHandles(svg, result.payload, elements.selectedItemId, elements.drawState, documentRef);
   svg.addEventListener("click", (event) => handlePreviewClick(elements, result.payload, event, documentRef));
+  svg.addEventListener("wheel", (event) => handlePreviewWheel(elements, event));
   svg.addEventListener("mousemove", (event) => updatePolylineRubberBand(elements, event, documentRef));
   svg.addEventListener("mousedown", (event) => handlePreviewMouseDown(elements, result.payload, event, documentRef));
   svg.addEventListener("contextmenu", (event) => openPolylineContextMenu(elements, result.payload, event, documentRef));
@@ -420,7 +455,8 @@ function updateFromJson(
 function getCurrentSnapshot(elements: EditorElements): EditorSnapshot {
   return {
     json: elements.jsonInput.value,
-    selectedItemId: elements.selectedItemId
+    selectedItemId: elements.selectedItemId,
+    selectedItemIds: [...elements.selectedItemIds]
   };
 }
 
@@ -466,7 +502,7 @@ function redoEditorChange(elements: EditorElements, documentRef: Document): void
 
 function applyEditorSnapshot(elements: EditorElements, snapshot: EditorSnapshot, documentRef: Document): void {
   elements.jsonInput.value = snapshot.json;
-  elements.selectedItemId = snapshot.selectedItemId;
+  setSelectedItems(elements, snapshot.selectedItemIds ?? (snapshot.selectedItemId ? [snapshot.selectedItemId] : []), snapshot.selectedItemId);
   delete elements.dragState;
   delete elements.pointDragState;
   delete elements.drawState;
@@ -487,6 +523,8 @@ function activateSelectTool(elements: EditorElements, documentRef: Document): vo
     return;
   }
 
+  elements.panMode = false;
+  updatePreviewModeControls(elements);
   updateDrawControls(elements);
 }
 
@@ -514,6 +552,119 @@ function toggleSnap(elements: EditorElements): void {
   elements.snapEnabled = !elements.snapEnabled;
   elements.toggleSnapButton.setAttribute("aria-pressed", String(elements.snapEnabled));
   elements.toggleSnapButton.textContent = elements.snapEnabled ? "Snap On" : "Snap Off";
+}
+
+function togglePanMode(elements: EditorElements): void {
+  elements.panMode = !elements.panMode;
+  updatePreviewModeControls(elements);
+}
+
+function zoomPreview(elements: EditorElements, scale: number, anchor?: SchematicPoint): void {
+  const svg = getPreviewSvg(elements);
+
+  if (!svg) {
+    return;
+  }
+
+  const current = getCurrentPreviewViewBox(elements, svg);
+  const nextWidth = current.width * scale;
+  const nextHeight = current.height * scale;
+  const centerX = anchor?.x ?? current.x + current.width / 2;
+  const centerY = anchor?.y ?? current.y + current.height / 2;
+  const anchorRatioX = (centerX - current.x) / current.width;
+  const anchorRatioY = (centerY - current.y) / current.height;
+
+  elements.previewViewBox = {
+    x: centerX - nextWidth * anchorRatioX,
+    y: centerY - nextHeight * anchorRatioY,
+    width: nextWidth,
+    height: nextHeight
+  };
+  setSvgViewBox(svg, elements.previewViewBox);
+}
+
+function handlePreviewWheel(elements: EditorElements, event: WheelEvent): void {
+  const svg = event.currentTarget;
+
+  if (!isSvgElement(svg, elements.editorRoot.ownerDocument)) {
+    return;
+  }
+
+  event.preventDefault();
+  const scale = event.deltaY < 0 ? 0.9 : 1.1;
+  zoomPreview(elements, scale, getSvgPoint(getSvgCoordinateSpace(svg), event));
+}
+
+function updatePreviewModeControls(elements: EditorElements): void {
+  elements.selectToolButton.setAttribute("aria-pressed", String(!elements.panMode));
+  elements.panToolButton.setAttribute("aria-pressed", String(elements.panMode));
+  elements.panToolButton.textContent = elements.panMode ? "✋" : "🤚";
+  elements.previewSurface.dataset.panMode = String(elements.panMode);
+}
+
+function resetPreviewView(elements: EditorElements): void {
+  const svg = getPreviewSvg(elements);
+
+  delete elements.previewViewBox;
+
+  if (!svg) {
+    return;
+  }
+
+  const fallback = getSvgDefaultViewBox(svg);
+
+  if (fallback) {
+    setSvgViewBox(svg, fallback);
+  }
+}
+
+function applyPreviewViewBox(elements: EditorElements, svg: SVGSVGElement, payload: SchematicPayload): void {
+  const fallback = {
+    x: 0,
+    y: 0,
+    width: payload.viewport.width,
+    height: payload.viewport.height
+  };
+  const viewBox = elements.previewViewBox ?? fallback;
+  setSvgViewBox(svg, viewBox);
+}
+
+function getPreviewSvg(elements: EditorElements): SVGSVGElement | undefined {
+  const svg = elements.previewSurface.querySelector("svg");
+  return svg && isSvgElement(svg, elements.editorRoot.ownerDocument) ? svg : undefined;
+}
+
+function getCurrentPreviewViewBox(elements: EditorElements, svg: SVGSVGElement): PreviewViewBox {
+  return elements.previewViewBox ?? getSvgIntrinsicViewBox(svg) ?? {
+    x: 0,
+    y: 0,
+    width: 1,
+    height: 1
+  };
+}
+
+function getSvgIntrinsicViewBox(svg: SVGSVGElement): PreviewViewBox | undefined {
+  return parseViewBox(svg.getAttribute("viewBox"));
+}
+
+function getSvgDefaultViewBox(svg: SVGSVGElement): PreviewViewBox | undefined {
+  const width = Number(svg.getAttribute("width"));
+  const height = Number(svg.getAttribute("height"));
+
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return undefined;
+  }
+
+  return {
+    x: 0,
+    y: 0,
+    width,
+    height
+  };
+}
+
+function setSvgViewBox(svg: SVGSVGElement, viewBox: PreviewViewBox): void {
+  svg.setAttribute("viewBox", `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`);
 }
 
 function updateEditorTabs(elements: EditorElements): void {
@@ -739,6 +890,123 @@ function renderPolylineRubberBand(
   svg.append(rubberBand);
 }
 
+function renderSelectionRectangle(
+  svg: SVGSVGElement,
+  state: SelectionRectState | undefined,
+  documentRef: Document
+): void {
+  if (!state?.moved) {
+    return;
+  }
+
+  const rect = getNormalizedRect(state.startPoint, state.currentPoint);
+  const element = documentRef.createElementNS(SVG_NAMESPACE, "rect");
+  element.classList.add("editor-selection-rectangle");
+  element.setAttribute("data-editor-selection-rectangle", "true");
+  element.setAttribute("pointer-events", "none");
+  element.setAttribute("x", String(rect.x));
+  element.setAttribute("y", String(rect.y));
+  element.setAttribute("width", String(rect.width));
+  element.setAttribute("height", String(rect.height));
+  svg.append(element);
+}
+
+function updateSelectionRectangleElement(state: SelectionRectState, documentRef: Document): void {
+  let element = state.svg.querySelector<SVGRectElement>("[data-editor-selection-rectangle]");
+  const rect = getNormalizedRect(state.startPoint, state.currentPoint);
+
+  if (!element) {
+    element = documentRef.createElementNS(SVG_NAMESPACE, "rect");
+    element.classList.add("editor-selection-rectangle");
+    element.setAttribute("data-editor-selection-rectangle", "true");
+    element.setAttribute("pointer-events", "none");
+    state.svg.append(element);
+  }
+
+  element.setAttribute("x", String(rect.x));
+  element.setAttribute("y", String(rect.y));
+  element.setAttribute("width", String(rect.width));
+  element.setAttribute("height", String(rect.height));
+}
+
+function getNormalizedRect(startPoint: SchematicPoint, currentPoint: SchematicPoint): PreviewViewBox {
+  const x = Math.min(startPoint.x, currentPoint.x);
+  const y = Math.min(startPoint.y, currentPoint.y);
+  const width = Math.abs(currentPoint.x - startPoint.x);
+  const height = Math.abs(currentPoint.y - startPoint.y);
+  return { x, y, width, height };
+}
+
+function findItemsInSelectionRect(payload: SchematicPayload, selectionRect: PreviewViewBox): string[] {
+  return payload.items
+    .filter((item) => {
+      const bounds = getItemBounds(item);
+      return bounds ? rectsIntersect(selectionRect, bounds) : false;
+    })
+    .map((item) => item.id);
+}
+
+function getItemBounds(item: SchematicItem): PreviewViewBox | undefined {
+  switch (item.type) {
+    case "line":
+      return getBoundsFromPoints([
+        { x: item.x1, y: item.y1 },
+        { x: item.x2, y: item.y2 }
+      ]);
+    case "polyline":
+      return getBoundsFromPoints(item.points);
+    case "rect":
+      return { x: item.x, y: item.y, width: item.width, height: item.height };
+    case "circle":
+      return { x: item.cx - item.r, y: item.cy - item.r, width: item.r * 2, height: item.r * 2 };
+    case "text":
+    case "entityValue":
+    case "symbol":
+      return { x: item.x, y: item.y, width: 1, height: 1 };
+    case "group":
+      return getBoundsFromItems(item.children);
+    case "path":
+      return undefined;
+  }
+}
+
+function getBoundsFromItems(items: SchematicItem[]): PreviewViewBox | undefined {
+  return getBoundsFromRects(items.map(getItemBounds).filter((bounds): bounds is PreviewViewBox => bounds !== undefined));
+}
+
+function getBoundsFromPoints(points: SchematicPoint[]): PreviewViewBox | undefined {
+  if (points.length === 0) {
+    return undefined;
+  }
+
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  const maxX = Math.max(...xs);
+  const maxY = Math.max(...ys);
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+function getBoundsFromRects(rects: PreviewViewBox[]): PreviewViewBox | undefined {
+  if (rects.length === 0) {
+    return undefined;
+  }
+
+  const minX = Math.min(...rects.map((rect) => rect.x));
+  const minY = Math.min(...rects.map((rect) => rect.y));
+  const maxX = Math.max(...rects.map((rect) => rect.x + rect.width));
+  const maxY = Math.max(...rects.map((rect) => rect.y + rect.height));
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+function rectsIntersect(left: PreviewViewBox, right: PreviewViewBox): boolean {
+  return left.x <= right.x + right.width
+    && left.x + left.width >= right.x
+    && left.y <= right.y + right.height
+    && left.y + left.height >= right.y;
+}
+
 function renderPolylineHandles(
   svg: SVGSVGElement,
   payload: SchematicPayload,
@@ -849,7 +1117,7 @@ function resetDemoPayload(elements: EditorElements, documentRef: Document): void
     recordHistory(elements);
   }
 
-  elements.selectedItemId = undefined;
+  setSelectedItems(elements, []);
   elements.jsonInput.value = formatPayloadJson();
   updateFromJson(elements, documentRef);
 }
@@ -873,7 +1141,7 @@ function addItem(elements: EditorElements, type: AddItemType, documentRef: Docum
   const item = createDefaultItem(result.payload, type);
   recordHistory(elements);
   result.payload.items.push(item);
-  elements.selectedItemId = item.id;
+  setSelectedItems(elements, [item.id]);
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
   showEditorTab(elements, "inspector");
@@ -984,7 +1252,7 @@ function duplicateSelectedItem(elements: EditorElements, documentRef: Document):
 
   recordHistory(elements);
   result.payload.items.splice(sourceIndex + 1, 0, duplicate);
-  elements.selectedItemId = duplicate.id;
+  setSelectedItems(elements, [duplicate.id]);
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
   showEditorTab(elements, "inspector");
@@ -1011,7 +1279,7 @@ function deleteSelectedItem(elements: EditorElements, documentRef: Document): vo
 
   recordHistory(elements);
   result.payload.items.splice(selectedIndex, 1);
-  elements.selectedItemId = result.payload.items[selectedIndex]?.id ?? result.payload.items[selectedIndex - 1]?.id;
+  setSelectedItems(elements, [result.payload.items[selectedIndex]?.id ?? result.payload.items[selectedIndex - 1]?.id].filter(Boolean) as string[]);
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
   elements.inspectorStatus.textContent = `Deleted ${selectedItem.id}`;
@@ -1020,9 +1288,10 @@ function deleteSelectedItem(elements: EditorElements, documentRef: Document): vo
 
 function renderItemTools(elements: EditorElements, payload: SchematicPayload, documentRef: Document): void {
   elements.itemList.replaceChildren();
+  normalizeSelection(elements, payload);
 
   if (payload.items.length === 0) {
-    elements.selectedItemId = undefined;
+    setSelectedItems(elements, []);
     renderNeutralInspector(elements, "No top-level items");
     return;
   }
@@ -1036,16 +1305,18 @@ function renderItemTools(elements: EditorElements, payload: SchematicPayload, do
     button.type = "button";
     button.dataset.itemId = item.id;
     button.textContent = `${item.id} (${item.type})`;
-    button.setAttribute("aria-pressed", String(item.id === elements.selectedItemId));
+    button.setAttribute("aria-pressed", String(elements.selectedItemIds.includes(item.id)));
     button.addEventListener("click", () => {
-      elements.selectedItemId = item.id;
+      setSelectedItems(elements, [item.id]);
       updateFromJson(elements, documentRef);
       showEditorTab(elements, "inspector");
     });
     elements.itemList.append(button);
   }
 
-  if (selectedItem) {
+  if (elements.selectedItemIds.length > 1) {
+    renderNeutralInspector(elements, `${elements.selectedItemIds.length} items selected`);
+  } else if (selectedItem) {
     renderInspector(elements, selectedItem, documentRef);
   } else {
     renderNeutralInspector(elements, "Select an item");
@@ -1059,20 +1330,58 @@ function updateSelectedItemActionButtons(elements: EditorElements, hasSelection:
   elements.deleteItemButton.disabled = !hasSelection;
 }
 
+function normalizeSelection(elements: EditorElements, payload: SchematicPayload): void {
+  const validIds = new Set(payload.items.map((item) => item.id));
+  const selectedIds = elements.selectedItemIds.filter((itemId, index, ids) => (
+    validIds.has(itemId) && ids.indexOf(itemId) === index
+  ));
+
+  if (elements.selectedItemId && validIds.has(elements.selectedItemId) && !selectedIds.includes(elements.selectedItemId)) {
+    selectedIds.push(elements.selectedItemId);
+  }
+
+  elements.selectedItemIds = selectedIds;
+  elements.selectedItemId = elements.selectedItemId && selectedIds.includes(elements.selectedItemId)
+    ? elements.selectedItemId
+    : selectedIds[0];
+}
+
+function setSelectedItems(elements: EditorElements, itemIds: string[], primaryItemId?: string): void {
+  elements.selectedItemIds = itemIds.filter((itemId, index, ids) => ids.indexOf(itemId) === index);
+  elements.selectedItemId = primaryItemId && elements.selectedItemIds.includes(primaryItemId)
+    ? primaryItemId
+    : elements.selectedItemIds[0];
+}
+
+function toggleSelectedItem(elements: EditorElements, itemId: string): void {
+  if (elements.selectedItemIds.includes(itemId)) {
+    const nextIds = elements.selectedItemIds.filter((selectedItemId) => selectedItemId !== itemId);
+    setSelectedItems(elements, nextIds);
+    return;
+  }
+
+  setSelectedItems(elements, [...elements.selectedItemIds, itemId], itemId);
+}
+
 function selectPreviewItem(
   elements: EditorElements,
   payload: SchematicPayload,
-  target: EventTarget | null,
+  event: MouseEvent,
   documentRef: Document
 ): void {
-  const itemId = findSelectablePreviewItemId(elements, payload, target);
+  const itemId = findSelectablePreviewItemId(elements, payload, event.target);
 
   if (!itemId) {
     clearSelection(elements, payload, documentRef);
     return;
   }
 
-  elements.selectedItemId = itemId;
+  if (event.ctrlKey || event.metaKey) {
+    toggleSelectedItem(elements, itemId);
+  } else {
+    setSelectedItems(elements, [itemId]);
+  }
+
   updateFromJson(elements, documentRef);
 
   if (isJsonVisible(elements)) {
@@ -1081,12 +1390,12 @@ function selectPreviewItem(
 }
 
 function clearSelection(elements: EditorElements, payload: SchematicPayload, documentRef: Document): void {
-  if (!elements.selectedItemId) {
+  if (!elements.selectedItemId && elements.selectedItemIds.length === 0) {
     renderItemTools(elements, payload, documentRef);
     return;
   }
 
-  delete elements.selectedItemId;
+  setSelectedItems(elements, []);
   updateFromJson(elements, documentRef);
   clearJsonSelection(elements);
 }
@@ -1101,12 +1410,26 @@ function handlePreviewClick(
   event: MouseEvent,
   documentRef: Document
 ): void {
+  if (elements.panState?.moved) {
+    delete elements.panState;
+    return;
+  }
+
+  if (elements.selectionRectClickSuppressionPoint) {
+    const point = elements.selectionRectClickSuppressionPoint;
+    delete elements.selectionRectClickSuppressionPoint;
+
+    if (Math.abs(event.clientX - point.clientX) <= 3 && Math.abs(event.clientY - point.clientY) <= 3) {
+      return;
+    }
+  }
+
   if (elements.drawState) {
     addPolylinePointFromEvent(elements, payload, event, documentRef);
     return;
   }
 
-  selectPreviewItem(elements, payload, event.target, documentRef);
+  selectPreviewItem(elements, payload, event, documentRef);
 }
 
 function findSelectablePreviewItemId(
@@ -1156,7 +1479,7 @@ function openPolylineContextMenu(
   }
 
   event.preventDefault();
-  elements.selectedItemId = item.id;
+  setSelectedItems(elements, [item.id]);
   elements.contextMenuState = {
     itemId: item.id
   };
@@ -1216,7 +1539,7 @@ function addPolylinePointFromContextMenu(elements: EditorElements, documentRef: 
 
   recordHistory(elements);
   item.points.splice(state.insertIndex, 0, state.point);
-  elements.selectedItemId = item.id;
+  setSelectedItems(elements, [item.id]);
   elements.jsonInput.value = formatPayloadJson(result.payload);
   closePolylineContextMenu(elements);
   updateFromJson(elements, documentRef);
@@ -1260,7 +1583,7 @@ function deletePolylinePointFromContextMenu(elements: EditorElements, documentRe
 
   recordHistory(elements);
   item.points.splice(state.nearestPointIndex, 1);
-  elements.selectedItemId = item.id;
+  setSelectedItems(elements, [item.id]);
   elements.jsonInput.value = formatPayloadJson(result.payload);
   closePolylineContextMenu(elements);
   updateFromJson(elements, documentRef);
@@ -1301,7 +1624,7 @@ function changeSelectedItemLayer(elements: EditorElements, action: LayerAction, 
 
   recordHistory(elements);
   item.layer = nextLayer;
-  elements.selectedItemId = item.id;
+  setSelectedItems(elements, [item.id]);
   elements.jsonInput.value = formatPayloadJson(result.payload);
   closePolylineContextMenu(elements);
   updateFromJson(elements, documentRef);
@@ -1416,8 +1739,10 @@ function startPolylineDrawing(elements: EditorElements, documentRef: Document): 
     itemId,
     points: []
   };
-  elements.selectedItemId = itemId;
+  elements.panMode = false;
+  setSelectedItems(elements, [itemId]);
   showEditorTab(elements, "inspector");
+  updatePreviewModeControls(elements);
   updateDrawControls(elements);
   updateFromJson(elements, documentRef);
   elements.inspectorStatus.textContent = "Click preview points. Enter or Finish to save, Escape to cancel.";
@@ -1458,7 +1783,7 @@ function addPolylinePointFromEvent(
   elements.drawState.points.push(point);
   elements.drawState.previewPoint = undefined;
   upsertDraftPolyline(result.payload, elements.drawState);
-  elements.selectedItemId = elements.drawState.itemId;
+  setSelectedItems(elements, [elements.drawState.itemId]);
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
   elements.inspectorStatus.textContent = `Drawing ${elements.drawState.itemId}: ${elements.drawState.points.length} point(s)`;
@@ -1518,7 +1843,7 @@ function finishPolylineDrawing(elements: EditorElements, documentRef: Document):
   }
 
   const itemId = elements.drawState.itemId;
-  elements.selectedItemId = itemId;
+  setSelectedItems(elements, [itemId]);
   delete elements.drawState;
   updateDrawControls(elements);
   updateFromJson(elements, documentRef);
@@ -1543,7 +1868,7 @@ function cancelPolylineDrawing(elements: EditorElements, documentRef: Document):
   }
 
   result.payload.items = result.payload.items.filter((item) => item.id !== drawState.itemId);
-  elements.selectedItemId = result.payload.items[0]?.id;
+  setSelectedItems(elements, [result.payload.items[0]?.id].filter(Boolean) as string[]);
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
   elements.inspectorStatus.textContent = "Polyline drawing cancelled";
@@ -1632,7 +1957,7 @@ function startPreviewDrag(
   event: MouseEvent,
   documentRef: Document
 ): void {
-  if (elements.drawState) {
+  if (elements.drawState || elements.panMode || event.ctrlKey || event.metaKey) {
     return;
   }
 
@@ -1656,7 +1981,7 @@ function startPreviewDrag(
     return;
   }
 
-  elements.selectedItemId = itemId;
+  setSelectedItems(elements, [itemId]);
   renderItemTools(elements, payload, documentRef);
 
   if (!canMoveItem(item)) {
@@ -1706,11 +2031,157 @@ function handlePreviewMouseDown(
 ): void {
   closePolylineContextMenu(elements);
 
+  if (startPreviewPan(elements, event, documentRef)) {
+    return;
+  }
+
   if (startPolylinePointDrag(elements, payload, event, documentRef)) {
     return;
   }
 
+  if (startSelectionRectangle(elements, payload, event, documentRef)) {
+    return;
+  }
+
   startPreviewDrag(elements, payload, event, documentRef);
+}
+
+function startSelectionRectangle(
+  elements: EditorElements,
+  payload: SchematicPayload,
+  event: MouseEvent,
+  documentRef: Document
+): boolean {
+  if (elements.drawState || elements.panMode || event.button !== 0) {
+    return false;
+  }
+
+  const svg = event.currentTarget;
+
+  if (!isSvgElement(svg, documentRef) || findSelectablePreviewItemId(elements, payload, event.target)) {
+    return false;
+  }
+
+  const coordinateSpace = getSvgCoordinateSpace(svg);
+  const startPoint = getSvgPoint(coordinateSpace, event);
+  elements.selectionRectState = {
+    svg,
+    startPoint,
+    currentPoint: startPoint,
+    moved: false
+  };
+  event.preventDefault();
+
+  const onMove = (moveEvent: MouseEvent): void => {
+    const state = elements.selectionRectState;
+
+    if (!state) {
+      return;
+    }
+
+    state.currentPoint = getSvgPoint(coordinateSpace, moveEvent);
+
+    if (
+      Math.abs(moveEvent.clientX - event.clientX) > 3
+      || Math.abs(moveEvent.clientY - event.clientY) > 3
+    ) {
+      state.moved = true;
+      updateSelectionRectangleElement(state, documentRef);
+    }
+  };
+  const stopSelection = (upEvent: MouseEvent): void => {
+    documentRef.removeEventListener("mousemove", onMove);
+    documentRef.removeEventListener("mouseup", stopSelection);
+
+    const state = elements.selectionRectState;
+    delete elements.selectionRectState;
+
+    if (!state?.moved) {
+      return;
+    }
+
+    const selectedIds = findItemsInSelectionRect(payload, getNormalizedRect(state.startPoint, state.currentPoint));
+    setSelectedItems(elements, selectedIds);
+    elements.selectionRectClickSuppressionPoint = {
+      clientX: upEvent.clientX,
+      clientY: upEvent.clientY
+    };
+    updateFromJson(elements, documentRef);
+
+    if (isJsonVisible(elements)) {
+      selectSelectedItemInJson(elements);
+    }
+  };
+
+  documentRef.addEventListener("mousemove", onMove);
+  documentRef.addEventListener("mouseup", stopSelection);
+  return true;
+}
+
+function startPreviewPan(elements: EditorElements, event: MouseEvent, documentRef: Document): boolean {
+  const svg = event.currentTarget;
+  const shouldPan = event.button === 1 || (event.button === 0 && elements.panMode);
+
+  if (!shouldPan || !isSvgElement(svg, documentRef)) {
+    return false;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  elements.panState = {
+    svg,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    startViewBox: getCurrentPreviewViewBox(elements, svg),
+    moved: false
+  };
+  elements.previewSurface.dataset.panning = "true";
+
+  const onMove = (moveEvent: MouseEvent): void => {
+    panPreview(elements, moveEvent);
+  };
+  const stopPan = (): void => {
+    documentRef.removeEventListener("mousemove", onMove);
+    documentRef.removeEventListener("mouseup", stopPan);
+    delete elements.previewSurface.dataset.panning;
+
+    if (!elements.panState?.moved) {
+      delete elements.panState;
+    }
+  };
+
+  documentRef.addEventListener("mousemove", onMove);
+  documentRef.addEventListener("mouseup", stopPan);
+  return true;
+}
+
+function panPreview(elements: EditorElements, event: MouseEvent): void {
+  const panState = elements.panState;
+
+  if (!panState) {
+    return;
+  }
+
+  const bounds = getSvgRenderedBounds(panState.svg, panState.startViewBox);
+
+  if (bounds.width <= 0 || bounds.height <= 0) {
+    return;
+  }
+
+  const dx = ((event.clientX - panState.startClientX) / bounds.width) * panState.startViewBox.width;
+  const dy = ((event.clientY - panState.startClientY) / bounds.height) * panState.startViewBox.height;
+
+  if (Math.abs(event.clientX - panState.startClientX) > 2 || Math.abs(event.clientY - panState.startClientY) > 2) {
+    panState.moved = true;
+  }
+
+  elements.previewViewBox = {
+    ...panState.startViewBox,
+    x: panState.startViewBox.x - dx,
+    y: panState.startViewBox.y - dy
+  };
+  setSvgViewBox(panState.svg, elements.previewViewBox);
 }
 
 function startPolylinePointDrag(
@@ -1738,7 +2209,7 @@ function startPolylinePointDrag(
     return false;
   }
 
-  elements.selectedItemId = item.id;
+  setSelectedItems(elements, [item.id]);
   elements.pointDragState = {
     itemId: item.id,
     pointIndex,
@@ -1816,7 +2287,7 @@ function dragPolylinePoint(elements: EditorElements, event: MouseEvent, document
     elements,
     orthogonalAnchor ? lockPointOrthogonally(orthogonalAnchor, movedPoint) : movedPoint
   );
-  elements.selectedItemId = item.id;
+  setSelectedItems(elements, [item.id]);
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
   elements.inspectorStatus.textContent = `Moved point ${pointDragState.pointIndex + 1} of ${item.id}`;
@@ -1924,7 +2395,7 @@ function moveSelectedItemFromDrag(
     snapItemToGrid(item, elements.gridSize);
   }
 
-  elements.selectedItemId = dragState.itemId;
+  setSelectedItems(elements, [dragState.itemId]);
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
   elements.inspectorStatus.textContent = `Moved ${item.id}`;
@@ -1932,17 +2403,65 @@ function moveSelectedItemFromDrag(
 }
 
 function getSvgCoordinateSpace(svg: SVGSVGElement): SvgCoordinateSpace {
-  const rect = svg.getBoundingClientRect();
+  const viewBox = parseViewBox(svg.getAttribute("viewBox"));
+  const bounds = getSvgRenderedBounds(svg, viewBox);
 
   return {
-    viewBox: parseViewBox(svg.getAttribute("viewBox")),
-    bounds: {
-      left: rect.left,
-      top: rect.top,
-      width: rect.width,
-      height: rect.height
-    }
+    viewBox,
+    bounds
   };
+}
+
+function getSvgRenderedBounds(
+  svg: SVGSVGElement,
+  viewBox: PreviewViewBox | undefined
+): { left: number; top: number; width: number; height: number } {
+  const rect = svg.getBoundingClientRect();
+  const fallback = {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height
+  };
+
+  if (!viewBox || rect.width <= 0 || rect.height <= 0 || viewBox.width <= 0 || viewBox.height <= 0) {
+    return fallback;
+  }
+
+  const preserveAspectRatio = svg.getAttribute("preserveAspectRatio") ?? "xMidYMid meet";
+
+  if (preserveAspectRatio.includes("none")) {
+    return fallback;
+  }
+
+  const scale = preserveAspectRatio.includes("slice")
+    ? Math.max(rect.width / viewBox.width, rect.height / viewBox.height)
+    : Math.min(rect.width / viewBox.width, rect.height / viewBox.height);
+  const width = viewBox.width * scale;
+  const height = viewBox.height * scale;
+  const left = rect.left + getAlignedOffset(rect.width, width, preserveAspectRatio, "x");
+  const top = rect.top + getAlignedOffset(rect.height, height, preserveAspectRatio, "y");
+
+  return { left, top, width, height };
+}
+
+function getAlignedOffset(
+  availableSize: number,
+  renderedSize: number,
+  preserveAspectRatio: string,
+  axis: "x" | "y"
+): number {
+  const lower = preserveAspectRatio.toLowerCase();
+
+  if (axis === "x" && lower.includes("xmax") || axis === "y" && lower.includes("ymax")) {
+    return availableSize - renderedSize;
+  }
+
+  if (axis === "x" && lower.includes("xmin") || axis === "y" && lower.includes("ymin")) {
+    return 0;
+  }
+
+  return (availableSize - renderedSize) / 2;
 }
 
 function getSvgPoint(coordinateSpace: SvgCoordinateSpace, event: MouseEvent): SchematicPoint {
@@ -1961,7 +2480,7 @@ function getSvgPoint(coordinateSpace: SvgCoordinateSpace, event: MouseEvent): Sc
   };
 }
 
-function parseViewBox(value: string | null): { x: number; y: number; width: number; height: number } | undefined {
+function parseViewBox(value: string | null): PreviewViewBox | undefined {
   const parts = value?.trim().split(/\s+/).map(Number);
 
   if (!parts || parts.length !== 4 || parts.some((part) => !Number.isFinite(part))) {
@@ -1981,12 +2500,14 @@ function highlightSelectedPreviewItem(elements: EditorElements): void {
     element.removeAttribute("data-editor-selected");
   }
 
-  if (!elements.selectedItemId) {
+  if (elements.selectedItemIds.length === 0) {
     return;
   }
 
+  const selectedIds = new Set(elements.selectedItemIds);
+
   for (const element of elements.previewSurface.querySelectorAll("[data-id]")) {
-    if (element.getAttribute("data-id") === elements.selectedItemId) {
+    if (selectedIds.has(element.getAttribute("data-id") ?? "")) {
       element.setAttribute("data-editor-selected", "true");
     }
   }
@@ -2411,7 +2932,7 @@ function updateSelectedItemField(
   (item as Record<string, unknown>)[fieldName] = nextValue;
 
   if (fieldName === "id") {
-    elements.selectedItemId = rawValue;
+    setSelectedItems(elements, [rawValue]);
   }
 
   elements.jsonInput.value = formatPayloadJson(result.payload);
@@ -3109,8 +3630,16 @@ function createGlobalToolbar(documentRef: Document): HTMLElement {
 
   const toolGroup = createToolbarGroup(documentRef, "Tools");
 
-  const selectToolButton = createToolbarButton(documentRef, "select-tool-button", "Select");
+  const selectToolButton = createToolbarButton(documentRef, "select-tool-button", "Pointer");
+  selectToolButton.textContent = "↖";
+  selectToolButton.title = "Pointer";
+  selectToolButton.setAttribute("aria-label", "Pointer");
   selectToolButton.setAttribute("aria-pressed", "true");
+
+  const panToolButton = createToolbarButton(documentRef, "pan-tool-button", "🤚");
+  panToolButton.title = "Pan";
+  panToolButton.setAttribute("aria-label", "Pan");
+  panToolButton.setAttribute("aria-pressed", "false");
 
   const drawPolylineButton = createToolbarButton(documentRef, "draw-polyline-button", "Draw Polyline");
   drawPolylineButton.setAttribute("aria-pressed", "false");
@@ -3118,7 +3647,7 @@ function createGlobalToolbar(documentRef: Document): HTMLElement {
   const finishPolylineButton = createToolbarButton(documentRef, "finish-polyline-button", "Finish");
   finishPolylineButton.hidden = true;
 
-  toolGroup.append(selectToolButton, drawPolylineButton, finishPolylineButton);
+  toolGroup.append(selectToolButton, panToolButton, drawPolylineButton, finishPolylineButton);
 
   const addGroup = createToolbarGroup(documentRef, "Add");
   addGroup.append(
@@ -3208,7 +3737,12 @@ function createPreviewPane(documentRef: Document): HTMLElement {
   toggleSnapButton.textContent = "Snap On";
   toggleSnapButton.setAttribute("aria-pressed", "true");
 
-  controls.append(toggleGridButton, toggleSnapButton, gridSizeLabel);
+  const resetViewButton = documentRef.createElement("button");
+  resetViewButton.className = "reset-view-button utility-button";
+  resetViewButton.type = "button";
+  resetViewButton.textContent = "Fit";
+
+  controls.append(toggleGridButton, toggleSnapButton, gridSizeLabel, resetViewButton);
   pane.querySelector(".pane-header")?.append(controls);
   pane.append(createPreviewSurface(documentRef), createPolylineContextMenu(documentRef));
   return pane;
