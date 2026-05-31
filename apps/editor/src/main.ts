@@ -14,6 +14,7 @@ import demoPayloadJson from "../../../examples/demo-payloads/minimal.json";
 const demoPayload = demoPayloadJson as SchematicPayload;
 const DEFAULT_EDITOR_GRID_SIZE = 10;
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+const THEME_STORAGE_KEY = "ha-schematic-card-editor-theme-preview";
 
 const demoEntityStates = {
   "input_boolean.schematic_demo_alarm": "on",
@@ -30,6 +31,17 @@ type EditorElements = {
   editorRoot: HTMLElement;
   jsonInput: HTMLTextAreaElement;
   itemList: HTMLElement;
+  itemsTabButton: HTMLButtonElement;
+  inspectorTabButton: HTMLButtonElement;
+  jsonTabButton: HTMLButtonElement;
+  primaryPanel: HTMLElement;
+  dockedPanel: HTMLElement;
+  dockedPanelTab: HTMLButtonElement;
+  tabDropZone: HTMLElement;
+  itemListSection: HTMLElement;
+  inspectorSection: HTMLElement;
+  jsonSection: HTMLElement;
+  selectToolButton: HTMLButtonElement;
   addTextButton: HTMLButtonElement;
   addRectButton: HTMLButtonElement;
   addCircleButton: HTMLButtonElement;
@@ -51,7 +63,9 @@ type EditorElements = {
   applyThemeButton: HTMLButtonElement;
   openImportButton: HTMLButtonElement;
   openExportButton: HTMLButtonElement;
+  openThemeButton: HTMLButtonElement;
   toggleGridButton: HTMLButtonElement;
+  toggleSnapButton: HTMLButtonElement;
   gridSizeInput: HTMLInputElement;
   drawPolylineButton: HTMLButtonElement;
   finishPolylineButton: HTMLButtonElement;
@@ -64,14 +78,17 @@ type EditorElements = {
   sendToBackButton: HTMLButtonElement;
   closeTransferPanelButton: HTMLButtonElement;
   importButton: HTMLButtonElement;
-  jsonSectionToggle: HTMLButtonElement;
   formatButton: HTMLButtonElement;
   resetButton: HTMLButtonElement;
   undoButton: HTMLButtonElement;
   redoButton: HTMLButtonElement;
   selectedItemId?: string;
   gridEnabled: boolean;
+  snapEnabled: boolean;
   gridSize: number;
+  activeTab: EditorTabName;
+  dockedTab?: EditorTabName;
+  draggedTab?: EditorTabName;
   undoStack: EditorSnapshot[];
   redoStack: EditorSnapshot[];
   dragState?: PreviewDragState;
@@ -115,6 +132,8 @@ type LayerAction = "forward" | "backward" | "front" | "back";
 
 type AddItemType = "text" | "rect" | "circle";
 
+type EditorTabName = "items" | "inspector" | "json";
+
 type StyleFieldName = keyof SchematicStyle;
 
 type StyleFieldValueType = "number" | "string" | "fontWeight" | "textAnchor";
@@ -122,6 +141,58 @@ type StyleFieldValueType = "number" | "string" | "fontWeight" | "textAnchor";
 type StyleFieldConfig = {
   name: StyleFieldName;
   valueType: StyleFieldValueType;
+};
+
+type ThemeTokenPreset = {
+  label: string;
+  value: string;
+};
+
+type StyleSliderConfig = {
+  min: number;
+  max: number;
+  step: number;
+  fallback: number;
+};
+
+const THEME_TOKEN_PRESETS: ThemeTokenPreset[] = [
+  { label: "primary text", value: "var(--primary-text-color)" },
+  { label: "secondary text", value: "var(--secondary-text-color)" },
+  { label: "accent", value: "var(--accent-color)" },
+  { label: "error", value: "var(--error-color)" },
+  { label: "warning", value: "var(--warning-color)" },
+  { label: "success", value: "var(--success-color)" },
+  { label: "divider", value: "var(--divider-color)" }
+];
+
+const INSPECTOR_FIELD_LABELS: Record<"id" | "layer" | "x" | "y" | "text", string> = {
+  id: "Item id",
+  layer: "Layer / z-order",
+  x: "X position",
+  y: "Y position",
+  text: "Text content"
+};
+
+const STYLE_FIELD_LABELS: Record<StyleFieldName, string> = {
+  stroke: "Stroke / line color",
+  strokeWidth: "Stroke width",
+  strokeDasharray: "Stroke dash pattern",
+  fill: "Fill / inside color",
+  opacity: "Opacity 0-100%",
+  fontSize: "Font size",
+  fontWeight: "Font weight",
+  textAnchor: "Text anchor"
+};
+
+const STYLE_FIELD_HELPERS: Partial<Record<StyleFieldName, string>> = {
+  stroke: "Use a color, none, or a Home Assistant CSS variable.",
+  fill: "Use a color, none, transparent, or a theme token.",
+  strokeWidth: "Line width in SVG units.",
+  strokeDasharray: "Numbers separated by spaces or commas.",
+  opacity: "0 is transparent, 100 is solid. Stored as schema opacity 0-1.",
+  fontSize: "Text size in SVG units.",
+  fontWeight: "normal, bold, or a numeric weight.",
+  textAnchor: "start, middle, or end."
 };
 
 const PAINT_STYLE_FIELDS: StyleFieldConfig[] = [
@@ -185,6 +256,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   shell.className = "editor-shell";
   shell.tabIndex = -1;
 
+  const toolbar = createGlobalToolbar(documentRef);
   const jsonPane = createJsonPane(documentRef);
   const previewPane = createPreviewPane(documentRef);
   const resizeHandle = createResizeHandle(documentRef, shell);
@@ -194,16 +266,27 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     editorRoot: shell,
     jsonInput: getRequiredElement(jsonPane, ".json-input", HTMLTextAreaElement),
     itemList: getRequiredElement(jsonPane, ".item-list", HTMLElement),
-    addTextButton: getRequiredElement(jsonPane, ".add-text-button", HTMLButtonElement),
-    addRectButton: getRequiredElement(jsonPane, ".add-rect-button", HTMLButtonElement),
-    addCircleButton: getRequiredElement(jsonPane, ".add-circle-button", HTMLButtonElement),
-    duplicateItemButton: getRequiredElement(jsonPane, ".duplicate-item-button", HTMLButtonElement),
-    deleteItemButton: getRequiredElement(jsonPane, ".delete-item-button", HTMLButtonElement),
+    itemsTabButton: getRequiredElement(jsonPane, '[data-editor-tab="items"]', HTMLButtonElement),
+    inspectorTabButton: getRequiredElement(jsonPane, '[data-editor-tab="inspector"]', HTMLButtonElement),
+    jsonTabButton: getRequiredElement(jsonPane, '[data-editor-tab="json"]', HTMLButtonElement),
+    primaryPanel: getRequiredElement(jsonPane, ".editor-primary-panel", HTMLElement),
+    dockedPanel: getRequiredElement(jsonPane, ".editor-docked-panel", HTMLElement),
+    dockedPanelTab: getRequiredElement(jsonPane, ".editor-docked-tab", HTMLButtonElement),
+    tabDropZone: getRequiredElement(jsonPane, ".editor-tab-drop-zone", HTMLElement),
+    itemListSection: getRequiredElement(jsonPane, ".item-list-section", HTMLElement),
+    inspectorSection: getRequiredElement(jsonPane, ".inspector-section", HTMLElement),
+    jsonSection: getRequiredElement(jsonPane, ".json-editor-section", HTMLElement),
+    selectToolButton: getRequiredElement(toolbar, ".select-tool-button", HTMLButtonElement),
+    addTextButton: getRequiredElement(toolbar, ".add-text-button", HTMLButtonElement),
+    addRectButton: getRequiredElement(toolbar, ".add-rect-button", HTMLButtonElement),
+    addCircleButton: getRequiredElement(toolbar, ".add-circle-button", HTMLButtonElement),
+    duplicateItemButton: getRequiredElement(toolbar, ".duplicate-item-button", HTMLButtonElement),
+    deleteItemButton: getRequiredElement(toolbar, ".delete-item-button", HTMLButtonElement),
     inspector: getRequiredElement(jsonPane, ".property-inspector", HTMLElement),
     inspectorStatus: getRequiredElement(jsonPane, ".inspector-status", HTMLElement),
     previewSurface: getRequiredElement(previewPane, ".preview-surface", HTMLElement),
-    themeInput: getRequiredElement(previewPane, ".theme-input", HTMLTextAreaElement),
-    themeStatus: getRequiredElement(previewPane, ".theme-status", HTMLElement),
+    themeInput: getRequiredElement(transferPanel, ".theme-input", HTMLTextAreaElement),
+    themeStatus: getRequiredElement(transferPanel, ".theme-status", HTMLElement),
     transferPanel: getRequiredElement(transferPanel, ".transfer-panel", HTMLElement),
     transferPanelTitle: getRequiredElement(transferPanel, ".transfer-panel-title", HTMLElement),
     importSection: getRequiredElement(transferPanel, ".import-section", HTMLElement),
@@ -212,13 +295,15 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     exportOutput: getRequiredElement(transferPanel, ".payload-output", HTMLTextAreaElement),
     status: getRequiredElement(transferPanel, ".status", HTMLElement),
     copyButton: getRequiredElement(transferPanel, ".copy-button", HTMLButtonElement),
-    applyThemeButton: getRequiredElement(previewPane, ".apply-theme-button", HTMLButtonElement),
-    openImportButton: getRequiredElement(previewPane, ".open-import-button", HTMLButtonElement),
-    openExportButton: getRequiredElement(previewPane, ".open-export-button", HTMLButtonElement),
+    applyThemeButton: getRequiredElement(transferPanel, ".apply-theme-button", HTMLButtonElement),
+    openImportButton: getRequiredElement(toolbar, ".open-import-button", HTMLButtonElement),
+    openExportButton: getRequiredElement(toolbar, ".open-export-button", HTMLButtonElement),
+    openThemeButton: getRequiredElement(toolbar, ".open-theme-button", HTMLButtonElement),
     toggleGridButton: getRequiredElement(previewPane, ".toggle-grid-button", HTMLButtonElement),
+    toggleSnapButton: getRequiredElement(previewPane, ".toggle-snap-button", HTMLButtonElement),
     gridSizeInput: getRequiredElement(previewPane, ".grid-size-input", HTMLInputElement),
-    drawPolylineButton: getRequiredElement(previewPane, ".draw-polyline-button", HTMLButtonElement),
-    finishPolylineButton: getRequiredElement(previewPane, ".finish-polyline-button", HTMLButtonElement),
+    drawPolylineButton: getRequiredElement(toolbar, ".draw-polyline-button", HTMLButtonElement),
+    finishPolylineButton: getRequiredElement(toolbar, ".finish-polyline-button", HTMLButtonElement),
     polylineContextMenu: getRequiredElement(previewPane, ".polyline-context-menu", HTMLElement),
     addPolylinePointButton: getRequiredElement(previewPane, ".add-polyline-point-button", HTMLButtonElement),
     deletePolylinePointButton: getRequiredElement(previewPane, ".delete-polyline-point-button", HTMLButtonElement),
@@ -228,24 +313,29 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     sendToBackButton: getRequiredElement(previewPane, ".send-to-back-button", HTMLButtonElement),
     closeTransferPanelButton: getRequiredElement(transferPanel, ".transfer-panel-close", HTMLButtonElement),
     importButton: getRequiredElement(transferPanel, ".import-button", HTMLButtonElement),
-    jsonSectionToggle: getRequiredElement(jsonPane, '[data-section-toggle="json-editor-section"]', HTMLButtonElement),
-    formatButton: getRequiredElement(jsonPane, ".format-button", HTMLButtonElement),
-    resetButton: getRequiredElement(jsonPane, ".reset-button", HTMLButtonElement),
-    undoButton: getRequiredElement(jsonPane, ".undo-button", HTMLButtonElement),
-    redoButton: getRequiredElement(jsonPane, ".redo-button", HTMLButtonElement),
+    formatButton: getRequiredElement(toolbar, ".format-button", HTMLButtonElement),
+    resetButton: getRequiredElement(toolbar, ".reset-button", HTMLButtonElement),
+    undoButton: getRequiredElement(toolbar, ".undo-button", HTMLButtonElement),
+    redoButton: getRequiredElement(toolbar, ".redo-button", HTMLButtonElement),
     gridEnabled: true,
+    snapEnabled: true,
     gridSize: DEFAULT_EDITOR_GRID_SIZE,
+    activeTab: "items",
     undoStack: [],
     redoStack: []
   };
 
   elements.jsonInput.value = formatPayloadJson();
+  loadStoredThemePreview(elements);
   elements.jsonInput.addEventListener("input", () => updateFromJson(elements, documentRef));
   elements.copyButton.addEventListener("click", async () => copyExportedPayload(elements));
   elements.applyThemeButton.addEventListener("click", () => applyThemePreview(elements));
   elements.openImportButton.addEventListener("click", () => openTransferPanel(elements, "import"));
   elements.openExportButton.addEventListener("click", () => openTransferPanel(elements, "export"));
+  elements.openThemeButton.addEventListener("click", () => openTransferPanel(elements, "theme"));
+  elements.selectToolButton.addEventListener("click", () => activateSelectTool(elements, documentRef));
   elements.toggleGridButton.addEventListener("click", () => togglePreviewGrid(elements, documentRef));
+  elements.toggleSnapButton.addEventListener("click", () => toggleSnap(elements));
   elements.gridSizeInput.addEventListener("change", () => updateGridSize(elements, documentRef));
   elements.drawPolylineButton.addEventListener("click", () => startPolylineDrawing(elements, documentRef));
   elements.finishPolylineButton.addEventListener("click", () => finishPolylineDrawing(elements, documentRef));
@@ -266,9 +356,13 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.resetButton.addEventListener("click", () => resetDemoPayload(elements, documentRef));
   elements.undoButton.addEventListener("click", () => undoEditorChange(elements, documentRef));
   elements.redoButton.addEventListener("click", () => redoEditorChange(elements, documentRef));
+  elements.itemsTabButton.addEventListener("click", () => showEditorTab(elements, "items"));
+  elements.inspectorTabButton.addEventListener("click", () => showEditorTab(elements, "inspector"));
+  elements.jsonTabButton.addEventListener("click", () => showEditorTab(elements, "json"));
+  setupEditorTabDocking(elements);
   shell.addEventListener("keydown", (event) => handleEditorKeyDown(elements, event, documentRef));
 
-  shell.append(jsonPane, resizeHandle, previewPane, transferPanel);
+  shell.append(toolbar, jsonPane, resizeHandle, previewPane, transferPanel);
   updateFromJson(elements, documentRef);
 
   return shell;
@@ -282,7 +376,12 @@ export function mountEditorApp(root: HTMLElement | null = document.getElementByI
   root.replaceChildren(createEditorApp(root.ownerDocument));
 }
 
-function updateFromJson(elements: EditorElements, documentRef: Document): void {
+function updateFromJson(
+  elements: EditorElements,
+  documentRef: Document,
+  options: { renderTools?: boolean } = {}
+): void {
+  const renderTools = options.renderTools ?? true;
   const result = parseAndValidatePayload(elements.jsonInput.value);
 
   elements.previewSurface.replaceChildren();
@@ -311,7 +410,11 @@ function updateFromJson(elements: EditorElements, documentRef: Document): void {
   elements.exportOutput.value = encodePayload(result.payload);
   elements.status.textContent = "Valid payload";
   elements.status.dataset.state = "valid";
-  renderItemTools(elements, result.payload, documentRef);
+  if (renderTools) {
+    renderItemTools(elements, result.payload, documentRef);
+  } else {
+    highlightSelectedPreviewItem(elements);
+  }
 }
 
 function getCurrentSnapshot(elements: EditorElements): EditorSnapshot {
@@ -378,11 +481,188 @@ function updateHistoryControls(elements: EditorElements): void {
   elements.redoButton.disabled = elements.redoStack.length === 0;
 }
 
+function activateSelectTool(elements: EditorElements, documentRef: Document): void {
+  if (elements.drawState) {
+    cancelPolylineDrawing(elements, documentRef);
+    return;
+  }
+
+  updateDrawControls(elements);
+}
+
+function showEditorTab(elements: EditorElements, tab: EditorTabName): void {
+  if (elements.dockedTab === tab) {
+    undockEditorTab(elements, tab);
+  }
+
+  elements.activeTab = tab;
+  updateEditorTabs(elements);
+
+  if (tab === "json") {
+    selectSelectedItemInJson(elements);
+  }
+}
+
 function togglePreviewGrid(elements: EditorElements, documentRef: Document): void {
   elements.gridEnabled = !elements.gridEnabled;
   elements.toggleGridButton.setAttribute("aria-pressed", String(elements.gridEnabled));
   elements.toggleGridButton.textContent = elements.gridEnabled ? "Grid On" : "Grid Off";
   updateFromJson(elements, documentRef);
+}
+
+function toggleSnap(elements: EditorElements): void {
+  elements.snapEnabled = !elements.snapEnabled;
+  elements.toggleSnapButton.setAttribute("aria-pressed", String(elements.snapEnabled));
+  elements.toggleSnapButton.textContent = elements.snapEnabled ? "Snap On" : "Snap Off";
+}
+
+function updateEditorTabs(elements: EditorElements): void {
+  const tabs: EditorTabName[] = ["items", "inspector", "json"];
+  const buttons = {
+    items: elements.itemsTabButton,
+    inspector: elements.inspectorTabButton,
+    json: elements.jsonTabButton
+  };
+  const sections = {
+    items: elements.itemListSection,
+    inspector: elements.inspectorSection,
+    json: elements.jsonSection
+  };
+
+  for (const tab of tabs) {
+    const active = elements.activeTab === tab;
+    const docked = elements.dockedTab === tab;
+    buttons[tab].setAttribute("aria-selected", String(active));
+    buttons[tab].dataset.docked = String(docked);
+    sections[tab].hidden = !active && !docked;
+
+    if (docked && sections[tab].parentElement !== elements.dockedPanel) {
+      elements.dockedPanel.append(sections[tab]);
+    } else if (!docked && sections[tab].parentElement !== elements.primaryPanel) {
+      elements.primaryPanel.append(sections[tab]);
+    }
+  }
+
+  elements.dockedPanel.hidden = elements.dockedTab === undefined;
+  elements.dockedPanelTab.hidden = elements.dockedTab === undefined;
+  elements.dockedPanelTab.textContent = elements.dockedTab ? getEditorTabLabel(elements.dockedTab) : "";
+  elements.dockedPanelTab.dataset.editorTab = elements.dockedTab;
+  elements.editorRoot.dataset.dockedTab = elements.dockedTab ?? "";
+}
+
+function setupEditorTabDocking(elements: EditorElements): void {
+  for (const button of [elements.itemsTabButton, elements.inspectorTabButton, elements.jsonTabButton]) {
+    button.draggable = true;
+    button.addEventListener("dragstart", (event) => {
+      elements.draggedTab = getTabNameFromButton(button);
+      event.dataTransfer?.setData("text/plain", elements.draggedTab);
+    });
+    button.addEventListener("dragend", () => {
+      delete elements.draggedTab;
+      elements.tabDropZone.dataset.dropTarget = "false";
+    });
+  }
+
+  elements.dockedPanelTab.draggable = true;
+  elements.dockedPanelTab.addEventListener("dragstart", (event) => {
+    if (!elements.dockedTab) {
+      return;
+    }
+
+    elements.draggedTab = elements.dockedTab;
+    event.dataTransfer?.setData("text/plain", elements.draggedTab);
+  });
+  elements.dockedPanelTab.addEventListener("dragend", () => {
+    delete elements.draggedTab;
+    elements.tabDropZone.dataset.dropTarget = "false";
+  });
+
+  elements.tabDropZone.addEventListener("dragover", (event) => {
+    if (!elements.draggedTab || elements.draggedTab === elements.dockedTab) {
+      return;
+    }
+
+    event.preventDefault();
+    elements.tabDropZone.dataset.dropTarget = "true";
+  });
+
+  elements.tabDropZone.addEventListener("dragleave", () => {
+    elements.tabDropZone.dataset.dropTarget = "false";
+  });
+
+  elements.tabDropZone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    const tab = elements.draggedTab;
+    elements.tabDropZone.dataset.dropTarget = "false";
+
+    if (!tab || tab === elements.dockedTab) {
+      return;
+    }
+
+    dockEditorTab(elements, tab);
+  });
+
+  const tabRow = elements.itemsTabButton.parentElement;
+  tabRow?.addEventListener("dragover", (event) => {
+    if (elements.draggedTab && elements.draggedTab === elements.dockedTab) {
+      event.preventDefault();
+      tabRow.dataset.dropTarget = "true";
+    }
+  });
+  tabRow?.addEventListener("dragleave", () => {
+    tabRow.dataset.dropTarget = "false";
+  });
+  tabRow?.addEventListener("drop", (event) => {
+    event.preventDefault();
+    tabRow.dataset.dropTarget = "false";
+
+    if (elements.draggedTab) {
+      undockEditorTab(elements, elements.draggedTab);
+    }
+  });
+
+  updateEditorTabs(elements);
+}
+
+function getTabNameFromButton(button: HTMLButtonElement): EditorTabName {
+  return button.dataset.editorTab === "inspector" || button.dataset.editorTab === "json"
+    ? button.dataset.editorTab
+    : "items";
+}
+
+function getEditorTabLabel(tab: EditorTabName): string {
+  switch (tab) {
+    case "items":
+      return "Items";
+    case "inspector":
+      return "Inspector";
+    case "json":
+      return "JSON";
+  }
+}
+
+function dockEditorTab(elements: EditorElements, tab: EditorTabName): void {
+  if (elements.dockedTab && elements.dockedTab !== tab) {
+    undockEditorTab(elements, elements.dockedTab);
+  }
+
+  elements.dockedTab = tab;
+
+  if (elements.activeTab === tab) {
+    elements.activeTab = tab === "items" ? "inspector" : "items";
+  }
+
+  updateEditorTabs(elements);
+}
+
+function undockEditorTab(elements: EditorElements, tab: EditorTabName): void {
+  if (elements.dockedTab !== tab) {
+    return;
+  }
+
+  delete elements.dockedTab;
+  elements.activeTab = tab;
+  updateEditorTabs(elements);
 }
 
 function updateGridSize(elements: EditorElements, documentRef: Document): void {
@@ -596,7 +876,7 @@ function addItem(elements: EditorElements, type: AddItemType, documentRef: Docum
   elements.selectedItemId = item.id;
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
-  jumpToSelectedItemInJson(elements);
+  showEditorTab(elements, "inspector");
 }
 
 function createDefaultItem(payload: SchematicPayload, type: AddItemType): SchematicItem {
@@ -707,7 +987,7 @@ function duplicateSelectedItem(elements: EditorElements, documentRef: Document):
   elements.selectedItemId = duplicate.id;
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
-  jumpToSelectedItemInJson(elements);
+  showEditorTab(elements, "inspector");
   elements.inspectorStatus.textContent = `Duplicated ${sourceItem.id}`;
   elements.inspectorStatus.dataset.state = "valid";
 }
@@ -743,16 +1023,12 @@ function renderItemTools(elements: EditorElements, payload: SchematicPayload, do
 
   if (payload.items.length === 0) {
     elements.selectedItemId = undefined;
-    elements.inspector.replaceChildren();
-    updateSelectedItemActionButtons(elements, false);
-    elements.inspectorStatus.textContent = "No top-level items";
-    elements.inspectorStatus.dataset.state = "error";
+    renderNeutralInspector(elements, "No top-level items");
     return;
   }
 
-  const selectedItem = payload.items.find((item) => item.id === elements.selectedItemId) ?? payload.items[0];
-  elements.selectedItemId = selectedItem.id;
-  updateSelectedItemActionButtons(elements, true);
+  const selectedItem = payload.items.find((item) => item.id === elements.selectedItemId);
+  updateSelectedItemActionButtons(elements, selectedItem !== undefined);
 
   for (const item of payload.items) {
     const button = documentRef.createElement("button");
@@ -764,12 +1040,17 @@ function renderItemTools(elements: EditorElements, payload: SchematicPayload, do
     button.addEventListener("click", () => {
       elements.selectedItemId = item.id;
       renderItemTools(elements, payload, documentRef);
-      jumpToSelectedItemInJson(elements);
+      showEditorTab(elements, "inspector");
     });
     elements.itemList.append(button);
   }
 
-  renderInspector(elements, selectedItem, documentRef);
+  if (selectedItem) {
+    renderInspector(elements, selectedItem, documentRef);
+  } else {
+    renderNeutralInspector(elements, "Select an item");
+  }
+
   highlightSelectedPreviewItem(elements);
 }
 
@@ -787,12 +1068,31 @@ function selectPreviewItem(
   const itemId = findSelectablePreviewItemId(elements, payload, target);
 
   if (!itemId) {
+    clearSelection(elements, payload, documentRef);
     return;
   }
 
   elements.selectedItemId = itemId;
   renderItemTools(elements, payload, documentRef);
-  jumpToSelectedItemInJson(elements);
+
+  if (isJsonVisible(elements)) {
+    selectSelectedItemInJson(elements);
+  }
+}
+
+function clearSelection(elements: EditorElements, payload: SchematicPayload, documentRef: Document): void {
+  if (!elements.selectedItemId) {
+    renderItemTools(elements, payload, documentRef);
+    return;
+  }
+
+  delete elements.selectedItemId;
+  renderItemTools(elements, payload, documentRef);
+  clearJsonSelection(elements);
+}
+
+function isJsonVisible(elements: EditorElements): boolean {
+  return elements.activeTab === "json" || elements.dockedTab === "json";
 }
 
 function handlePreviewClick(
@@ -1117,6 +1417,7 @@ function startPolylineDrawing(elements: EditorElements, documentRef: Document): 
     points: []
   };
   elements.selectedItemId = itemId;
+  showEditorTab(elements, "inspector");
   updateDrawControls(elements);
   updateFromJson(elements, documentRef);
   elements.inspectorStatus.textContent = "Click preview points. Enter or Finish to save, Escape to cancel.";
@@ -1221,7 +1522,6 @@ function finishPolylineDrawing(elements: EditorElements, documentRef: Document):
   delete elements.drawState;
   updateDrawControls(elements);
   updateFromJson(elements, documentRef);
-  jumpToSelectedItemInJson(elements);
   elements.inspectorStatus.textContent = `Finished ${itemId}`;
   elements.inspectorStatus.dataset.state = "valid";
 }
@@ -1274,6 +1574,7 @@ function upsertDraftPolyline(payload: SchematicPayload, drawState: PolylineDrawS
 
 function updateDrawControls(elements: EditorElements): void {
   const drawing = elements.drawState !== undefined;
+  elements.selectToolButton.setAttribute("aria-pressed", String(!drawing));
   elements.drawPolylineButton.textContent = drawing ? "Cancel Polyline" : "Draw Polyline";
   elements.drawPolylineButton.setAttribute("aria-pressed", String(drawing));
   elements.finishPolylineButton.hidden = !drawing;
@@ -1285,7 +1586,7 @@ function updateDrawControls(elements: EditorElements): void {
 }
 
 function snapPointIfNeeded(elements: EditorElements, point: SchematicPoint): SchematicPoint {
-  if (!elements.gridEnabled) {
+  if (!elements.snapEnabled) {
     return point;
   }
 
@@ -1619,7 +1920,7 @@ function moveSelectedItemFromDrag(
     dragState.historyRecorded = true;
   }
 
-  if (elements.gridEnabled) {
+  if (elements.snapEnabled) {
     snapItemToGrid(item, elements.gridSize);
   }
 
@@ -1691,21 +1992,24 @@ function highlightSelectedPreviewItem(elements: EditorElements): void {
   }
 }
 
-function jumpToSelectedItemInJson(elements: EditorElements): void {
+function selectSelectedItemInJson(elements: EditorElements): void {
   if (!elements.selectedItemId) {
     return;
   }
 
-  const matchIndex = findItemIdIndex(elements.jsonInput.value, elements.selectedItemId);
+  const range = findItemBlockRange(elements.jsonInput.value, elements.selectedItemId);
 
-  if (matchIndex === -1) {
+  if (!range) {
     return;
   }
 
-  expandSection(elements.jsonSectionToggle, elements.jsonInput);
-  elements.jsonInput.setSelectionRange(matchIndex, matchIndex + elements.selectedItemId.length + 7);
-  elements.jsonInput.scrollTop = estimateTextareaScrollTop(elements.jsonInput.value, matchIndex);
-  elements.editorRoot.focus();
+  elements.jsonInput.focus();
+  elements.jsonInput.setSelectionRange(range.start, range.end);
+  elements.jsonInput.scrollTop = estimateTextareaScrollTop(elements.jsonInput.value, range.start);
+}
+
+function clearJsonSelection(elements: EditorElements): void {
+  elements.jsonInput.setSelectionRange(0, 0);
 }
 
 function findItemIdIndex(json: string, itemId: string): number {
@@ -1715,19 +2019,60 @@ function findItemIdIndex(json: string, itemId: string): number {
   return json.indexOf(itemIdPattern, searchStart);
 }
 
-function expandSection(toggle: HTMLButtonElement, body: HTMLElement): void {
-  if (!body.hidden) {
-    return;
+function findItemBlockRange(json: string, itemId: string): { start: number; end: number } | undefined {
+  const idIndex = findItemIdIndex(json, itemId);
+
+  if (idIndex === -1) {
+    return undefined;
   }
 
-  body.hidden = false;
-  toggle.setAttribute("aria-expanded", "true");
-  toggle.querySelector(".subsection-icon")?.replaceChildren("^^");
-  const section = toggle.closest<HTMLElement>(".editor-subsection");
+  const start = json.lastIndexOf("{", idIndex);
 
-  if (section) {
-    section.dataset.collapsed = "false";
+  if (start === -1) {
+    return undefined;
   }
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = start; index < json.length; index += 1) {
+    const char = json[index];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = inString;
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) {
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+
+      if (depth === 0) {
+        return {
+          start,
+          end: index + 1
+        };
+      }
+    }
+  }
+
+  return undefined;
 }
 
 function estimateTextareaScrollTop(value: string, index: number): number {
@@ -1758,6 +2103,13 @@ function renderInspector(elements: EditorElements, item: SchematicItem, document
   appendStyleInspector(elements, documentRef, item);
 }
 
+function renderNeutralInspector(elements: EditorElements, message: string): void {
+  elements.inspector.replaceChildren();
+  updateSelectedItemActionButtons(elements, false);
+  elements.inspectorStatus.textContent = message;
+  elements.inspectorStatus.dataset.state = "neutral";
+}
+
 function appendInspectorField(
   elements: EditorElements,
   documentRef: Document,
@@ -1767,10 +2119,11 @@ function appendInspectorField(
 ): void {
   const label = documentRef.createElement("label");
   label.className = "inspector-field";
+  label.dataset.fieldName = fieldName;
 
   const labelText = documentRef.createElement("span");
   labelText.className = "field-label";
-  labelText.textContent = fieldName;
+  labelText.textContent = INSPECTOR_FIELD_LABELS[fieldName];
 
   const input = documentRef.createElement("input");
   input.className = "inspector-input";
@@ -1781,11 +2134,22 @@ function appendInspectorField(
     input.inputMode = "decimal";
   }
 
+  const helper = documentRef.createElement("span");
+  helper.className = "field-helper";
+  helper.textContent = fieldName === "layer"
+    ? "Higher layers render in front."
+    : fieldName === "id"
+      ? "Unique id used for selection and JSON lookup."
+      : "";
+
   input.addEventListener("change", () => {
     updateSelectedItemField(elements, fieldName, input.value, valueType, documentRef);
   });
 
   label.append(labelText, input);
+  if (helper.textContent) {
+    label.append(helper);
+  }
   elements.inspector.append(label);
 }
 
@@ -1819,17 +2183,18 @@ function appendStyleField(
   item: SchematicItem,
   field: StyleFieldConfig
 ): void {
-  const label = documentRef.createElement("label");
-  label.className = "inspector-field style-inspector-field";
+  const fieldElement = documentRef.createElement("div");
+  fieldElement.className = "inspector-field style-inspector-field";
+  fieldElement.dataset.fieldName = field.name;
 
   const labelText = documentRef.createElement("span");
   labelText.className = "field-label";
-  labelText.textContent = field.name;
+  labelText.textContent = STYLE_FIELD_LABELS[field.name];
 
   const input = documentRef.createElement("input");
   input.className = "inspector-input style-inspector-input";
   input.type = "text";
-  input.value = formatStyleFieldValue(item.style?.[field.name]);
+  input.value = formatStyleFieldValue(item.style?.[field.name], field.name);
 
   if (field.valueType === "number") {
     input.inputMode = "decimal";
@@ -1839,8 +2204,144 @@ function appendStyleField(
     updateSelectedItemStyleField(elements, field, input.value, documentRef);
   });
 
-  label.append(labelText, input);
-  section.append(label);
+  fieldElement.append(labelText);
+
+  if (field.name === "stroke" || field.name === "fill") {
+    fieldElement.append(createPaintFieldControls(elements, documentRef, field, input));
+  } else if (field.valueType === "number") {
+    fieldElement.append(createNumberFieldControls(elements, documentRef, field, input));
+  } else {
+    fieldElement.append(input);
+  }
+
+  const helperText = STYLE_FIELD_HELPERS[field.name];
+
+  if (helperText) {
+    const helper = documentRef.createElement("span");
+    helper.className = "field-helper";
+    helper.textContent = helperText;
+    fieldElement.append(helper);
+  }
+
+  section.append(fieldElement);
+}
+
+function createNumberFieldControls(
+  elements: EditorElements,
+  documentRef: Document,
+  field: StyleFieldConfig,
+  input: HTMLInputElement
+): HTMLElement {
+  const controls = documentRef.createElement("div");
+  controls.className = "number-field-controls";
+
+  const sliderConfig = getStyleSliderConfig(field.name);
+
+  if (!sliderConfig) {
+    controls.append(input);
+    return controls;
+  }
+
+  const slider = documentRef.createElement("input");
+  slider.className = "style-slider-input";
+  slider.type = "range";
+  slider.min = String(sliderConfig.min);
+  slider.max = String(sliderConfig.max);
+  slider.step = String(sliderConfig.step);
+  slider.value = input.value.length > 0 ? input.value : String(sliderConfig.fallback);
+  slider.title = STYLE_FIELD_LABELS[field.name];
+
+  input.addEventListener("change", () => {
+    if (input.value.length > 0 && Number.isFinite(Number(input.value))) {
+      slider.value = input.value;
+    }
+  });
+  slider.addEventListener("input", () => {
+    input.value = slider.value;
+    updateSelectedItemStyleField(elements, field, input.value, documentRef, { renderTools: false });
+  });
+
+  controls.append(input, slider);
+  return controls;
+}
+
+function getStyleSliderConfig(fieldName: StyleFieldName): StyleSliderConfig | undefined {
+  switch (fieldName) {
+    case "opacity":
+      return { min: 0, max: 100, step: 1, fallback: 100 };
+    case "strokeWidth":
+      return { min: 0, max: 20, step: 0.5, fallback: 1 };
+    case "fontSize":
+      return { min: 6, max: 72, step: 1, fallback: 14 };
+    default:
+      return undefined;
+  }
+}
+
+function createPaintFieldControls(
+  elements: EditorElements,
+  documentRef: Document,
+  field: StyleFieldConfig,
+  input: HTMLInputElement
+): HTMLElement {
+  const group = documentRef.createElement("div");
+  group.className = "paint-field-group";
+
+  const controls = documentRef.createElement("div");
+  controls.className = "paint-field-controls";
+
+  const colorInput = documentRef.createElement("input");
+  colorInput.className = "style-color-input";
+  colorInput.type = "color";
+  colorInput.value = isHexColor(input.value) ? normalizeHexColor(input.value) : "#000000";
+  colorInput.title = "Pick color";
+  colorInput.addEventListener("input", () => {
+    input.value = colorInput.value;
+    updateSelectedItemStyleField(elements, field, input.value, documentRef);
+  });
+
+  const presetSelect = documentRef.createElement("select");
+  presetSelect.className = "style-preset-select";
+  presetSelect.title = "Use theme colors";
+
+  const emptyOption = documentRef.createElement("option");
+  emptyOption.value = "";
+  emptyOption.textContent = "Use theme colors...";
+  presetSelect.append(emptyOption);
+
+  for (const preset of THEME_TOKEN_PRESETS) {
+    const option = documentRef.createElement("option");
+    option.value = preset.value;
+    option.textContent = preset.label;
+    presetSelect.append(option);
+  }
+
+  presetSelect.value = THEME_TOKEN_PRESETS.some((preset) => preset.value === input.value) ? input.value : "";
+  presetSelect.addEventListener("change", () => {
+    if (!presetSelect.value) {
+      return;
+    }
+
+    input.value = presetSelect.value;
+    updateSelectedItemStyleField(elements, field, input.value, documentRef);
+  });
+
+  controls.append(input, colorInput);
+  group.append(controls, presetSelect);
+  return group;
+}
+
+function isHexColor(value: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(value) || /^#[0-9a-fA-F]{3}$/.test(value);
+}
+
+function normalizeHexColor(value: string): string {
+  if (/^#[0-9a-fA-F]{6}$/.test(value)) {
+    return value;
+  }
+
+  const [, red, green, blue] = value.match(/^#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])$/) ?? [];
+  return red && green && blue ? `#${red}${red}${green}${green}${blue}${blue}` : "#000000";
 }
 
 function getStyleFieldConfigs(item: SchematicItem): StyleFieldConfig[] {
@@ -1860,8 +2361,16 @@ function getStyleFieldConfigs(item: SchematicItem): StyleFieldConfig[] {
   }
 }
 
-function formatStyleFieldValue(value: SchematicStyle[StyleFieldName] | undefined): string {
-  return value === undefined ? "" : String(value);
+function formatStyleFieldValue(value: SchematicStyle[StyleFieldName] | undefined, fieldName: StyleFieldName): string {
+  if (value === undefined) {
+    return "";
+  }
+
+  if (fieldName === "opacity" && typeof value === "number") {
+    return String(Math.round(value * 100));
+  }
+
+  return String(value);
 }
 
 function updateSelectedItemField(
@@ -1913,7 +2422,8 @@ function updateSelectedItemStyleField(
   elements: EditorElements,
   field: StyleFieldConfig,
   rawValue: string,
-  documentRef: Document
+  documentRef: Document,
+  options: { renderTools?: boolean } = {}
 ): void {
   const result = parseAndValidatePayload(elements.jsonInput.value);
 
@@ -1960,7 +2470,7 @@ function updateSelectedItemStyleField(
   }
 
   elements.jsonInput.value = formatPayloadJson(result.payload);
-  updateFromJson(elements, documentRef);
+  updateFromJson(elements, documentRef, options);
   elements.inspectorStatus.textContent = `Updated ${field.name} for ${item.id}`;
   elements.inspectorStatus.dataset.state = "valid";
 }
@@ -1990,7 +2500,7 @@ function parseStyleFieldValue(
 
     return {
       ok: true,
-      value: numberValue
+      value: field.name === "opacity" ? numberValue / 100 : numberValue
     };
   }
 
@@ -2058,6 +2568,17 @@ function handleEditorKeyDown(elements: EditorElements, event: KeyboardEvent, doc
   if (elements.drawState && event.key === "Escape") {
     event.preventDefault();
     cancelPolylineDrawing(elements, documentRef);
+    return;
+  }
+
+  if (event.key === "Escape" && elements.selectedItemId) {
+    const result = parseAndValidatePayload(elements.jsonInput.value);
+
+    if (result.ok) {
+      event.preventDefault();
+      clearSelection(elements, result.payload, documentRef);
+    }
+
     return;
   }
 
@@ -2334,6 +2855,7 @@ function applyThemePreview(elements: EditorElements): void {
     return;
   }
 
+  getEditorLocalStorage(elements)?.setItem(THEME_STORAGE_KEY, elements.themeInput.value);
   elements.previewSurface.removeAttribute("style");
 
   for (const [name, value] of Object.entries(result.variables)) {
@@ -2342,6 +2864,25 @@ function applyThemePreview(elements: EditorElements): void {
 
   elements.themeStatus.textContent = `Applied ${Object.keys(result.variables).length} theme variables`;
   elements.themeStatus.dataset.state = "valid";
+}
+
+function loadStoredThemePreview(elements: EditorElements): void {
+  const storedTheme = getEditorLocalStorage(elements)?.getItem(THEME_STORAGE_KEY);
+
+  if (!storedTheme) {
+    return;
+  }
+
+  elements.themeInput.value = storedTheme;
+  applyThemePreview(elements);
+}
+
+function getEditorLocalStorage(elements: EditorElements): Storage | undefined {
+  try {
+    return elements.editorRoot.ownerDocument.defaultView?.localStorage;
+  } catch {
+    return undefined;
+  }
 }
 
 function parseThemeVariables(value: string): { ok: true; variables: Record<string, string> } | { ok: false; message: string } {
@@ -2406,12 +2947,17 @@ async function copyExportedPayload(elements: EditorElements): Promise<void> {
   }
 }
 
-function openTransferPanel(elements: EditorElements, mode: "import" | "export"): void {
+function openTransferPanel(elements: EditorElements, mode: "import" | "export" | "theme"): void {
   elements.transferPanel.hidden = false;
   elements.transferPanel.dataset.mode = mode;
-  elements.transferPanelTitle.textContent = mode === "import" ? "Import Payload" : "Export Payload";
+  elements.transferPanelTitle.textContent = mode === "import"
+    ? "Import Payload"
+    : mode === "export"
+      ? "Export Payload"
+      : "Theme Preview";
   elements.importSection.hidden = mode !== "import";
   elements.exportSection.hidden = mode !== "export";
+  elements.themeInput.closest<HTMLElement>(".theme-section")!.hidden = mode !== "theme";
 }
 
 function closeTransferPanel(elements: EditorElements): void {
@@ -2460,94 +3006,64 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 function createJsonPane(documentRef: Document): HTMLElement {
-  const pane = createPane(documentRef, "Decoded JSON");
-  const controls = documentRef.createElement("div");
-  controls.className = "json-controls";
-
-  const undoButton = documentRef.createElement("button");
-  undoButton.className = "undo-button utility-button";
-  undoButton.type = "button";
-  undoButton.textContent = "Undo";
-  undoButton.disabled = true;
-
-  const redoButton = documentRef.createElement("button");
-  redoButton.className = "redo-button utility-button";
-  redoButton.type = "button";
-  redoButton.textContent = "Redo";
-  redoButton.disabled = true;
-
-  const formatButton = documentRef.createElement("button");
-  formatButton.className = "format-button utility-button";
-  formatButton.type = "button";
-  formatButton.textContent = "Format JSON";
-
-  const resetButton = documentRef.createElement("button");
-  resetButton.className = "reset-button utility-button";
-  resetButton.type = "button";
-  resetButton.textContent = "Reset Demo";
+  const pane = createPane(documentRef, "Editor");
 
   const jsonInput = documentRef.createElement("textarea");
   jsonInput.className = "json-input";
   jsonInput.spellcheck = false;
 
+  const tabList = documentRef.createElement("div");
+  tabList.className = "editor-tabs";
+  tabList.setAttribute("role", "tablist");
+
+  const itemsTab = documentRef.createElement("button");
+  itemsTab.className = "editor-tab";
+  itemsTab.type = "button";
+  itemsTab.dataset.editorTab = "items";
+  itemsTab.setAttribute("role", "tab");
+  itemsTab.setAttribute("aria-selected", "true");
+  itemsTab.textContent = "Items";
+
+  const inspectorTab = documentRef.createElement("button");
+  inspectorTab.className = "editor-tab";
+  inspectorTab.type = "button";
+  inspectorTab.dataset.editorTab = "inspector";
+  inspectorTab.setAttribute("role", "tab");
+  inspectorTab.setAttribute("aria-selected", "false");
+  inspectorTab.textContent = "Inspector";
+
+  const jsonTab = documentRef.createElement("button");
+  jsonTab.className = "editor-tab";
+  jsonTab.type = "button";
+  jsonTab.dataset.editorTab = "json";
+  jsonTab.setAttribute("role", "tab");
+  jsonTab.setAttribute("aria-selected", "false");
+  jsonTab.textContent = "JSON";
+
+  tabList.append(itemsTab, inspectorTab, jsonTab);
+
   const itemTools = documentRef.createElement("section");
   itemTools.className = "item-tools";
 
-  const addTools = documentRef.createElement("section");
-  addTools.className = "add-item-tools";
+  const primaryPanel = documentRef.createElement("div");
+  primaryPanel.className = "editor-primary-panel";
 
-  const addLabel = documentRef.createElement("div");
-  addLabel.className = "field-label";
-  addLabel.textContent = "Add";
+  const tabDropZone = documentRef.createElement("div");
+  tabDropZone.className = "editor-tab-drop-zone";
+  tabDropZone.textContent = "Drop tab here to split panel";
 
-  const addButtons = documentRef.createElement("div");
-  addButtons.className = "add-item-buttons";
+  const dockedPanel = documentRef.createElement("div");
+  dockedPanel.className = "editor-docked-panel";
+  dockedPanel.hidden = true;
 
-  const addTextButton = documentRef.createElement("button");
-  addTextButton.className = "add-text-button utility-button";
-  addTextButton.type = "button";
-  addTextButton.textContent = "Text";
-
-  const addRectButton = documentRef.createElement("button");
-  addRectButton.className = "add-rect-button utility-button";
-  addRectButton.type = "button";
-  addRectButton.textContent = "Rect";
-
-  const addCircleButton = documentRef.createElement("button");
-  addCircleButton.className = "add-circle-button utility-button";
-  addCircleButton.type = "button";
-  addCircleButton.textContent = "Circle";
-
-  addButtons.append(addTextButton, addRectButton, addCircleButton);
-  addTools.append(addLabel, addButtons);
-
-  const selectedItemActions = documentRef.createElement("section");
-  selectedItemActions.className = "selected-item-actions";
-
-  const selectedItemActionsLabel = documentRef.createElement("div");
-  selectedItemActionsLabel.className = "field-label";
-  selectedItemActionsLabel.textContent = "Selected";
-
-  const selectedItemActionButtons = documentRef.createElement("div");
-  selectedItemActionButtons.className = "selected-item-action-buttons";
-
-  const duplicateItemButton = documentRef.createElement("button");
-  duplicateItemButton.className = "duplicate-item-button utility-button";
-  duplicateItemButton.type = "button";
-  duplicateItemButton.textContent = "Duplicate";
-  duplicateItemButton.disabled = true;
-
-  const deleteItemButton = documentRef.createElement("button");
-  deleteItemButton.className = "delete-item-button utility-button";
-  deleteItemButton.type = "button";
-  deleteItemButton.textContent = "Delete";
-  deleteItemButton.disabled = true;
-
-  selectedItemActionButtons.append(duplicateItemButton, deleteItemButton);
-  selectedItemActions.append(selectedItemActionsLabel, selectedItemActionButtons);
+  const dockedPanelTab = documentRef.createElement("button");
+  dockedPanelTab.className = "editor-docked-tab";
+  dockedPanelTab.type = "button";
+  dockedPanelTab.hidden = true;
 
   const itemListSection = documentRef.createElement("section");
-  itemListSection.className = "item-list-section";
+  itemListSection.className = "editor-tab-panel item-list-section";
+  itemListSection.dataset.panel = "items";
 
   const itemListLabel = documentRef.createElement("div");
   itemListLabel.className = "field-label";
@@ -2557,7 +3073,9 @@ function createJsonPane(documentRef: Document): HTMLElement {
   itemList.className = "item-list";
 
   const inspectorSection = documentRef.createElement("section");
-  inspectorSection.className = "inspector-section";
+  inspectorSection.className = "editor-tab-panel inspector-section";
+  inspectorSection.dataset.panel = "inspector";
+  inspectorSection.hidden = true;
 
   const inspectorLabel = documentRef.createElement("div");
   inspectorLabel.className = "field-label";
@@ -2570,99 +3088,91 @@ function createJsonPane(documentRef: Document): HTMLElement {
   inspectorStatus.className = "inspector-status";
   inspectorStatus.textContent = "Select an item";
 
+  const jsonSection = documentRef.createElement("section");
+  jsonSection.className = "editor-tab-panel json-editor-section";
+  jsonSection.dataset.panel = "json";
+  jsonSection.hidden = true;
+
   itemListSection.append(itemListLabel, itemList);
   inspectorSection.append(inspectorLabel, inspector, inspectorStatus);
-  addTools.append(selectedItemActions);
-  itemTools.append(addTools, itemListSection, inspectorSection);
-
-  const itemToolsSection = createCollapsibleSection(documentRef, "Items / Inspector", "item-tools-section", itemTools);
-  const jsonEditorSection = createCollapsibleSection(documentRef, "Decoded JSON", "json-editor-section", jsonInput);
-  const sectionResizeHandle = createSectionResizeHandle(documentRef, pane);
-  const updateSectionResizeHandle = (): void => {
-    sectionResizeHandle.hidden = itemTools.hidden || jsonInput.hidden;
-  };
-
-  itemToolsSection.querySelector(".subsection-toggle")?.addEventListener("click", updateSectionResizeHandle);
-  jsonEditorSection.querySelector(".subsection-toggle")?.addEventListener("click", updateSectionResizeHandle);
-  controls.append(undoButton, redoButton, formatButton, resetButton);
-  pane.querySelector(".pane-header")?.append(controls);
-  pane.append(itemToolsSection, sectionResizeHandle, jsonEditorSection);
+  jsonSection.append(jsonInput);
+  primaryPanel.append(itemListSection, inspectorSection, jsonSection);
+  dockedPanel.append(dockedPanelTab);
+  itemTools.append(tabList, primaryPanel, tabDropZone, dockedPanel);
+  pane.append(itemTools);
   return pane;
 }
 
-function createSectionResizeHandle(documentRef: Document, pane: HTMLElement): HTMLElement {
-  const handle = documentRef.createElement("div");
-  handle.className = "section-resize-handle";
-  handle.setAttribute("role", "separator");
-  handle.setAttribute("aria-orientation", "horizontal");
+function createGlobalToolbar(documentRef: Document): HTMLElement {
+  const toolbar = documentRef.createElement("header");
+  toolbar.className = "editor-topbar";
 
-  handle.addEventListener("mousedown", (event) => {
-    event.preventDefault();
-    startSectionResize(documentRef, pane);
-  });
+  const toolGroup = createToolbarGroup(documentRef, "Tools");
 
-  return handle;
+  const selectToolButton = createToolbarButton(documentRef, "select-tool-button", "Select");
+  selectToolButton.setAttribute("aria-pressed", "true");
+
+  const drawPolylineButton = createToolbarButton(documentRef, "draw-polyline-button", "Draw Polyline");
+  drawPolylineButton.setAttribute("aria-pressed", "false");
+
+  const finishPolylineButton = createToolbarButton(documentRef, "finish-polyline-button", "Finish");
+  finishPolylineButton.hidden = true;
+
+  toolGroup.append(selectToolButton, drawPolylineButton, finishPolylineButton);
+
+  const addGroup = createToolbarGroup(documentRef, "Add");
+  addGroup.append(
+    createToolbarButton(documentRef, "add-text-button", "Text"),
+    createToolbarButton(documentRef, "add-rect-button", "Rect"),
+    createToolbarButton(documentRef, "add-circle-button", "Circle")
+  );
+
+  const selectionGroup = createToolbarGroup(documentRef, "Selection");
+  const duplicateItemButton = createToolbarButton(documentRef, "duplicate-item-button", "Duplicate");
+  duplicateItemButton.disabled = true;
+  const deleteItemButton = createToolbarButton(documentRef, "delete-item-button", "Delete");
+  deleteItemButton.disabled = true;
+  selectionGroup.append(duplicateItemButton, deleteItemButton);
+
+  const historyGroup = createToolbarGroup(documentRef, "History");
+  const undoButton = createToolbarButton(documentRef, "undo-button", "Undo");
+  undoButton.disabled = true;
+  const redoButton = createToolbarButton(documentRef, "redo-button", "Redo");
+  redoButton.disabled = true;
+  historyGroup.append(undoButton, redoButton);
+
+  const payloadGroup = createToolbarGroup(documentRef, "Payload");
+  payloadGroup.append(
+    createToolbarButton(documentRef, "format-button", "Format JSON"),
+    createToolbarButton(documentRef, "reset-button", "Reset Demo"),
+    createToolbarButton(documentRef, "open-import-button", "Import"),
+    createToolbarButton(documentRef, "open-export-button", "Export"),
+    createToolbarButton(documentRef, "open-theme-button", "Theme")
+  );
+
+  toolbar.append(toolGroup, addGroup, selectionGroup, historyGroup, payloadGroup);
+  return toolbar;
 }
 
-function startSectionResize(documentRef: Document, pane: HTMLElement): void {
-  const onMove = (event: MouseEvent): void => {
-    const paneRect = pane.getBoundingClientRect();
-    const header = pane.querySelector<HTMLElement>(".pane-header");
-    const availableHeight = pane.clientHeight || paneRect.height;
-    const headerHeight = header?.getBoundingClientRect().height ?? 52;
-    const contentHeight = Math.max(0, availableHeight - headerHeight);
-    const minSectionHeight = 120;
-    const maxJsonHeight = Math.max(minSectionHeight, contentHeight - minSectionHeight);
-    const nextJsonHeight = clamp(paneRect.bottom - event.clientY, minSectionHeight, maxJsonHeight);
-    pane.style.setProperty("--editor-json-height", `${Math.round(nextJsonHeight)}px`);
-  };
+function createToolbarGroup(documentRef: Document, label: string): HTMLElement {
+  const group = documentRef.createElement("section");
+  group.className = "toolbar-group";
+  group.setAttribute("aria-label", label);
 
-  const stopResize = (): void => {
-    documentRef.removeEventListener("mousemove", onMove);
-    documentRef.removeEventListener("mouseup", stopResize);
-  };
+  const groupLabel = documentRef.createElement("span");
+  groupLabel.className = "toolbar-group-label";
+  groupLabel.textContent = label;
 
-  documentRef.addEventListener("mousemove", onMove);
-  documentRef.addEventListener("mouseup", stopResize);
+  group.append(groupLabel);
+  return group;
 }
 
-function createCollapsibleSection(
-  documentRef: Document,
-  title: string,
-  className: string,
-  body: HTMLElement
-): HTMLElement {
-  const section = documentRef.createElement("section");
-  section.className = `editor-subsection ${className}`;
-
-  const toggle = documentRef.createElement("button");
-  toggle.className = "subsection-toggle";
-  toggle.type = "button";
-  toggle.dataset.sectionToggle = className;
-  toggle.setAttribute("aria-expanded", "true");
-
-  const titleElement = documentRef.createElement("span");
-  titleElement.className = "subsection-title";
-  titleElement.textContent = title;
-
-  const icon = documentRef.createElement("span");
-  icon.className = "subsection-icon";
-  icon.setAttribute("aria-hidden", "true");
-  icon.textContent = "^^";
-
-  body.classList.add("subsection-body");
-
-  toggle.addEventListener("click", () => {
-    const collapsed = !body.hidden;
-    body.hidden = collapsed;
-    section.dataset.collapsed = String(collapsed);
-    toggle.setAttribute("aria-expanded", String(!collapsed));
-    icon.textContent = collapsed ? "vv" : "^^";
-  });
-
-  toggle.append(titleElement, icon);
-  section.append(toggle, body);
-  return section;
+function createToolbarButton(documentRef: Document, className: string, label: string): HTMLButtonElement {
+  const button = documentRef.createElement("button");
+  button.className = `${className} utility-button`;
+  button.type = "button";
+  button.textContent = label;
+  return button;
 }
 
 function createPreviewPane(documentRef: Document): HTMLElement {
@@ -2670,33 +3180,11 @@ function createPreviewPane(documentRef: Document): HTMLElement {
   const controls = documentRef.createElement("div");
   controls.className = "preview-controls";
 
-  const openImportButton = documentRef.createElement("button");
-  openImportButton.className = "open-import-button utility-button";
-  openImportButton.type = "button";
-  openImportButton.textContent = "Import";
-
-  const openExportButton = documentRef.createElement("button");
-  openExportButton.className = "open-export-button utility-button";
-  openExportButton.type = "button";
-  openExportButton.textContent = "Export";
-
   const toggleGridButton = documentRef.createElement("button");
   toggleGridButton.className = "toggle-grid-button utility-button";
   toggleGridButton.type = "button";
   toggleGridButton.textContent = "Grid On";
   toggleGridButton.setAttribute("aria-pressed", "true");
-
-  const drawPolylineButton = documentRef.createElement("button");
-  drawPolylineButton.className = "draw-polyline-button utility-button";
-  drawPolylineButton.type = "button";
-  drawPolylineButton.textContent = "Draw Polyline";
-  drawPolylineButton.setAttribute("aria-pressed", "false");
-
-  const finishPolylineButton = documentRef.createElement("button");
-  finishPolylineButton.className = "finish-polyline-button utility-button";
-  finishPolylineButton.type = "button";
-  finishPolylineButton.textContent = "Finish";
-  finishPolylineButton.hidden = true;
 
   const gridSizeLabel = documentRef.createElement("label");
   gridSizeLabel.className = "grid-size-field";
@@ -2714,44 +3202,15 @@ function createPreviewPane(documentRef: Document): HTMLElement {
 
   gridSizeLabel.append(gridSizeText, gridSizeInput);
 
-  controls.append(
-    drawPolylineButton,
-    finishPolylineButton,
-    toggleGridButton,
-    gridSizeLabel,
-    openImportButton,
-    openExportButton
-  );
+  const toggleSnapButton = documentRef.createElement("button");
+  toggleSnapButton.className = "toggle-snap-button utility-button";
+  toggleSnapButton.type = "button";
+  toggleSnapButton.textContent = "Snap On";
+  toggleSnapButton.setAttribute("aria-pressed", "true");
+
+  controls.append(toggleGridButton, toggleSnapButton, gridSizeLabel);
   pane.querySelector(".pane-header")?.append(controls);
-
-  const themeSection = documentRef.createElement("section");
-  themeSection.className = "theme-section";
-
-  const themeLabel = documentRef.createElement("label");
-  themeLabel.className = "field-label";
-  themeLabel.textContent = "Theme preview JSON";
-
-  const themeInput = documentRef.createElement("textarea");
-  themeInput.className = "theme-input";
-  themeInput.placeholder = "Paste theme variables JSON from Home Assistant";
-  themeInput.spellcheck = false;
-  themeInput.wrap = "soft";
-
-  const themeControls = documentRef.createElement("div");
-  themeControls.className = "theme-controls";
-
-  const applyThemeButton = documentRef.createElement("button");
-  applyThemeButton.className = "apply-theme-button utility-button";
-  applyThemeButton.type = "button";
-  applyThemeButton.textContent = "Apply Theme";
-
-  const themeStatus = documentRef.createElement("span");
-  themeStatus.className = "theme-status";
-  themeStatus.textContent = "Optional theme preview";
-
-  themeControls.append(applyThemeButton, themeStatus);
-  themeSection.append(themeLabel, themeInput, themeControls);
-  pane.append(themeSection, createPreviewSurface(documentRef), createPolylineContextMenu(documentRef));
+  pane.append(createPreviewSurface(documentRef), createPolylineContextMenu(documentRef));
   return pane;
 }
 
@@ -2841,6 +3300,35 @@ function createTransferPanel(documentRef: Document): HTMLElement {
   importButton.type = "button";
   importButton.textContent = "Import";
 
+  const themeSection = documentRef.createElement("section");
+  themeSection.className = "theme-section";
+  themeSection.hidden = true;
+
+  const themeLabel = documentRef.createElement("label");
+  themeLabel.className = "field-label";
+  themeLabel.textContent = "Theme preview JSON";
+
+  const themeInput = documentRef.createElement("textarea");
+  themeInput.className = "theme-input";
+  themeInput.placeholder = "Paste theme variables JSON from Home Assistant";
+  themeInput.spellcheck = false;
+  themeInput.wrap = "soft";
+
+  const themeControls = documentRef.createElement("div");
+  themeControls.className = "theme-controls";
+
+  const applyThemeButton = documentRef.createElement("button");
+  applyThemeButton.className = "apply-theme-button utility-button";
+  applyThemeButton.type = "button";
+  applyThemeButton.textContent = "Apply Theme";
+
+  const themeStatus = documentRef.createElement("span");
+  themeStatus.className = "theme-status";
+  themeStatus.textContent = "Optional theme preview";
+
+  themeControls.append(applyThemeButton, themeStatus);
+  themeSection.append(themeLabel, themeInput, themeControls);
+
   const exportSection = documentRef.createElement("section");
   exportSection.className = "export-section";
 
@@ -2864,7 +3352,7 @@ function createTransferPanel(documentRef: Document): HTMLElement {
   importSection.append(importLabel, importInput, importButton);
   exportHeader.append(exportLabel, copyButton);
   exportSection.append(exportHeader, payloadOutput);
-  panel.append(header, statusRow, importSection, exportSection);
+  panel.append(header, statusRow, importSection, themeSection, exportSection);
   wrapper.append(panel);
   return wrapper;
 }
