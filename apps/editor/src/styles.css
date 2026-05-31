@@ -140,8 +140,9 @@ textarea {
 }
 
 .preview-surface {
+  display: flex;
   flex: 1;
-  min-height: 460px;
+  min-height: min(720px, calc(100vh - 140px));
   padding: 12px;
   color: var(--primary-text-color, #17202a);
   background:
@@ -162,8 +163,10 @@ textarea {
 
 .preview-surface svg {
   display: block;
+  flex: 1;
   width: 100%;
-  height: auto;
+  height: 100%;
+  min-height: 0;
 }
 
 .editor-grid-overlay line {
@@ -176,6 +179,13 @@ textarea {
   stroke: var(--accent-color, #2f6fed);
   stroke-width: 3;
   opacity: 0.85;
+}
+
+.editor-selection-rectangle {
+  fill: color-mix(in srgb, var(--accent-color, #2f6fed) 16%, transparent);
+  stroke: var(--accent-color, #2f6fed);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
 }
 
 .editor-polyline-handle-hitbox {
@@ -206,6 +216,19 @@ textarea {
 
 .preview-surface[data-dragging="true"] {
   cursor: move;
+  user-select: none;
+}
+
+.preview-surface[data-pan-mode="true"],
+.preview-surface[data-pan-mode="true"] svg,
+.preview-surface[data-panning="true"],
+.preview-surface[data-panning="true"] svg {
+  cursor: grab;
+}
+
+.preview-surface[data-panning="true"],
+.preview-surface[data-panning="true"] svg {
+  cursor: grabbing;
   user-select: none;
 }
 

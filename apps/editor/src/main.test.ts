@@ -760,6 +760,189 @@ describe("editor app", () => {
     expect(getPositionedPayloadItem(app, "demo-title")?.y).toBe(47);
   });
 
+  it("pans and resets the preview viewBox", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const svg = app.querySelector("svg");
+
+    if (!svg) {
+      throw new Error("preview svg missing");
+    }
+
+    expect(svg.getAttribute("viewBox")).toBe("0 0 420 180");
+    expect(app.querySelector(".zoom-in-button")).toBeNull();
+    expect(app.querySelector(".zoom-out-button")).toBeNull();
+    expect(getButton(app, ".select-tool-button").textContent).toBe("↖");
+    expect(getButton(app, ".pan-tool-button").textContent).toBe("🤚");
+
+    getButton(app, ".pan-tool-button").click();
+    expect(getButton(app, ".pan-tool-button").getAttribute("aria-pressed")).toBe("true");
+
+    setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
+    svg.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 100, clientY: 80, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 120, clientY: 110 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(svg.getAttribute("viewBox")).toBe("-20 -30 420 180");
+
+    getButton(app, ".reset-view-button").click();
+    expect(svg.getAttribute("viewBox")).toBe("0 0 420 180");
+  });
+
+  it("zooms around the pointer with the mouse wheel", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const svg = app.querySelector("svg");
+
+    if (!svg) {
+      throw new Error("preview svg missing");
+    }
+
+    setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
+    const wheelEvent = new MouseEvent("wheel", {
+      clientX: 210,
+      clientY: 90,
+      bubbles: true,
+      cancelable: true
+    });
+    Object.defineProperty(wheelEvent, "deltaY", { value: -100 });
+    svg.dispatchEvent(wheelEvent);
+
+    expect(svg.getAttribute("viewBox")).toBe("21 9 378 162");
+  });
+
+  it("supports ctrl multi-select and box-select in pointer mode", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const title = app.querySelector('[data-id="demo-title"]');
+    const temperature = app.querySelector('[data-id="demo-temperature"]');
+
+    if (!title || !temperature) {
+      throw new Error("preview selection targets missing");
+    }
+
+    title.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    temperature.dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: true }));
+
+    expect(getButton(app, '[data-item-id="demo-title"]').getAttribute("aria-pressed")).toBe("true");
+    expect(getButton(app, '[data-item-id="demo-temperature"]').getAttribute("aria-pressed")).toBe("true");
+    expect(app.querySelector<HTMLElement>(".inspector-status")?.textContent).toBe("2 items selected");
+
+    const boxSelectSvg = app.querySelector("svg");
+
+    if (!boxSelectSvg) {
+      throw new Error("preview svg missing");
+    }
+
+    setSvgBounds(boxSelectSvg, { left: 0, top: 0, width: 420, height: 180 });
+    boxSelectSvg.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 100, clientY: 50, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 280, clientY: 150 }));
+
+    expect(app.querySelector("[data-editor-selection-rectangle]")).not.toBeNull();
+
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(getButton(app, '[data-item-id="demo-component-a"]').getAttribute("aria-pressed")).toBe("true");
+    expect(getButton(app, '[data-item-id="demo-component-b"]').getAttribute("aria-pressed")).toBe("true");
+    expect(app.querySelector("[data-editor-selection-rectangle]")).toBeNull();
+
+    boxSelectSvg.dispatchEvent(new MouseEvent("click", { clientX: 20, clientY: 20, bubbles: true }));
+
+    expect(getButton(app, '[data-item-id="demo-component-a"]').getAttribute("aria-pressed")).toBe("false");
+    expect(getButton(app, '[data-item-id="demo-component-b"]').getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("keeps item dragging in schema coordinates after zooming", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const snapButton = getButton(app, ".toggle-snap-button");
+    const svg = app.querySelector("svg");
+    const title = [...app.querySelectorAll("text")].find((element) => element.textContent === "Schematic Demo");
+
+    if (!svg || !title) {
+      throw new Error("draggable preview item missing");
+    }
+
+    snapButton.click();
+    setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
+    const wheelEvent = new MouseEvent("wheel", {
+      clientX: 210,
+      clientY: 90,
+      bubbles: true,
+      cancelable: true
+    });
+    Object.defineProperty(wheelEvent, "deltaY", { value: 100 });
+    svg.dispatchEvent(wheelEvent);
+
+    const viewBox = { x: -21, y: -9, width: 462, height: 198 };
+    const startClientX = ((16 - viewBox.x) / viewBox.width) * 420;
+    const startClientY = ((28 - viewBox.y) / viewBox.height) * 180;
+    const moveClientX = startClientX + (20 / viewBox.width) * 420;
+    const moveClientY = startClientY + (15 / viewBox.height) * 180;
+
+    title.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: startClientX, clientY: startClientY, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: moveClientX, clientY: moveClientY }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(getPositionedPayloadItem(app, "demo-title")?.x).toBeCloseTo(36);
+    expect(getPositionedPayloadItem(app, "demo-title")?.y).toBeCloseTo(43);
+  });
+
+  it("keeps preview interactions aligned when the preview is taller than the schematic", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const snapButton = getButton(app, ".toggle-snap-button");
+    const svg = app.querySelector("svg");
+    const title = [...app.querySelectorAll("text")].find((element) => element.textContent === "Schematic Demo");
+
+    if (!svg || !title) {
+      throw new Error("preview item missing");
+    }
+
+    snapButton.click();
+    setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 720 });
+    title.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 16, clientY: 298, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 36, clientY: 313 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(getPositionedPayloadItem(app, "demo-title")?.x).toBeCloseTo(36);
+    expect(getPositionedPayloadItem(app, "demo-title")?.y).toBeCloseTo(43);
+
+    const selectionSvg = app.querySelector("svg");
+
+    if (!selectionSvg) {
+      throw new Error("preview svg missing after drag");
+    }
+
+    setSvgBounds(selectionSvg, { left: 0, top: 0, width: 420, height: 720 });
+    selectionSvg.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 100, clientY: 320, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 280, clientY: 420 }));
+
+    const selectionRect = app.querySelector("[data-editor-selection-rectangle]");
+    expect(selectionRect?.getAttribute("x")).toBe("100");
+    expect(selectionRect?.getAttribute("y")).toBe("50");
+    expect(selectionRect?.getAttribute("width")).toBe("180");
+    expect(selectionRect?.getAttribute("height")).toBe("100");
+
+    documentRef.dispatchEvent(new MouseEvent("mouseup", { clientX: 280, clientY: 420 }));
+
+    snapButton.click();
+    drawTwoPointPolyline(app);
+    const tallSvg = app.querySelector("svg");
+    const handle = app.querySelector<SVGCircleElement>('.editor-polyline-handle-hitbox[data-polyline-handle="polyline-1"][data-point-index="1"]');
+
+    if (!tallSvg || !handle) {
+      throw new Error("polyline handle missing");
+    }
+
+    setSvgBounds(tallSvg, { left: 0, top: 0, width: 420, height: 720 });
+    handle.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 60, clientY: 310, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 82, clientY: 344 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(getPolylinePoints(app, "polyline-1")[1]).toEqual({ x: 80, y: 70 });
+  });
+
   it("draws a snapped polyline in the preview and selects it", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);

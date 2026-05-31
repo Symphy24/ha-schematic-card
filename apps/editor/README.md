@@ -40,39 +40,44 @@ Manual test flow:
 23. Toggle `Grid On` / `Grid Off` to show or hide the grid overlay.
 24. Toggle `Snap On` / `Snap Off` separately to control whether moves snap to the grid.
 25. Change the grid size field, for example `5`, `10`, or `20`.
-26. Drag a selected text, rect, circle, entity value, or symbol item in the preview to move it.
-27. Confirm dragging follows the pointer without drift.
-28. Confirm dragging snaps moved items to the selected grid size when snap is enabled.
-29. Confirm dragging updates the decoded JSON, inspector, preview, and exported payload.
-30. Click `Draw Polyline`.
-31. Click the first point in the preview.
-32. Move the pointer and confirm a temporary rubber-band segment follows the cursor/snap point.
-33. Hold `Shift` while drawing and confirm the next segment locks horizontal or vertical.
-34. Click more points and confirm the polyline appears as it is built.
-35. Click `Finish` or press `Enter` to keep the new polyline.
-36. Press `Escape` while drawing another polyline to cancel it.
-37. Confirm the finished polyline is selected and appears in the JSON/export.
-38. Drag a visible polyline point handle and confirm that one point moves.
-39. Right-click a polyline and use `Add point here`.
-40. Right-click a polyline and use `Delete nearest point`.
-41. Right-click a preview item and use `Bring forward`, `Send backward`, `Bring to front`, or `Send to back`.
-42. Confirm the item's `layer` changes in JSON and the preview z-order updates.
-43. Confirm deleting is disabled when only two polyline points remain.
-44. Confirm the decoded JSON, preview, and exported payload update together.
-45. Drag the vertical handle between the editor and preview to resize the left panel.
-46. Confirm the item list and inspector scroll inside their tab panels when there are many fields/items.
-47. Confirm invalid numeric inspector values show an inspector error without changing the JSON.
-48. Click `Undo` / `Redo`, or use `Ctrl+Z` / `Ctrl+Shift+Z`, after add, duplicate, delete, drag, style, layer, inspector, and polyline point edits.
-49. Confirm invalid JSON or schema errors appear in the export panel status.
-50. Open the export side panel from the top toolbar and copy the generated `hsc1...` payload.
-51. Open the import side panel from the top toolbar, paste an existing `hsc1...` payload, and click `Import`.
-52. Confirm valid imports replace the decoded JSON and update the preview.
-53. Confirm invalid imports show an error without overwriting the decoded JSON.
-54. Open the theme side panel from the top toolbar.
-55. Paste JSON from the Lovelace editor's `Copy current theme variables` button into `Theme preview JSON`.
-56. Click `Apply Theme` and confirm the preview uses the pasted CSS variables, including dark/light card backgrounds.
-57. Reload the editor and confirm the last valid theme preview is restored.
-58. Confirm invalid theme JSON shows a theme error without changing the payload JSON or export.
+26. Use the mouse wheel over the preview to zoom, and `Fit` to reset the view.
+27. Use the pointer tool for selection and the hand tool, or middle mouse drag, to pan the preview.
+28. In `Pointer` mode, use Ctrl+click to add/remove items from selection.
+29. Drag on empty preview space to box-select multiple items.
+30. Confirm selecting, dragging, grid, and snap still use correct schematic coordinates after zooming or panning.
+31. Drag a selected text, rect, circle, entity value, or symbol item in the preview to move it.
+32. Confirm dragging follows the pointer without drift.
+33. Confirm dragging snaps moved items to the selected grid size when snap is enabled.
+34. Confirm dragging updates the decoded JSON, inspector, preview, and exported payload.
+35. Click `Draw Polyline`.
+36. Click the first point in the preview.
+37. Move the pointer and confirm a temporary rubber-band segment follows the cursor/snap point.
+38. Hold `Shift` while drawing and confirm the next segment locks horizontal or vertical.
+39. Click more points and confirm the polyline appears as it is built.
+40. Click `Finish` or press `Enter` to keep the new polyline.
+41. Press `Escape` while drawing another polyline to cancel it.
+42. Confirm the finished polyline is selected and appears in the JSON/export.
+43. Drag a visible polyline point handle and confirm that one point moves.
+44. Right-click a polyline and use `Add point here`.
+45. Right-click a polyline and use `Delete nearest point`.
+46. Right-click a preview item and use `Bring forward`, `Send backward`, `Bring to front`, or `Send to back`.
+47. Confirm the item's `layer` changes in JSON and the preview z-order updates.
+48. Confirm deleting is disabled when only two polyline points remain.
+49. Confirm the decoded JSON, preview, and exported payload update together.
+50. Drag the vertical handle between the editor and preview to resize the left panel.
+51. Confirm the item list and inspector scroll inside their tab panels when there are many fields/items.
+52. Confirm invalid numeric inspector values show an inspector error without changing the JSON.
+53. Click `Undo` / `Redo`, or use `Ctrl+Z` / `Ctrl+Shift+Z`, after add, duplicate, delete, drag, style, layer, inspector, and polyline point edits.
+54. Confirm invalid JSON or schema errors appear in the export panel status.
+55. Open the export side panel from the top toolbar and copy the generated `hsc1...` payload.
+56. Open the import side panel from the top toolbar, paste an existing `hsc1...` payload, and click `Import`.
+57. Confirm valid imports replace the decoded JSON and update the preview.
+58. Confirm invalid imports show an error without overwriting the decoded JSON.
+59. Open the theme side panel from the top toolbar.
+60. Paste JSON from the Lovelace editor's `Copy current theme variables` button into `Theme preview JSON`.
+61. Click `Apply Theme` and confirm the preview uses the pasted CSS variables, including dark/light card backgrounds.
+62. Reload the editor and confirm the last valid theme preview is restored.
+63. Confirm invalid theme JSON shows a theme error without changing the payload JSON or export.
 
 
 ## Build
