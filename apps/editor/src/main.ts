@@ -115,7 +115,10 @@ type PreviewViewBox = {
 type PreviewDragState = {
   itemId: string;
   startPoint: SchematicPoint;
-  startItem: SchematicItem;
+  startItems: Array<{
+    itemId: string;
+    item: SchematicItem;
+  }>;
   coordinateSpace: SvgCoordinateSpace;
   historyRecorded: boolean;
 };
@@ -1213,10 +1216,14 @@ function createUniqueItemId(payload: SchematicPayload, type: string): string {
 }
 
 function createUniqueDuplicateItemId(payload: SchematicPayload, sourceId: string): string {
-  const existingIds = new Set(payload.items.map((item) => item.id));
+  return createUniqueDuplicateItemIdFromSet(new Set(payload.items.map((item) => item.id)), sourceId);
+}
+
+function createUniqueDuplicateItemIdFromSet(existingIds: Set<string>, sourceId: string): string {
   const baseId = `${sourceId}-copy`;
 
   if (!existingIds.has(baseId)) {
+    existingIds.add(baseId);
     return baseId;
   }
 
@@ -1226,7 +1233,9 @@ function createUniqueDuplicateItemId(payload: SchematicPayload, sourceId: string
     index += 1;
   }
 
-  return `${baseId}-${index}`;
+  const id = `${baseId}-${index}`;
+  existingIds.add(id);
+  return id;
 }
 
 function duplicateSelectedItem(elements: EditorElements, documentRef: Document): void {
@@ -1237,26 +1246,42 @@ function duplicateSelectedItem(elements: EditorElements, documentRef: Document):
     return;
   }
 
-  const sourceIndex = result.payload.items.findIndex((item) => item.id === elements.selectedItemId);
-  const sourceItem = result.payload.items[sourceIndex];
+  const selectedIds = getSelectedItemIds(elements, result.payload);
 
-  if (sourceIndex === -1 || !sourceItem) {
+  if (selectedIds.length === 0) {
     elements.inspectorStatus.textContent = "Selected item was not found";
     elements.inspectorStatus.dataset.state = "error";
     return;
   }
 
-  const duplicate = cloneItem(sourceItem);
-  duplicate.id = createUniqueDuplicateItemId(result.payload, sourceItem.id);
-  moveItem(duplicate, 10, 10);
-
+  const selectedIdSet = new Set(selectedIds);
+  const existingIds = new Set(result.payload.items.map((item) => item.id));
+  const duplicateIds: string[] = [];
+  const nextItems: SchematicItem[] = [];
   recordHistory(elements);
-  result.payload.items.splice(sourceIndex + 1, 0, duplicate);
-  setSelectedItems(elements, [duplicate.id]);
+
+  for (const item of result.payload.items) {
+    nextItems.push(item);
+
+    if (!selectedIdSet.has(item.id)) {
+      continue;
+    }
+
+    const duplicate = cloneItem(item);
+    duplicate.id = createUniqueDuplicateItemIdFromSet(existingIds, item.id);
+    moveItem(duplicate, 10, 10);
+    duplicateIds.push(duplicate.id);
+    nextItems.push(duplicate);
+  }
+
+  result.payload.items = nextItems;
+  setSelectedItems(elements, duplicateIds);
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
   showEditorTab(elements, "inspector");
-  elements.inspectorStatus.textContent = `Duplicated ${sourceItem.id}`;
+  elements.inspectorStatus.textContent = duplicateIds.length === 1
+    ? `Duplicated ${selectedIds[0]}`
+    : `Duplicated ${duplicateIds.length} items`;
   elements.inspectorStatus.dataset.state = "valid";
 }
 
@@ -1268,21 +1293,26 @@ function deleteSelectedItem(elements: EditorElements, documentRef: Document): vo
     return;
   }
 
-  const selectedIndex = result.payload.items.findIndex((item) => item.id === elements.selectedItemId);
-  const selectedItem = result.payload.items[selectedIndex];
+  const selectedIds = getSelectedItemIds(elements, result.payload);
 
-  if (selectedIndex === -1 || !selectedItem) {
+  if (selectedIds.length === 0) {
     elements.inspectorStatus.textContent = "Selected item was not found";
     elements.inspectorStatus.dataset.state = "error";
     return;
   }
 
+  const selectedIdSet = new Set(selectedIds);
+  const firstSelectedIndex = result.payload.items.findIndex((item) => selectedIdSet.has(item.id));
   recordHistory(elements);
-  result.payload.items.splice(selectedIndex, 1);
-  setSelectedItems(elements, [result.payload.items[selectedIndex]?.id ?? result.payload.items[selectedIndex - 1]?.id].filter(Boolean) as string[]);
+  result.payload.items = result.payload.items.filter((item) => !selectedIdSet.has(item.id));
+  setSelectedItems(elements, [
+    result.payload.items[firstSelectedIndex]?.id ?? result.payload.items[firstSelectedIndex - 1]?.id
+  ].filter(Boolean) as string[]);
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
-  elements.inspectorStatus.textContent = `Deleted ${selectedItem.id}`;
+  elements.inspectorStatus.textContent = selectedIds.length === 1
+    ? `Deleted ${selectedIds[0]}`
+    : `Deleted ${selectedIds.length} items`;
   elements.inspectorStatus.dataset.state = "valid";
 }
 
@@ -1315,7 +1345,7 @@ function renderItemTools(elements: EditorElements, payload: SchematicPayload, do
   }
 
   if (elements.selectedItemIds.length > 1) {
-    renderNeutralInspector(elements, `${elements.selectedItemIds.length} items selected`);
+    renderMultiSelectInspector(elements, elements.selectedItemIds.length);
   } else if (selectedItem) {
     renderInspector(elements, selectedItem, documentRef);
   } else {
@@ -1328,6 +1358,13 @@ function renderItemTools(elements: EditorElements, payload: SchematicPayload, do
 function updateSelectedItemActionButtons(elements: EditorElements, hasSelection: boolean): void {
   elements.duplicateItemButton.disabled = !hasSelection;
   elements.deleteItemButton.disabled = !hasSelection;
+}
+
+function renderMultiSelectInspector(elements: EditorElements, count: number): void {
+  elements.inspector.replaceChildren();
+  updateSelectedItemActionButtons(elements, true);
+  elements.inspectorStatus.textContent = `${count} items selected`;
+  elements.inspectorStatus.dataset.state = "neutral";
 }
 
 function normalizeSelection(elements: EditorElements, payload: SchematicPayload): void {
@@ -1361,6 +1398,11 @@ function toggleSelectedItem(elements: EditorElements, itemId: string): void {
   }
 
   setSelectedItems(elements, [...elements.selectedItemIds, itemId], itemId);
+}
+
+function getSelectedItemIds(elements: EditorElements, payload: SchematicPayload): string[] {
+  const validIds = new Set(payload.items.map((item) => item.id));
+  return elements.selectedItemIds.filter((itemId) => validIds.has(itemId));
 }
 
 function selectPreviewItem(
@@ -1981,11 +2023,20 @@ function startPreviewDrag(
     return;
   }
 
-  setSelectedItems(elements, [itemId]);
+  const selectedIds = elements.selectedItemIds.includes(itemId) ? elements.selectedItemIds : [itemId];
+  setSelectedItems(elements, selectedIds, itemId);
   renderItemTools(elements, payload, documentRef);
 
-  if (!canMoveItem(item)) {
-    elements.inspectorStatus.textContent = `${item.type} cannot be dragged yet`;
+  const startItems = payload.items
+    .filter((candidate) => selectedIds.includes(candidate.id))
+    .map((candidate) => ({
+      itemId: candidate.id,
+      item: cloneItem(candidate)
+    }));
+  const unsupportedItem = startItems.find(({ item: startItem }) => !canMoveItem(startItem));
+
+  if (unsupportedItem) {
+    elements.inspectorStatus.textContent = `${unsupportedItem.item.type} cannot be dragged yet`;
     elements.inspectorStatus.dataset.state = "error";
     return;
   }
@@ -2001,7 +2052,7 @@ function startPreviewDrag(
   elements.dragState = {
     itemId,
     startPoint: getSvgPoint(coordinateSpace, event),
-    startItem: cloneItem(item),
+    startItems,
     coordinateSpace,
     historyRecorded: false
   };
@@ -2370,20 +2421,27 @@ function moveSelectedItemFromDrag(
   }
 
   const dragState = elements.dragState;
-  const item = dragState
-    ? result.payload.items.find((candidate) => candidate.id === dragState.itemId)
-    : undefined;
 
-  if (!dragState || !item) {
+  if (!dragState) {
     elements.inspectorStatus.textContent = "Selected item was not found";
     elements.inspectorStatus.dataset.state = "error";
     return;
   }
 
-  if (!moveItemFromStart(item, dragState.startItem, dx, dy)) {
-    elements.inspectorStatus.textContent = `${item.type} cannot be dragged yet`;
-    elements.inspectorStatus.dataset.state = "error";
-    return;
+  for (const start of dragState.startItems) {
+    const item = result.payload.items.find((candidate) => candidate.id === start.itemId);
+
+    if (!item) {
+      elements.inspectorStatus.textContent = "Selected item was not found";
+      elements.inspectorStatus.dataset.state = "error";
+      return;
+    }
+
+    if (!moveItemFromStart(item, start.item, dx, dy)) {
+      elements.inspectorStatus.textContent = `${item.type} cannot be dragged yet`;
+      elements.inspectorStatus.dataset.state = "error";
+      return;
+    }
   }
 
   if (!dragState.historyRecorded) {
@@ -2392,13 +2450,21 @@ function moveSelectedItemFromDrag(
   }
 
   if (elements.snapEnabled) {
-    snapItemToGrid(item, elements.gridSize);
+    for (const start of dragState.startItems) {
+      const item = result.payload.items.find((candidate) => candidate.id === start.itemId);
+
+      if (item) {
+        snapItemToGrid(item, elements.gridSize);
+      }
+    }
   }
 
-  setSelectedItems(elements, [dragState.itemId]);
+  setSelectedItems(elements, dragState.startItems.map((start) => start.itemId), dragState.itemId);
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
-  elements.inspectorStatus.textContent = `Moved ${item.id}`;
+  elements.inspectorStatus.textContent = dragState.startItems.length === 1
+    ? `Moved ${dragState.itemId}`
+    : `Moved ${dragState.startItems.length} items`;
   elements.inspectorStatus.dataset.state = "valid";
 }
 
@@ -3170,24 +3236,34 @@ function nudgeSelectedItem(elements: EditorElements, dx: number, dy: number, doc
     return;
   }
 
-  const item = result.payload.items.find((candidate) => candidate.id === elements.selectedItemId);
+  const selectedIds = getSelectedItemIds(elements, result.payload);
+  const selectedItems = result.payload.items.filter((item) => selectedIds.includes(item.id));
 
-  if (!item) {
+  if (selectedItems.length === 0) {
     elements.inspectorStatus.textContent = "Selected item was not found";
     elements.inspectorStatus.dataset.state = "error";
     return;
   }
 
-  if (!moveItem(item, dx, dy)) {
-    elements.inspectorStatus.textContent = `${item.type} cannot be nudged yet`;
+  const unsupportedItem = selectedItems.find((item) => !canMoveItem(item));
+
+  if (unsupportedItem) {
+    elements.inspectorStatus.textContent = `${unsupportedItem.type} cannot be nudged yet`;
     elements.inspectorStatus.dataset.state = "error";
     return;
   }
 
   recordHistory(elements);
+
+  for (const item of selectedItems) {
+    moveItem(item, dx, dy);
+  }
+
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
-  elements.inspectorStatus.textContent = `Moved ${item.id}`;
+  elements.inspectorStatus.textContent = selectedItems.length === 1
+    ? `Moved ${selectedItems[0]!.id}`
+    : `Moved ${selectedItems.length} items`;
   elements.inspectorStatus.dataset.state = "valid";
 }
 

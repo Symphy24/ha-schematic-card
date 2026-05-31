@@ -852,6 +852,62 @@ describe("editor app", () => {
     expect(getButton(app, '[data-item-id="demo-component-b"]').getAttribute("aria-pressed")).toBe("false");
   });
 
+  it("moves, duplicates, deletes, and restores multiple selected items", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const snapButton = getButton(app, ".toggle-snap-button");
+
+    snapButton.click();
+    clickPreviewItem(app, "demo-title");
+    clickPreviewItem(app, "demo-temperature", { ctrlKey: true });
+
+    expect(app.querySelector<HTMLElement>(".inspector-status")?.textContent).toBe("2 items selected");
+
+    app.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    app.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", shiftKey: true, bubbles: true }));
+
+    expect(getPositionedPayloadItem(app, "demo-title")).toMatchObject({ x: 17, y: 38 });
+    expect(getPositionedPayloadItem(app, "demo-temperature")).toMatchObject({ x: 49, y: 156 });
+
+    const svg = app.querySelector("svg");
+    const title = app.querySelector('[data-id="demo-title"]');
+
+    if (!svg || !title) {
+      throw new Error("multi-drag target missing");
+    }
+
+    setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
+    title.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 17, clientY: 38, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 37, clientY: 53 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(getPositionedPayloadItem(app, "demo-title")).toMatchObject({ x: 37, y: 53 });
+    expect(getPositionedPayloadItem(app, "demo-temperature")).toMatchObject({ x: 69, y: 171 });
+
+    getButton(app, ".duplicate-item-button").click();
+
+    expect(getPositionedPayloadItem(app, "demo-title-copy")).toMatchObject({ x: 47, y: 63 });
+    expect(getPositionedPayloadItem(app, "demo-temperature-copy")).toMatchObject({ x: 79, y: 181 });
+    expect(getButton(app, '[data-item-id="demo-title-copy"]').getAttribute("aria-pressed")).toBe("true");
+    expect(getButton(app, '[data-item-id="demo-temperature-copy"]').getAttribute("aria-pressed")).toBe("true");
+
+    getButton(app, ".delete-item-button").click();
+
+    expect(getPositionedPayloadItem(app, "demo-title-copy")).toBeUndefined();
+    expect(getPositionedPayloadItem(app, "demo-temperature-copy")).toBeUndefined();
+
+    app.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }));
+
+    expect(getPositionedPayloadItem(app, "demo-title-copy")).toMatchObject({ x: 47, y: 63 });
+    expect(getPositionedPayloadItem(app, "demo-temperature-copy")).toMatchObject({ x: 79, y: 181 });
+
+    app.dispatchEvent(new KeyboardEvent("keydown", { key: "Z", ctrlKey: true, shiftKey: true, bubbles: true }));
+
+    expect(getPositionedPayloadItem(app, "demo-title-copy")).toBeUndefined();
+    expect(getPositionedPayloadItem(app, "demo-temperature-copy")).toBeUndefined();
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+  });
+
   it("keeps item dragging in schema coordinates after zooming", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
@@ -1565,6 +1621,16 @@ function clickPreviewPoint(
 
   setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
   svg.dispatchEvent(new MouseEvent("click", { clientX, clientY, bubbles: true, ...options }));
+}
+
+function clickPreviewItem(app: HTMLElement, itemId: string, options: MouseEventInit = {}): void {
+  const item = app.querySelector(`[data-id="${itemId}"]`);
+
+  if (!item) {
+    throw new Error(`preview item missing: ${itemId}`);
+  }
+
+  item.dispatchEvent(new MouseEvent("click", { bubbles: true, ...options }));
 }
 
 function movePreviewPointer(
