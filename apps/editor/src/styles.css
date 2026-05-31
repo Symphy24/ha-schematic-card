@@ -29,9 +29,36 @@ textarea {
 .editor-shell {
   display: grid;
   grid-template-columns: minmax(300px, var(--editor-left-width, 420px)) 8px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
   height: 100vh;
   padding: 12px;
+}
+
+.editor-topbar {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 16px;
+  overflow-x: auto;
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px 12px;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.toolbar-group-label {
+  color: #5b6470;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .editor-resize-handle {
@@ -192,7 +219,6 @@ textarea {
   filter: drop-shadow(0 0 4px #2f6fed);
 }
 
-.json-controls,
 .preview-controls,
 .theme-controls,
 .transfer-status-row,
@@ -264,8 +290,8 @@ textarea {
 }
 
 .item-tools {
-  display: grid;
-  grid-template-columns: minmax(0, 0.72fr) minmax(0, 0.9fr) minmax(0, 1.1fr);
+  display: flex;
+  flex-direction: column;
   gap: 12px;
   min-height: 0;
   flex: 1;
@@ -273,94 +299,153 @@ textarea {
   overflow: hidden;
 }
 
-.editor-subsection {
-  display: flex;
-  min-height: 0;
-  flex-direction: column;
-  border-bottom: 1px solid #d7dde4;
-}
-
-.item-tools-section {
-  flex: 1 1 auto;
-}
-
-.json-editor-section {
-  flex: 0 0 min(var(--editor-json-height, 42%), 55vh);
-}
-
-.editor-subsection[data-collapsed="true"] {
-  flex: 0 0 auto;
-}
-
-.editor-subsection > .subsection-body {
-  min-height: 0;
-}
-
-.section-resize-handle {
-  flex: 0 0 8px;
-  border-bottom: 1px solid #d7dde4;
-  background: #edf1f5;
-  cursor: row-resize;
-}
-
-.section-resize-handle:hover,
-.section-resize-handle:focus-visible {
-  background: #2f6fed;
-}
-
-.section-resize-handle[hidden] {
-  display: none;
-}
-
-.subsection-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 38px;
-  border: 0;
-  border-bottom: 1px solid #d7dde4;
-  background: #f8fafc;
-  color: #17202a;
-  padding: 9px 12px;
-  cursor: pointer;
-}
-
-.subsection-title {
-  font-size: 13px;
-  font-weight: 650;
-}
-
-.subsection-icon {
-  color: #5b6470;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
-  letter-spacing: 0;
-}
-
-.subsection-body[hidden] {
-  display: none;
-}
-
-.add-item-tools,
 .item-list-section,
-.inspector-section {
+.inspector-section,
+.json-editor-section {
   display: flex;
   min-width: 0;
   min-height: 0;
+  flex: 1;
   flex-direction: column;
   gap: 8px;
 }
 
-.add-item-buttons,
-.selected-item-action-buttons {
+.editor-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.editor-tab {
+  border: 1px solid #d7dde4;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #17202a;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.editor-tab[aria-selected="true"] {
+  border-color: #2f6fed;
+  background: #edf4ff;
+}
+
+.editor-tab[data-docked="true"] {
+  border-style: dashed;
+}
+
+.editor-tabs[data-drop-target="true"],
+.editor-tab-drop-zone[data-drop-target="true"] {
+  outline: 2px solid #2f6fed;
+  outline-offset: 2px;
+}
+
+.editor-primary-panel,
+.editor-docked-panel {
   display: flex;
-  flex-wrap: wrap;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.editor-docked-panel {
+  border-top: 1px solid #d7dde4;
+  padding-top: 10px;
+}
+
+.editor-docked-tab {
+  flex: 0 0 auto;
+  align-self: stretch;
+  border: 1px dashed #2f6fed;
+  border-radius: 6px;
+  background: #edf4ff;
+  color: #17202a;
+  padding: 8px 10px;
+  cursor: grab;
+}
+
+.editor-docked-tab:active {
+  cursor: grabbing;
+}
+
+.editor-docked-tab[hidden] {
+  display: none;
+}
+
+.editor-docked-panel[hidden] {
+  display: none;
+}
+
+.editor-tab-panel[hidden] {
+  display: none;
+}
+
+.editor-tab-drop-zone {
+  flex: 0 0 auto;
+  border: 1px dashed #b6c0ca;
+  border-radius: 6px;
+  color: #73808c;
+  padding: 8px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.paint-field-group,
+.paint-field-controls {
+  display: flex;
+  min-width: 0;
+}
+
+.paint-field-group {
+  flex-direction: column;
   gap: 6px;
 }
 
-.selected-item-actions {
+.paint-field-controls {
+  gap: 6px;
+}
+
+.number-field-controls {
   display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 96px) minmax(0, 1fr);
   gap: 8px;
+  align-items: center;
+}
+
+.paint-field-controls .style-inspector-input {
+  min-width: 0;
+  flex: 1;
+}
+
+.number-field-controls .style-inspector-input {
+  min-width: 0;
+}
+
+.style-slider-input {
+  min-width: 0;
+}
+
+.style-color-input {
+  flex: 0 0 40px;
+  width: 40px;
+  min-width: 40px;
+  height: 34px;
+  border: 1px solid #d7dde4;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 2px;
+}
+
+.style-preset-select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #d7dde4;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 7px 8px;
 }
 
 .property-inspector {
@@ -428,6 +513,12 @@ textarea {
   padding: 7px 9px;
 }
 
+.field-helper {
+  color: #73808c;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .field-label {
   color: #5b6470;
   font-size: 12px;
@@ -444,11 +535,20 @@ textarea {
   cursor: pointer;
 }
 
+.utility-button[aria-pressed="true"] {
+  border-color: #2f6fed;
+  background: #edf4ff;
+}
+
 .item-list-button:focus-visible,
-.subsection-toggle:focus-visible,
+.editor-tab:focus-visible,
+.editor-docked-tab:focus-visible,
 .transfer-panel-close:focus-visible,
 .utility-button:focus-visible,
 .inspector-input:focus,
+.style-color-input:focus,
+.style-preset-select:focus,
+.style-slider-input:focus,
 .grid-size-input:focus,
 .json-input:focus,
 .theme-input:focus,
@@ -517,6 +617,7 @@ textarea {
 }
 
 .import-section[hidden],
+.theme-section[hidden],
 .export-section[hidden] {
   display: none;
 }
@@ -557,6 +658,7 @@ textarea {
     height: auto;
     min-height: 100vh;
     grid-template-columns: 1fr;
+    grid-template-rows: auto;
   }
 
   .editor-resize-handle {
@@ -564,17 +666,9 @@ textarea {
   }
 
   .item-tools {
-    grid-template-columns: 1fr;
     height: auto;
     max-height: none;
     overflow: visible;
   }
 
-  .json-editor-section {
-    flex: 1 1 auto;
-  }
-
-  .section-resize-handle {
-    display: none;
-  }
 }

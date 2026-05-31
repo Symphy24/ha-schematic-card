@@ -21,11 +21,37 @@ describe("editor app", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
 
+    expect(app.querySelector(".editor-topbar")).not.toBeNull();
+    expect(getButton(app, ".select-tool-button").getAttribute("aria-pressed")).toBe("true");
     expect(app.querySelector<HTMLTextAreaElement>(".json-input")?.value).toBe(formatPayloadJson());
     expect(app.querySelector("svg")).not.toBeNull();
     expect(app.querySelector('[data-editor-grid="true"]')).not.toBeNull();
     expect(app.querySelector<HTMLTextAreaElement>(".payload-output")?.value.startsWith("hsc1.")).toBe(true);
     expect(app.querySelector<HTMLElement>(".status")?.textContent).toBe("Valid payload");
+  });
+
+  it("switches between item and inspector tabs", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const itemsTab = getButton(app, '[data-editor-tab="items"]');
+    const inspectorTab = getButton(app, '[data-editor-tab="inspector"]');
+    const itemListSection = app.querySelector<HTMLElement>(".item-list-section");
+    const inspectorSection = app.querySelector<HTMLElement>(".inspector-section");
+
+    if (!itemListSection || !inspectorSection) {
+      throw new Error("tab sections missing");
+    }
+
+    expect(itemsTab.getAttribute("aria-selected")).toBe("true");
+    expect(itemListSection.hidden).toBe(false);
+    expect(inspectorSection.hidden).toBe(true);
+
+    inspectorTab.click();
+
+    expect(itemsTab.getAttribute("aria-selected")).toBe("false");
+    expect(inspectorTab.getAttribute("aria-selected")).toBe("true");
+    expect(itemListSection.hidden).toBe(true);
+    expect(inspectorSection.hidden).toBe(false);
   });
 
   it("updates preview and export when JSON changes", () => {
@@ -61,6 +87,7 @@ describe("editor app", () => {
     expect(titleButton.textContent).toBe("demo-title (text)");
 
     titleButton.click();
+    expect(app.querySelector<HTMLElement>(".inspector-status")?.textContent).toBe("Selected demo-title");
     getInspectorInput(app, "text").value = "Edited Demo";
     getInspectorInput(app, "text").dispatchEvent(new Event("change"));
 
@@ -69,34 +96,48 @@ describe("editor app", () => {
     expect(app.querySelector<HTMLTextAreaElement>(".payload-output")?.value.startsWith("hsc1.")).toBe(true);
   });
 
-  it("collapses and expands the item tools and JSON editor sections", () => {
+  it("docks a tab into a split panel and undocks it back to the tab row", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
-    const itemTools = app.querySelector<HTMLElement>(".item-tools");
-    const jsonInput = getTextarea(app, ".json-input");
-    const sectionResizeHandle = app.querySelector<HTMLElement>(".section-resize-handle");
-    const itemToggle = getSubsectionToggle(app, "Items / Inspector");
-    const jsonToggle = getSubsectionToggle(app, "Decoded JSON");
+    const itemsTab = getButton(app, '[data-editor-tab="items"]');
+    const inspectorTab = getButton(app, '[data-editor-tab="inspector"]');
+    const tabRow = app.querySelector<HTMLElement>(".editor-tabs");
+    const dropZone = app.querySelector<HTMLElement>(".editor-tab-drop-zone");
+    const dockedPanel = app.querySelector<HTMLElement>(".editor-docked-panel");
+    const dockedPanelTab = app.querySelector<HTMLButtonElement>(".editor-docked-tab");
+    const inspectorSection = app.querySelector<HTMLElement>(".inspector-section");
 
-    if (!itemTools || !sectionResizeHandle) {
-      throw new Error("item tools missing");
+    if (!tabRow || !dropZone || !dockedPanel || !dockedPanelTab || !inspectorSection) {
+      throw new Error("dockable tab elements missing");
     }
 
-    itemToggle.click();
-    expect(itemToggle.getAttribute("aria-expanded")).toBe("false");
-    expect(itemToggle.querySelector(".subsection-icon")?.textContent).toBe("vv");
-    expect(itemTools.hidden).toBe(true);
-    expect(sectionResizeHandle.hidden).toBe(true);
+    inspectorTab.dispatchEvent(new Event("dragstart", { bubbles: true }));
+    dropZone.dispatchEvent(new Event("dragover", { bubbles: true, cancelable: true }));
 
-    itemToggle.click();
-    expect(itemToggle.getAttribute("aria-expanded")).toBe("true");
-    expect(itemTools.hidden).toBe(false);
-    expect(sectionResizeHandle.hidden).toBe(false);
+    expect(dropZone.dataset.dropTarget).toBe("true");
 
-    jsonToggle.click();
-    expect(jsonToggle.getAttribute("aria-expanded")).toBe("false");
-    expect(jsonInput.hidden).toBe(true);
-    expect(sectionResizeHandle.hidden).toBe(true);
+    dropZone.dispatchEvent(new Event("drop", { bubbles: true, cancelable: true }));
+
+    expect(dockedPanel.hidden).toBe(false);
+    expect(inspectorSection.parentElement).toBe(dockedPanel);
+    expect(inspectorSection.hidden).toBe(false);
+    expect(inspectorTab.dataset.docked).toBe("true");
+    expect(dockedPanelTab.hidden).toBe(false);
+    expect(dockedPanelTab.textContent).toBe("Inspector");
+    expect(itemsTab.getAttribute("aria-selected")).toBe("true");
+
+    dockedPanelTab.dispatchEvent(new Event("dragstart", { bubbles: true }));
+    tabRow.dispatchEvent(new Event("dragover", { bubbles: true, cancelable: true }));
+
+    expect(tabRow.dataset.dropTarget).toBe("true");
+
+    tabRow.dispatchEvent(new Event("drop", { bubbles: true, cancelable: true }));
+
+    expect(dockedPanel.hidden).toBe(true);
+    expect(dockedPanelTab.hidden).toBe(true);
+    expect(inspectorSection.parentElement?.classList.contains("editor-primary-panel")).toBe(true);
+    expect(inspectorTab.dataset.docked).toBe("false");
+    expect(inspectorTab.getAttribute("aria-selected")).toBe("true");
   });
 
   it("selects a top-level item when clicking it in the preview", () => {
@@ -111,32 +152,46 @@ describe("editor app", () => {
     previewItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
     expect(getButton(app, '[data-item-id="demo-component-a"]').getAttribute("aria-pressed")).toBe("true");
+    expect(getButton(app, '[data-editor-tab="items"]').getAttribute("aria-selected")).toBe("true");
     expect(app.querySelector<HTMLElement>(".inspector-status")?.textContent).toBe("Selected demo-component-a");
     expect(previewItem.getAttribute("data-editor-selected")).toBe("true");
   });
 
-  it("jumps to the selected item in JSON when selecting from the item list", () => {
+  it("keeps selection in the inspector until the JSON tab is opened manually", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
     const jsonInput = getTextarea(app, ".json-input");
-    const jsonToggle = getSubsectionToggle(app, "Decoded JSON");
+    const jsonTab = getButton(app, '[data-editor-tab="json"]');
+    const jsonSection = app.querySelector<HTMLElement>(".json-editor-section");
     const alarmLabelButton = getButton(app, '[data-item-id="demo-alarm-label"]');
 
-    jsonToggle.click();
-    expect(jsonInput.hidden).toBe(true);
+    expect(jsonSection?.hidden).toBe(true);
 
     alarmLabelButton.click();
 
-    expect(jsonInput.hidden).toBe(false);
-    expect(jsonToggle.getAttribute("aria-expanded")).toBe("true");
-    expect(jsonInput.selectionStart).toBe(jsonInput.value.indexOf("\"id\": \"demo-alarm-label\"", jsonInput.value.indexOf("\"items\": [")));
+    expect(getButton(app, '[data-editor-tab="inspector"]').getAttribute("aria-selected")).toBe("true");
+    expect(jsonSection?.hidden).toBe(true);
+
+    jsonTab.click();
+
+    expect(jsonSection?.hidden).toBe(false);
+    expect(jsonTab.getAttribute("aria-selected")).toBe("true");
+    const selectedJson = jsonInput.value.slice(jsonInput.selectionStart, jsonInput.selectionEnd);
+
+    expect(selectedJson).toContain("\"id\": \"demo-alarm-label\"");
+    expect(selectedJson).toContain("\"text\": \"ALARM\"");
+    expect(selectedJson.trim().startsWith("{")).toBe(true);
+    expect(selectedJson.trim().endsWith("}")).toBe(true);
     expect(jsonInput.scrollTop).toBeGreaterThan(0);
   });
 
-  it("jumps to the selected item in JSON when selecting from the preview", () => {
+  it("does not force the JSON tab open when selecting from the preview", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
     const jsonInput = getTextarea(app, ".json-input");
+    const jsonTab = getButton(app, '[data-editor-tab="json"]');
+    const inspectorTab = getButton(app, '[data-editor-tab="inspector"]');
+    const jsonSection = app.querySelector<HTMLElement>(".json-editor-section");
     const previewItem = app.querySelector('[data-id="demo-component-b"]');
 
     if (!previewItem) {
@@ -145,7 +200,69 @@ describe("editor app", () => {
 
     previewItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
-    expect(jsonInput.selectionStart).toBe(jsonInput.value.indexOf("\"id\": \"demo-component-b\"", jsonInput.value.indexOf("\"items\": [")));
+    expect(inspectorTab.getAttribute("aria-selected")).toBe("false");
+    expect(jsonSection?.hidden).toBe(true);
+
+    jsonTab.click();
+
+    const selectedJson = jsonInput.value.slice(jsonInput.selectionStart, jsonInput.selectionEnd);
+
+    expect(selectedJson).toContain("\"id\": \"demo-component-b\"");
+    expect(selectedJson).toContain("\"type\": \"symbol\"");
+    expect(selectedJson.trim().startsWith("{")).toBe(true);
+    expect(selectedJson.trim().endsWith("}")).toBe(true);
+  });
+
+  it("updates JSON selection when the JSON tab is already active", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const jsonInput = getTextarea(app, ".json-input");
+    const jsonTab = getButton(app, '[data-editor-tab="json"]');
+    const previewItem = app.querySelector('[data-id="demo-component-b"]');
+
+    if (!previewItem) {
+      throw new Error("preview item missing");
+    }
+
+    jsonTab.click();
+    jsonInput.setSelectionRange(0, 0);
+    previewItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    const selectedJson = jsonInput.value.slice(jsonInput.selectionStart, jsonInput.selectionEnd);
+
+    expect(jsonTab.getAttribute("aria-selected")).toBe("true");
+    expect(selectedJson).toContain("\"id\": \"demo-component-b\"");
+    expect(selectedJson).toContain("\"type\": \"symbol\"");
+    expect(selectedJson.trim().startsWith("{")).toBe(true);
+    expect(selectedJson.trim().endsWith("}")).toBe(true);
+    expect(jsonInput.scrollTop).toBeGreaterThan(0);
+  });
+
+  it("clears selection from empty preview clicks and Escape", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const previewItem = app.querySelector('[data-id="demo-component-a"]');
+    const svg = app.querySelector("svg");
+
+    if (!previewItem || !svg) {
+      throw new Error("preview elements missing");
+    }
+
+    previewItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(getButton(app, '[data-item-id="demo-component-a"]').getAttribute("aria-pressed")).toBe("true");
+
+    svg.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(getButton(app, '[data-item-id="demo-component-a"]').getAttribute("aria-pressed")).toBe("false");
+    expect(previewItem.getAttribute("data-editor-selected")).toBeNull();
+    expect(app.querySelector<HTMLElement>(".inspector-status")?.textContent).toBe("Select an item");
+    expect(getButton(app, ".duplicate-item-button").disabled).toBe(true);
+
+    previewItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    app.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+    expect(getButton(app, '[data-item-id="demo-component-a"]').getAttribute("aria-pressed")).toBe("false");
+    expect(app.querySelector<HTMLElement>(".inspector-status")?.textContent).toBe("Select an item");
   });
 
   it("selects a top-level symbol when clicking one of its rendered child elements", () => {
@@ -206,6 +323,8 @@ describe("editor app", () => {
     const app = createEditorApp(documentRef);
 
     getButton(app, '[data-item-id="demo-title"]').click();
+    expect(getInspectorField(app, "fill").querySelector(".field-label")?.textContent).toBe("Fill / inside color");
+    expect(getInspectorField(app, "opacity").querySelector(".field-label")?.textContent).toBe("Opacity 0-100%");
     getInspectorInput(app, "fill").value = "#ff0000";
     getInspectorInput(app, "fill").dispatchEvent(new Event("change"));
     getInspectorInput(app, "fontSize").value = "18";
@@ -234,6 +353,31 @@ describe("editor app", () => {
     expect(getPayloadItem(app, "demo-title")?.style?.textAnchor).toBe("start");
   });
 
+  it("edits paint style with color picker and theme token presets", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, '[data-item-id="demo-title"]').click();
+
+    const colorInput = getInspectorField(app, "fill").querySelector<HTMLInputElement>(".style-color-input");
+    const presetSelect = getInspectorField(app, "fill").querySelector<HTMLSelectElement>(".style-preset-select");
+
+    if (!colorInput || !presetSelect) {
+      throw new Error("paint controls missing");
+    }
+
+    colorInput.value = "#00ff00";
+    colorInput.dispatchEvent(new Event("input"));
+    expect(getPayloadItem(app, "demo-title")?.style?.fill).toBe("#00ff00");
+    expect(app.querySelector('[data-id="demo-title"]')?.getAttribute("fill")).toBe("#00ff00");
+
+    presetSelect.value = "var(--accent-color)";
+    presetSelect.dispatchEvent(new Event("change"));
+
+    expect(getPayloadItem(app, "demo-title")?.style?.fill).toBe("var(--accent-color)");
+    expect(presetSelect.querySelector("option")?.textContent).toBe("Use theme colors...");
+  });
+
   it("edits rect, circle, and polyline style fields", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
@@ -245,10 +389,23 @@ describe("editor app", () => {
     expect(app.querySelector('[data-id="rect-1"]')?.getAttribute("stroke-width")).toBe("5");
 
     getButton(app, '[data-item-id="demo-status-dot"]').click();
-    getInspectorInput(app, "opacity").value = "0.5";
+    getInspectorInput(app, "opacity").value = "50";
     getInspectorInput(app, "opacity").dispatchEvent(new Event("change"));
     expect(getPayloadItem(app, "demo-status-dot")?.style?.opacity).toBe(0.5);
     expect(app.querySelector('[data-id="demo-status-dot"]')?.getAttribute("opacity")).toBe("0.5");
+
+    const opacitySlider = getInspectorField(app, "opacity").querySelector<HTMLInputElement>(".style-slider-input");
+
+    if (!opacitySlider) {
+      throw new Error("opacity slider missing");
+    }
+
+    opacitySlider.value = "25";
+    opacitySlider.dispatchEvent(new Event("input"));
+    expect(getInspectorInput(app, "opacity").value).toBe("25");
+    expect(opacitySlider.parentElement).not.toBeNull();
+    expect(getPayloadItem(app, "demo-status-dot")?.style?.opacity).toBe(0.25);
+    expect(app.querySelector('[data-id="demo-status-dot"]')?.getAttribute("opacity")).toBe("0.25");
 
     getButton(app, '[data-item-id="demo-flow-line"]').click();
     getInspectorInput(app, "stroke").value = "#00ff00";
@@ -557,6 +714,52 @@ describe("editor app", () => {
     expect(movedTitle?.getAttribute("y")).toBe("40");
   });
 
+  it("toggles snap independently from grid visibility", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const gridButton = getButton(app, ".toggle-grid-button");
+    const snapButton = getButton(app, ".toggle-snap-button");
+    const gridSizeInput = getInput(app, ".grid-size-input");
+    const svg = app.querySelector("svg");
+    const title = [...app.querySelectorAll("text")].find((element) => element.textContent === "Schematic Demo");
+
+    if (!svg || !title) {
+      throw new Error("draggable preview item missing");
+    }
+
+    gridSizeInput.value = "20";
+    gridSizeInput.dispatchEvent(new Event("change"));
+    gridButton.click();
+
+    expect(gridButton.getAttribute("aria-pressed")).toBe("false");
+    expect(snapButton.getAttribute("aria-pressed")).toBe("true");
+
+    setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
+    title.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 16, clientY: 28, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 47, clientY: 47 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(getPositionedPayloadItem(app, "demo-title")?.x).toBe(40);
+    expect(getPositionedPayloadItem(app, "demo-title")?.y).toBe(40);
+
+    snapButton.click();
+    expect(snapButton.getAttribute("aria-pressed")).toBe("false");
+
+    const movedTitle = [...app.querySelectorAll("text")].find((element) => element.textContent === "Schematic Demo");
+
+    if (!movedTitle?.ownerSVGElement) {
+      throw new Error("moved preview item missing");
+    }
+
+    setSvgBounds(movedTitle.ownerSVGElement, { left: 0, top: 0, width: 420, height: 180 });
+    movedTitle?.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 40, clientY: 40, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 47, clientY: 47 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(getPositionedPayloadItem(app, "demo-title")?.x).toBe(47);
+    expect(getPositionedPayloadItem(app, "demo-title")?.y).toBe(47);
+  });
+
   it("draws a snapped polyline in the preview and selects it", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
@@ -819,14 +1022,15 @@ describe("editor app", () => {
     expect(app.querySelector<HTMLElement>(".inspector-status")?.textContent).toBe("Polyline drawing cancelled");
   });
 
-  it("opens and closes the import/export side panel from the preview header", () => {
+  it("opens and closes import, export, and theme side panels from the top toolbar", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
     const panel = app.querySelector<HTMLElement>(".transfer-panel");
     const importSection = app.querySelector<HTMLElement>(".import-section");
+    const themeSection = app.querySelector<HTMLElement>(".theme-section");
     const exportSection = app.querySelector<HTMLElement>(".export-section");
 
-    if (!panel || !importSection || !exportSection) {
+    if (!panel || !importSection || !themeSection || !exportSection) {
       throw new Error("transfer panel missing");
     }
 
@@ -836,12 +1040,20 @@ describe("editor app", () => {
     expect(panel.hidden).toBe(false);
     expect(panel.dataset.mode).toBe("import");
     expect(importSection.hidden).toBe(false);
+    expect(themeSection.hidden).toBe(true);
     expect(exportSection.hidden).toBe(true);
 
     getButton(app, ".open-export-button").click();
     expect(panel.dataset.mode).toBe("export");
     expect(importSection.hidden).toBe(true);
+    expect(themeSection.hidden).toBe(true);
     expect(exportSection.hidden).toBe(false);
+
+    getButton(app, ".open-theme-button").click();
+    expect(panel.dataset.mode).toBe("theme");
+    expect(importSection.hidden).toBe(true);
+    expect(themeSection.hidden).toBe(false);
+    expect(exportSection.hidden).toBe(true);
 
     getButton(app, ".transfer-panel-close").click();
     expect(panel.hidden).toBe(true);
@@ -861,31 +1073,6 @@ describe("editor app", () => {
     documentRef.dispatchEvent(new MouseEvent("mouseup"));
 
     expect(app.style.getPropertyValue("--editor-left-width")).toBe("560px");
-  });
-
-  it("resizes the item tools and decoded JSON sections vertically", () => {
-    const documentRef = createDocument();
-    const app = createEditorApp(documentRef);
-    const pane = app.querySelector<HTMLElement>(".pane");
-    const paneHeader = app.querySelector<HTMLElement>(".pane-header");
-    const handle = app.querySelector<HTMLElement>(".section-resize-handle");
-
-    if (!pane || !paneHeader || !handle) {
-      throw new Error("section resize handle missing");
-    }
-
-    setElementBounds(pane, { left: 0, top: 0, width: 420, height: 800 });
-    Object.defineProperty(pane, "clientHeight", {
-      configurable: true,
-      value: 800
-    });
-    setElementBounds(paneHeader, { left: 0, top: 0, width: 420, height: 52 });
-
-    handle.dispatchEvent(new MouseEvent("mousedown", { clientY: 520, bubbles: true }));
-    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientY: 560 }));
-    documentRef.dispatchEvent(new MouseEvent("mouseup"));
-
-    expect(pane.style.getPropertyValue("--editor-json-height")).toBe("240px");
   });
 
   it("keeps the copy button with the export payload field", () => {
@@ -1064,6 +1251,28 @@ describe("editor app", () => {
     expect(app.querySelector<HTMLElement>(".theme-status")?.textContent).toBe("Applied 3 theme variables");
   });
 
+  it("loads stored theme variables on startup", () => {
+    const windowRef = new Window();
+    const documentRef = windowRef.document as unknown as Document;
+    const storedTheme = JSON.stringify({
+      type: "ha-schematic-card-theme-variables",
+      version: 1,
+      capturedAt: "2026-05-30T00:00:00.000Z",
+      variables: {
+        "--ha-card-background": "rgb(1, 2, 3)"
+      }
+    });
+
+    windowRef.localStorage.setItem("ha-schematic-card-editor-theme-preview", storedTheme);
+
+    const app = createEditorApp(documentRef);
+    const previewSurface = app.querySelector<HTMLElement>(".preview-surface");
+
+    expect(getTextarea(app, ".theme-input").value).toBe(storedTheme);
+    expect(previewSurface?.style.getPropertyValue("--ha-card-background")).toBe("rgb(1, 2, 3)");
+    expect(app.querySelector<HTMLElement>(".theme-status")?.textContent).toBe("Applied 1 theme variables");
+  });
+
   it("shows a theme error without changing payload JSON or preview", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
@@ -1113,27 +1322,27 @@ function getInput(root: ParentNode, selector: string): HTMLInputElement {
   return element;
 }
 
-function getSubsectionToggle(root: ParentNode, title: string): HTMLButtonElement {
-  for (const button of root.querySelectorAll(".subsection-toggle")) {
-    if (button instanceof HTMLButtonElement && button.textContent?.includes(title)) {
-      return button;
-    }
-  }
-
-  throw new Error(`subsection toggle missing: ${title}`);
-}
-
 function getInspectorInput(root: ParentNode, fieldName: string): HTMLInputElement {
-  for (const field of root.querySelectorAll(".inspector-field")) {
-    const label = field.querySelector(".field-label");
-    const input = field.querySelector("input");
+  const field = getInspectorField(root, fieldName);
+  const input = field.querySelector("input");
 
-    if (label?.textContent === fieldName && input instanceof HTMLInputElement) {
-      return input;
-    }
+  if (input instanceof HTMLInputElement) {
+    return input;
   }
 
   throw new Error(`inspector input missing: ${fieldName}`);
+}
+
+function getInspectorField(root: ParentNode, fieldName: string): HTMLElement {
+  for (const field of root.querySelectorAll(".inspector-field")) {
+    const label = field.querySelector(".field-label");
+
+    if (field instanceof HTMLElement && (field.dataset.fieldName === fieldName || label?.textContent === fieldName)) {
+      return field;
+    }
+  }
+
+  throw new Error(`inspector field missing: ${fieldName}`);
 }
 
 function clickPreviewPoint(
@@ -1224,6 +1433,16 @@ function getPayloadItem(
 ): { id: string; layer: number; style?: Record<string, unknown> } | undefined {
   const parsed = JSON.parse(getTextarea(app, ".json-input").value) as {
     items: Array<{ id: string; layer: number; style?: Record<string, unknown> }>;
+  };
+  return parsed.items.find((item) => item.id === itemId);
+}
+
+function getPositionedPayloadItem(
+  app: HTMLElement,
+  itemId: string
+): { id: string; x?: number; y?: number } | undefined {
+  const parsed = JSON.parse(getTextarea(app, ".json-input").value) as {
+    items: Array<{ id: string; x?: number; y?: number }>;
   };
   return parsed.items.find((item) => item.id === itemId);
 }
