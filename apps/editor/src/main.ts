@@ -1039,7 +1039,7 @@ function renderItemTools(elements: EditorElements, payload: SchematicPayload, do
     button.setAttribute("aria-pressed", String(item.id === elements.selectedItemId));
     button.addEventListener("click", () => {
       elements.selectedItemId = item.id;
-      renderItemTools(elements, payload, documentRef);
+      updateFromJson(elements, documentRef);
       showEditorTab(elements, "inspector");
     });
     elements.itemList.append(button);
@@ -1073,7 +1073,7 @@ function selectPreviewItem(
   }
 
   elements.selectedItemId = itemId;
-  renderItemTools(elements, payload, documentRef);
+  updateFromJson(elements, documentRef);
 
   if (isJsonVisible(elements)) {
     selectSelectedItemInJson(elements);
@@ -1087,7 +1087,7 @@ function clearSelection(elements: EditorElements, payload: SchematicPayload, doc
   }
 
   delete elements.selectedItemId;
-  renderItemTools(elements, payload, documentRef);
+  updateFromJson(elements, documentRef);
   clearJsonSelection(elements);
 }
 

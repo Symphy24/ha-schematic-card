@@ -154,7 +154,7 @@ describe("editor app", () => {
     expect(getButton(app, '[data-item-id="demo-component-a"]').getAttribute("aria-pressed")).toBe("true");
     expect(getButton(app, '[data-editor-tab="items"]').getAttribute("aria-selected")).toBe("true");
     expect(app.querySelector<HTMLElement>(".inspector-status")?.textContent).toBe("Selected demo-component-a");
-    expect(previewItem.getAttribute("data-editor-selected")).toBe("true");
+    expect(app.querySelector('[data-id="demo-component-a"]')?.getAttribute("data-editor-selected")).toBe("true");
   });
 
   it("keeps selection in the inspector until the JSON tab is opened manually", () => {
@@ -278,7 +278,7 @@ describe("editor app", () => {
     child.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
     expect(getButton(app, '[data-item-id="demo-component-a"]').getAttribute("aria-pressed")).toBe("true");
-    expect(symbol?.getAttribute("data-editor-selected")).toBe("true");
+    expect(app.querySelector('[data-id="demo-component-a"]')?.getAttribute("data-editor-selected")).toBe("true");
   });
 
   it("edits x and y coordinates through the inspector", () => {
@@ -862,6 +862,29 @@ describe("editor app", () => {
     expect(movedHandle?.getAttribute("r")).toBe("5");
     expect(visibleDot?.getAttribute("r")).toBe("1.5");
     expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+  });
+
+  it("shows and hides polyline handles immediately when selection changes", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    drawTwoPointPolyline(app);
+    getButton(app, '[data-item-id="demo-title"]').click();
+
+    expect(app.querySelector("[data-editor-polyline-handles]")).toBeNull();
+
+    app.querySelector('[data-id="polyline-1"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(app.querySelector('[data-polyline-handle="polyline-1"]')).not.toBeNull();
+
+    app.querySelector("svg")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    expect(app.querySelector("[data-editor-polyline-handles]")).toBeNull();
+
+    app.querySelector('[data-id="polyline-1"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    app.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+    expect(app.querySelector("[data-editor-polyline-handles]")).toBeNull();
   });
 
   it("undoes and redoes polyline point edits", () => {
