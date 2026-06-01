@@ -39,6 +39,19 @@
           ]
         }
       ],
+      "partStyles": [
+        {
+          "partId": "body",
+          "when": {
+            "entityId": "slot:alarm",
+            "equals": "on"
+          },
+          "style": {
+            "fill": "var(--error-color)",
+            "strokeWidth": 3
+          }
+        }
+      ],
       "entitySlots": [
         {
           "id": "running",
@@ -67,19 +80,7 @@
             "stroke": "var(--primary-text-color)",
             "strokeWidth": 2,
             "fill": "var(--divider-color)"
-          },
-          "styleWhen": [
-            {
-              "when": {
-                "entityId": "slot:alarm",
-                "equals": "on"
-              },
-              "style": {
-                "fill": "var(--error-color)",
-                "strokeWidth": 3
-              }
-            }
-          ]
+          }
         },
         {
           "id": "unit-status-dot",

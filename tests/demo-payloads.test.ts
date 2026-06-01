@@ -22,7 +22,7 @@ describe("demo payload fixtures", () => {
       running: "input_boolean.schematic_demo_flow",
       alarm: "input_boolean.schematic_demo_alarm"
     });
-    expect(symbolStyleItemsFor(payload, "demo-generic-unit", "slot:alarm", "on")).toHaveLength(1);
+    expect(symbolPartStylesFor(payload, "demo-generic-unit", "body", "slot:alarm", "on")).toHaveLength(1);
     expect(visibilityItemsFor(payload, "input_boolean.schematic_demo_alarm", "on")).toHaveLength(2);
     expect(styleItemsFor(payload, "input_boolean.schematic_demo_alarm", "on")).toHaveLength(1);
     expect(flowItemsFor(payload, "input_boolean.schematic_demo_flow", "on")).toHaveLength(1);
@@ -85,9 +85,10 @@ function symbolSlotBindingsFor(payload: { items: unknown[] }, itemId: string): R
   return item.slotBindings as Record<string, unknown>;
 }
 
-function symbolStyleItemsFor(
+function symbolPartStylesFor(
   payload: { symbols?: unknown[] },
   symbolId: string,
+  partId: string,
   entityId: string,
   equals: string
 ): unknown[] {
@@ -98,11 +99,18 @@ function symbolStyleItemsFor(
     && candidate.id === symbolId
   ));
 
-  if (typeof symbol !== "object" || symbol === null || !("items" in symbol) || !Array.isArray(symbol.items)) {
+  if (typeof symbol !== "object" || symbol === null || !("partStyles" in symbol) || !Array.isArray(symbol.partStyles)) {
     return [];
   }
 
-  return symbol.items.filter((item) => hasStyleWhen(item, entityId, equals));
+  return symbol.partStyles.filter((entry) => (
+    typeof entry === "object"
+    && entry !== null
+    && "partId" in entry
+    && entry.partId === partId
+    && "when" in entry
+    && hasCondition(entry.when, entityId, equals)
+  ));
 }
 
 function symbolPartItemsFor(payload: { symbols?: unknown[] }, symbolId: string, partId: string): string[] {

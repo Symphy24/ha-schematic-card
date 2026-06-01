@@ -14,6 +14,7 @@ import type {
   SchematicStyle,
   SchematicSymbolDefinition,
   SchematicSymbolInstance,
+  SchematicSymbolPartStyle,
   SchematicText,
   SchematicVisibilityCondition
 } from "@ha-schematic-card/schema";
@@ -48,6 +49,7 @@ type RenderContext = {
   entityStates?: Record<string, EntityStateValue>;
   symbols: Map<string, SchematicSymbolDefinition>;
   slotBindings?: Record<string, string>;
+  partStyles?: SchematicSymbolPartStyle[];
 };
 
 export function renderSchematicSvg(payload: SchematicPayload, options: RenderOptions = {}): SVGSVGElement {
@@ -275,7 +277,8 @@ function renderSymbol(item: SchematicSymbolInstance, context: RenderContext): SV
   applyItemStyle(element, item, context);
   const childContext: RenderContext = {
     ...context,
-    slotBindings: item.slotBindings
+    slotBindings: item.slotBindings,
+    partStyles: symbol.partStyles
   };
 
   for (const child of sortItemsByLayer(symbol.items)) {
@@ -351,15 +354,23 @@ function resolveItemStyle(
   item: SchematicItem,
   context: RenderContext
 ): SchematicStyle | undefined {
-  if (!item.styleWhen || item.styleWhen.length === 0) {
-    return item.style;
-  }
-
-  const matchedStyles = item.styleWhen
+  const matchedStyles = (item.styleWhen ?? [])
     .filter((entry) => evaluateConditionalStyle(entry, context))
     .map((entry) => entry.style);
+  const matchedPartStyles = item.partId === undefined
+    ? []
+    : (context.partStyles ?? [])
+      .filter((entry) => entry.partId === item.partId && evaluateSymbolPartStyle(entry, context))
+      .map((entry) => entry.style);
 
-  return Object.assign({}, item.style, ...matchedStyles) as SchematicStyle;
+  return Object.assign({}, item.style, ...matchedStyles, ...matchedPartStyles) as SchematicStyle;
+}
+
+function evaluateSymbolPartStyle(
+  entry: SchematicSymbolPartStyle,
+  context: RenderContext
+): boolean {
+  return evaluateVisibilityCondition(entry.when, context);
 }
 
 function evaluateConditionalStyle(

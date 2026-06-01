@@ -121,6 +121,8 @@ describe("editor app", () => {
     expect(section?.textContent).toContain("unit-box");
     expect(section?.textContent).toContain("status - Status indicator");
     expect(section?.textContent).toContain("unit-status-dot");
+    expect(section?.textContent).toContain("Part dynamic styles");
+    expect(section?.textContent).toContain("body when slot:alarm = on");
     expect(section?.textContent).toContain("running - Running state");
     expect(section?.textContent).toContain("alarm - Alarm state");
     expect(getSymbolSlotBindingInput(app, "running").value).toBe("input_boolean.schematic_demo_flow");
