@@ -714,6 +714,30 @@ describe("editor app", () => {
     expect(movedTitle?.getAttribute("y")).toBe("40");
   });
 
+  it("temporarily disables snap while holding Shift during item drag", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const gridSizeInput = getInput(app, ".grid-size-input");
+
+    gridSizeInput.value = "20";
+    gridSizeInput.dispatchEvent(new Event("change"));
+
+    const svg = app.querySelector("svg");
+    const title = [...app.querySelectorAll("text")].find((element) => element.textContent === "Schematic Demo");
+
+    if (!svg || !title) {
+      throw new Error("draggable preview item missing");
+    }
+
+    setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
+    title.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 16, clientY: 28, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 47, clientY: 47, shiftKey: true }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(getPositionedPayloadItem(app, "demo-title")?.x).toBe(47);
+    expect(getPositionedPayloadItem(app, "demo-title")?.y).toBe(47);
+  });
+
   it("toggles snap independently from grid visibility", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
@@ -1175,9 +1199,9 @@ describe("editor app", () => {
 
     const movedHandle = app.querySelector<SVGCircleElement>('.editor-polyline-handle-hitbox[data-polyline-handle="polyline-1"][data-point-index="1"]');
 
-    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 80");
+    expect(getTextarea(app, ".json-input").value).toContain("\"x\": 82");
     expect(getTextarea(app, ".json-input").value).toContain("\"y\": 10");
-    expect(movedHandle?.getAttribute("cx")).toBe("80");
+    expect(movedHandle?.getAttribute("cx")).toBe("82");
     expect(movedHandle?.getAttribute("cy")).toBe("10");
   });
 
@@ -1224,9 +1248,60 @@ describe("editor app", () => {
     expect(getButton(app, ".send-backward-button").textContent).toBe("Send backward");
     expect(getButton(app, ".bring-to-front-button").textContent).toBe("Bring to front");
     expect(getButton(app, ".send-to-back-button").textContent).toBe("Send to back");
-    expect(getButton(app, ".add-polyline-point-button").hidden).toBe(true);
-    expect(getButton(app, ".delete-polyline-point-button").hidden).toBe(true);
+    expect(app.querySelector<HTMLElement>(".polyline-context-menu")?.dataset.mode).toBe("item");
     expect(getButton(app, '[data-item-id="demo-title"]').getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("adds items from the empty preview context menu", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    openEmptyPreviewContextMenu(app, 100, 80);
+
+    expect(app.querySelector<HTMLElement>(".polyline-context-menu")?.dataset.mode).toBe("empty");
+
+    getButton(app, ".add-rect-context-button").click();
+
+    expect(getPayloadItem(app, "rect-1")).toMatchObject({ id: "rect-1" });
+    expect(getPositionedPayloadItem(app, "rect-1")).toMatchObject({ x: 68, y: 60 });
+
+    openEmptyPreviewContextMenu(app, 140, 90);
+    getButton(app, ".add-polyline-context-button").click();
+
+    expect(getPolylinePoints(app, "polyline-1")).toEqual([{ x: 140, y: 90 }, { x: 200, y: 90 }]);
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+  });
+
+  it("aligns, mirrors, duplicates, and deletes from the item context menu", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    clickPreviewItem(app, "demo-title");
+    clickPreviewItem(app, "demo-temperature", { ctrlKey: true });
+    openItemContextMenu(app, "demo-title");
+    getButton(app, ".align-right-button").click();
+
+    expect(getPositionedPayloadItem(app, "demo-title")?.x).toBe(48);
+    expect(getPositionedPayloadItem(app, "demo-temperature")?.x).toBe(48);
+
+    getButton(app, ".undo-button").click();
+    openItemContextMenu(app, "demo-title");
+    getButton(app, ".mirror-horizontal-button").click();
+
+    expect(getPositionedPayloadItem(app, "demo-title")?.x).toBe(48);
+    expect(getPositionedPayloadItem(app, "demo-temperature")?.x).toBe(16);
+
+    openItemContextMenu(app, "demo-title");
+    getButton(app, ".context-duplicate-button").click();
+
+    expect(getPositionedPayloadItem(app, "demo-title-copy")).toMatchObject({ x: 58, y: 38 });
+    expect(getPositionedPayloadItem(app, "demo-temperature-copy")).toMatchObject({ x: 26, y: 156 });
+
+    openItemContextMenu(app, "demo-title-copy");
+    getButton(app, ".context-delete-button").click();
+
+    expect(getPositionedPayloadItem(app, "demo-title-copy")).toBeUndefined();
+    expect(getPositionedPayloadItem(app, "demo-temperature-copy")).toBeUndefined();
   });
 
   it("changes item layer from the context menu and supports undo and redo", () => {
@@ -1683,6 +1758,17 @@ function openItemContextMenu(app: HTMLElement, itemId: string): void {
 
   setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
   item.dispatchEvent(new MouseEvent("contextmenu", { clientX: 80, clientY: 50, bubbles: true }));
+}
+
+function openEmptyPreviewContextMenu(app: HTMLElement, clientX: number, clientY: number): void {
+  const svg = app.querySelector("svg");
+
+  if (!svg) {
+    throw new Error("preview svg missing");
+  }
+
+  setSvgBounds(svg, { left: 0, top: 0, width: 420, height: 180 });
+  svg.dispatchEvent(new MouseEvent("contextmenu", { clientX, clientY, bubbles: true }));
 }
 
 function drawTwoPointPolyline(app: HTMLElement): void {
