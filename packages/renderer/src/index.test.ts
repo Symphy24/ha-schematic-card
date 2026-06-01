@@ -316,6 +316,18 @@ describe("SVG renderer", () => {
       symbols: [
         {
           id: "generic-box",
+          parts: [
+            {
+              id: "body",
+              itemIds: ["symbol-child-top", "symbol-child-bottom"]
+            }
+          ],
+          entitySlots: [
+            {
+              id: "running",
+              label: "Running state"
+            }
+          ],
           items: [
             symbolRectItem("symbol-child-top", 300),
             symbolRectItem("symbol-child-bottom", 100)

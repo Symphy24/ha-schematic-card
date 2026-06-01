@@ -22,7 +22,7 @@ Manual test flow:
 5. Use the top toolbar for global actions such as `Select`, `Undo`, `Redo`, `Import`, `Export`, and `Theme`.
 6. Click `Format JSON` to reformat valid payload JSON.
 7. Click `Reset Demo` to reload the demo payload.
-8. Select a top-level item from `Items`.
+8. Select a top-level symbol item from `Items` and confirm the tab and inspector show reusable symbol metadata such as parts and entity slots when the payload defines them.
 9. Use the top toolbar `Add` buttons to create a text, rect, or circle item.
 10. Confirm the new item is selected automatically and appears in the preview.
 11. Use `Duplicate` on a selected item and confirm the copy gets a new id, appears slightly offset, and is selected.

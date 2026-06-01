@@ -31,6 +31,7 @@ type EditorElements = {
   editorRoot: HTMLElement;
   jsonInput: HTMLTextAreaElement;
   itemList: HTMLElement;
+  symbolSummary: HTMLElement;
   itemsTabButton: HTMLButtonElement;
   inspectorTabButton: HTMLButtonElement;
   jsonTabButton: HTMLButtonElement;
@@ -310,6 +311,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     editorRoot: shell,
     jsonInput: getRequiredElement(jsonPane, ".json-input", HTMLTextAreaElement),
     itemList: getRequiredElement(jsonPane, ".item-list", HTMLElement),
+    symbolSummary: getRequiredElement(jsonPane, ".symbol-summary", HTMLElement),
     itemsTabButton: getRequiredElement(jsonPane, '[data-editor-tab="items"]', HTMLButtonElement),
     inspectorTabButton: getRequiredElement(jsonPane, '[data-editor-tab="inspector"]', HTMLButtonElement),
     jsonTabButton: getRequiredElement(jsonPane, '[data-editor-tab="json"]', HTMLButtonElement),
@@ -1168,6 +1170,8 @@ function resetDemoPayload(elements: EditorElements, documentRef: Document): void
 
 function renderDisabledItemTools(elements: EditorElements, message: string): void {
   elements.itemList.replaceChildren();
+  elements.symbolSummary.replaceChildren();
+  elements.symbolSummary.hidden = true;
   elements.inspector.replaceChildren();
   updateSelectedItemActionButtons(elements, false);
   elements.inspectorStatus.textContent = `Inspector unavailable:\n${message}`;
@@ -1397,6 +1401,7 @@ function deleteSelectedItemFromContextMenu(elements: EditorElements, documentRef
 
 function renderItemTools(elements: EditorElements, payload: SchematicPayload, documentRef: Document): void {
   elements.itemList.replaceChildren();
+  renderSymbolSummary(elements, payload, documentRef);
   normalizeSelection(elements, payload);
 
   if (payload.items.length === 0) {
@@ -1426,12 +1431,46 @@ function renderItemTools(elements: EditorElements, payload: SchematicPayload, do
   if (elements.selectedItemIds.length > 1) {
     renderMultiSelectInspector(elements, elements.selectedItemIds.length);
   } else if (selectedItem) {
-    renderInspector(elements, selectedItem, documentRef);
+    renderInspector(elements, selectedItem, payload, documentRef);
   } else {
     renderNeutralInspector(elements, "Select an item");
   }
 
   highlightSelectedPreviewItem(elements);
+}
+
+function renderSymbolSummary(elements: EditorElements, payload: SchematicPayload, documentRef: Document): void {
+  elements.symbolSummary.replaceChildren();
+
+  if (!payload.symbols || payload.symbols.length === 0) {
+    elements.symbolSummary.hidden = true;
+    return;
+  }
+
+  elements.symbolSummary.hidden = false;
+
+  const heading = documentRef.createElement("div");
+  heading.className = "symbol-summary-heading";
+  heading.textContent = "Symbols";
+  elements.symbolSummary.append(heading);
+
+  for (const symbol of payload.symbols) {
+    const row = documentRef.createElement("div");
+    row.className = "symbol-summary-row";
+
+    const title = documentRef.createElement("div");
+    title.className = "symbol-summary-title";
+    title.textContent = symbol.id;
+
+    const metadata = documentRef.createElement("div");
+    metadata.className = "symbol-summary-metadata";
+    const parts = symbol.parts?.map((part) => part.id).join(", ") || "none";
+    const slots = symbol.entitySlots?.map((slot) => slot.id).join(", ") || "none";
+    metadata.textContent = `Parts: ${parts} | Slots: ${slots}`;
+
+    row.append(title, metadata);
+    elements.symbolSummary.append(row);
+  }
 }
 
 function updateSelectedItemActionButtons(elements: EditorElements, hasSelection: boolean): void {
@@ -2898,7 +2937,12 @@ function estimateTextareaScrollTop(value: string, index: number): number {
   return Math.max(0, line - 3) * 17;
 }
 
-function renderInspector(elements: EditorElements, item: SchematicItem, documentRef: Document): void {
+function renderInspector(
+  elements: EditorElements,
+  item: SchematicItem,
+  payload: SchematicPayload,
+  documentRef: Document
+): void {
   elements.inspector.replaceChildren();
   elements.inspectorStatus.textContent = `Selected ${item.id}`;
   elements.inspectorStatus.dataset.state = "valid";
@@ -2918,7 +2962,96 @@ function renderInspector(elements: EditorElements, item: SchematicItem, document
     appendInspectorField(elements, documentRef, item, "text", "text");
   }
 
+  appendSymbolMetadataInspector(elements, documentRef, item, payload);
   appendStyleInspector(elements, documentRef, item);
+}
+
+function appendSymbolMetadataInspector(
+  elements: EditorElements,
+  documentRef: Document,
+  item: SchematicItem,
+  payload: SchematicPayload
+): void {
+  if (item.type !== "symbol") {
+    return;
+  }
+
+  const definition = payload.symbols?.find((symbol) => symbol.id === item.symbolId);
+  const section = documentRef.createElement("section");
+  section.className = "symbol-inspector-section";
+
+  const heading = documentRef.createElement("div");
+  heading.className = "field-label";
+  heading.textContent = "Symbol metadata";
+  section.append(heading);
+
+  const definitionRow = documentRef.createElement("div");
+  definitionRow.className = "symbol-inspector-row";
+  definitionRow.textContent = `Definition: ${item.symbolId}`;
+  section.append(definitionRow);
+
+  if (!definition) {
+    const missing = documentRef.createElement("div");
+    missing.className = "field-helper";
+    missing.textContent = "No matching symbol definition found.";
+    section.append(missing);
+    elements.inspector.append(section);
+    return;
+  }
+
+  section.append(createSymbolMetadataGroup(
+    documentRef,
+    "Parts",
+    definition.parts?.map((part) => {
+      const label = part.label ? `${part.id} - ${part.label}` : part.id;
+      return part.itemIds && part.itemIds.length > 0
+        ? `${label} (${part.itemIds.join(", ")})`
+        : label;
+    }) ?? []
+  ));
+  section.append(createSymbolMetadataGroup(
+    documentRef,
+    "Entity slots",
+    definition.entitySlots?.map((slot) => {
+      const label = slot.label ? `${slot.id} - ${slot.label}` : slot.id;
+      const required = slot.required ? " required" : "";
+      return slot.description
+        ? `${label}${required}: ${slot.description}`
+        : `${label}${required}`;
+    }) ?? []
+  ));
+
+  elements.inspector.append(section);
+}
+
+function createSymbolMetadataGroup(documentRef: Document, label: string, values: string[]): HTMLElement {
+  const group = documentRef.createElement("div");
+  group.className = "symbol-inspector-group";
+
+  const title = documentRef.createElement("div");
+  title.className = "symbol-inspector-group-title";
+  title.textContent = label;
+  group.append(title);
+
+  if (values.length === 0) {
+    const empty = documentRef.createElement("div");
+    empty.className = "field-helper";
+    empty.textContent = "None defined";
+    group.append(empty);
+    return group;
+  }
+
+  const list = documentRef.createElement("ul");
+  list.className = "symbol-inspector-list";
+
+  for (const value of values) {
+    const item = documentRef.createElement("li");
+    item.textContent = value;
+    list.append(item);
+  }
+
+  group.append(list);
+  return group;
 }
 
 function renderNeutralInspector(elements: EditorElements, message: string): void {
@@ -3900,6 +4033,9 @@ function createJsonPane(documentRef: Document): HTMLElement {
   const itemList = documentRef.createElement("div");
   itemList.className = "item-list";
 
+  const symbolSummary = documentRef.createElement("div");
+  symbolSummary.className = "symbol-summary";
+
   const inspectorSection = documentRef.createElement("section");
   inspectorSection.className = "editor-tab-panel inspector-section";
   inspectorSection.dataset.panel = "inspector";
@@ -3921,7 +4057,7 @@ function createJsonPane(documentRef: Document): HTMLElement {
   jsonSection.dataset.panel = "json";
   jsonSection.hidden = true;
 
-  itemListSection.append(itemListLabel, itemList);
+  itemListSection.append(itemListLabel, itemList, symbolSummary);
   inspectorSection.append(inspectorLabel, inspector, inspectorStatus);
   jsonSection.append(jsonInput);
   primaryPanel.append(itemListSection, inspectorSection, jsonSection);

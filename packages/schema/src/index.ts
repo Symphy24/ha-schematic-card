@@ -161,7 +161,22 @@ export type SchematicEntityValue = SchematicBaseItem & {
 export type SchematicSymbolDefinition = {
   id: string;
   viewport?: SchematicViewport;
+  parts?: SchematicSymbolPartDefinition[];
+  entitySlots?: SchematicSymbolEntitySlotDefinition[];
   items: SchematicSymbolChildItem[];
+};
+
+export type SchematicSymbolPartDefinition = {
+  id: string;
+  label?: string;
+  itemIds?: string[];
+};
+
+export type SchematicSymbolEntitySlotDefinition = {
+  id: string;
+  label?: string;
+  description?: string;
+  required?: boolean;
 };
 
 export type SchematicSymbolInstance = SchematicBaseItem & {
@@ -285,6 +300,9 @@ function validateSymbols(value: unknown, errors: string[]): Set<string> {
       validateViewport(symbol.viewport, errors);
     }
 
+    validateSymbolParts(symbol.parts, `${path}.parts`, errors);
+    validateSymbolEntitySlots(symbol.entitySlots, `${path}.entitySlots`, errors);
+
     if (!Array.isArray(symbol.items)) {
       errors.push(`${path}.items must be an array`);
     } else {
@@ -299,6 +317,73 @@ function validateSymbols(value: unknown, errors: string[]): Set<string> {
   });
 
   return symbolIds;
+}
+
+function validateSymbolParts(value: unknown, path: string, errors: string[]): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!Array.isArray(value)) {
+    errors.push(`${path} must be an array`);
+    return;
+  }
+
+  const partIds = new Set<string>();
+
+  value.forEach((part, index) => {
+    const partPath = `${path}[${index}]`;
+
+    if (!isRecord(part)) {
+      errors.push(`${partPath} must be an object`);
+      return;
+    }
+
+    validateUniqueId(part.id, partIds, `${partPath}.id`, errors);
+    validateOptionalString(part.label, `${partPath}.label`, errors);
+
+    if (part.itemIds !== undefined) {
+      if (!Array.isArray(part.itemIds)) {
+        errors.push(`${partPath}.itemIds must be an array`);
+      } else {
+        part.itemIds.forEach((itemId, itemIndex) => {
+          if (typeof itemId !== "string" || itemId.length === 0) {
+            errors.push(`${partPath}.itemIds[${itemIndex}] must be a non-empty string`);
+          }
+        });
+      }
+    }
+  });
+}
+
+function validateSymbolEntitySlots(value: unknown, path: string, errors: string[]): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!Array.isArray(value)) {
+    errors.push(`${path} must be an array`);
+    return;
+  }
+
+  const slotIds = new Set<string>();
+
+  value.forEach((slot, index) => {
+    const slotPath = `${path}[${index}]`;
+
+    if (!isRecord(slot)) {
+      errors.push(`${slotPath} must be an object`);
+      return;
+    }
+
+    validateUniqueId(slot.id, slotIds, `${slotPath}.id`, errors);
+    validateOptionalString(slot.label, `${slotPath}.label`, errors);
+    validateOptionalString(slot.description, `${slotPath}.description`, errors);
+
+    if (slot.required !== undefined && typeof slot.required !== "boolean") {
+      errors.push(`${slotPath}.required must be a boolean`);
+    }
+  });
 }
 
 function validateItem(
@@ -592,5 +677,15 @@ function validateOptionalString(value: unknown, path: string, errors: string[]):
 function validateOptionalInteger(value: unknown, path: string, errors: string[]): void {
   if (value !== undefined && (typeof value !== "number" || !Number.isInteger(value) || value < 0)) {
     errors.push(`${path} must be a non-negative integer`);
+  }
+}
+
+function validateUniqueId(value: unknown, seenIds: Set<string>, path: string, errors: string[]): void {
+  if (typeof value !== "string" || value.length === 0) {
+    errors.push(`${path} must be a non-empty string`);
+  } else if (seenIds.has(value)) {
+    errors.push(`${path} must be unique`);
+  } else {
+    seenIds.add(value);
   }
 }
