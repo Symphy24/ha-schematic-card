@@ -421,6 +421,7 @@ describe("schema validation", () => {
               id: "box-rect",
               type: "rect",
               layer: 300,
+              partId: "body",
               x: 0,
               y: 0,
               width: 20,
@@ -449,6 +450,41 @@ describe("schema validation", () => {
       valid: true,
       errors: []
     });
+  });
+
+  it("rejects symbol child items that reference missing parts", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      symbols: [
+        {
+          id: "generic-box",
+          parts: [
+            {
+              id: "body"
+            }
+          ],
+          items: [
+            {
+              id: "box-label",
+              type: "text",
+              layer: 610,
+              partId: "label",
+              x: 10,
+              y: 10,
+              text: "Box"
+            }
+          ]
+        }
+      ],
+      items: []
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("symbols[0].items[0].partId must reference a defined symbol part");
   });
 
   it("rejects invalid symbol slot bindings", () => {

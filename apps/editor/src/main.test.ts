@@ -103,7 +103,7 @@ describe("editor app", () => {
 
     expect(summary?.hidden).toBe(false);
     expect(summary?.textContent).toContain("demo-generic-unit");
-    expect(summary?.textContent).toContain("Parts: body, label");
+    expect(summary?.textContent).toContain("Parts: body, label, status");
     expect(summary?.textContent).toContain("Slots: running, alarm");
   });
 
@@ -119,6 +119,8 @@ describe("editor app", () => {
     expect(section?.textContent).toContain("Definition: demo-generic-unit");
     expect(section?.textContent).toContain("body - Symbol body");
     expect(section?.textContent).toContain("unit-box");
+    expect(section?.textContent).toContain("status - Status indicator");
+    expect(section?.textContent).toContain("unit-status-dot");
     expect(section?.textContent).toContain("running - Running state");
     expect(section?.textContent).toContain("alarm - Alarm state");
     expect(getSymbolSlotBindingInput(app, "running").value).toBe("input_boolean.schematic_demo_flow");

@@ -3004,8 +3004,9 @@ function appendSymbolMetadataInspector(
     "Parts",
     definition.parts?.map((part) => {
       const label = part.label ? `${part.id} - ${part.label}` : part.id;
-      return part.itemIds && part.itemIds.length > 0
-        ? `${label} (${part.itemIds.join(", ")})`
+      const itemIds = getSymbolPartItemIds(definition, part.id);
+      return itemIds.length > 0
+        ? `${label} (${itemIds.join(", ")})`
         : label;
     }) ?? []
   ));
@@ -3023,6 +3024,21 @@ function appendSymbolMetadataInspector(
   appendSymbolSlotBindingEditor(elements, documentRef, item, definition, section);
 
   elements.inspector.append(section);
+}
+
+function getSymbolPartItemIds(
+  definition: NonNullable<SchematicPayload["symbols"]>[number],
+  partId: string
+): string[] {
+  const explicitItems = definition.items
+    .filter((item) => item.partId === partId)
+    .map((item) => item.id);
+
+  if (explicitItems.length > 0) {
+    return explicitItems;
+  }
+
+  return definition.parts?.find((part) => part.id === partId)?.itemIds ?? [];
 }
 
 function appendSymbolSlotBindingEditor(
