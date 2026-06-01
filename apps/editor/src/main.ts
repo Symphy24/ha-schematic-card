@@ -78,6 +78,19 @@ type EditorElements = {
   sendBackwardButton: HTMLButtonElement;
   bringToFrontButton: HTMLButtonElement;
   sendToBackButton: HTMLButtonElement;
+  alignLeftButton: HTMLButtonElement;
+  alignRightButton: HTMLButtonElement;
+  alignTopButton: HTMLButtonElement;
+  alignBottomButton: HTMLButtonElement;
+  alignCenterButton: HTMLButtonElement;
+  mirrorHorizontalButton: HTMLButtonElement;
+  mirrorVerticalButton: HTMLButtonElement;
+  contextDuplicateButton: HTMLButtonElement;
+  contextDeleteButton: HTMLButtonElement;
+  addTextContextButton: HTMLButtonElement;
+  addRectContextButton: HTMLButtonElement;
+  addCircleContextButton: HTMLButtonElement;
+  addPolylineContextButton: HTMLButtonElement;
   closeTransferPanelButton: HTMLButtonElement;
   importButton: HTMLButtonElement;
   formatButton: HTMLButtonElement;
@@ -140,7 +153,7 @@ type PolylineDrawState = {
 };
 
 type PolylineContextMenuState = {
-  itemId: string;
+  itemId?: string;
   insertIndex?: number;
   nearestPointIndex?: number;
   point?: SchematicPoint;
@@ -162,8 +175,10 @@ type SelectionRectState = {
 };
 
 type LayerAction = "forward" | "backward" | "front" | "back";
+type AlignAction = "left" | "right" | "top" | "bottom" | "center";
+type MirrorAction = "horizontal" | "vertical";
 
-type AddItemType = "text" | "rect" | "circle";
+type AddItemType = "text" | "rect" | "circle" | "polyline";
 
 type EditorTabName = "items" | "inspector" | "json";
 
@@ -342,6 +357,19 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     sendBackwardButton: getRequiredElement(previewPane, ".send-backward-button", HTMLButtonElement),
     bringToFrontButton: getRequiredElement(previewPane, ".bring-to-front-button", HTMLButtonElement),
     sendToBackButton: getRequiredElement(previewPane, ".send-to-back-button", HTMLButtonElement),
+    alignLeftButton: getRequiredElement(previewPane, ".align-left-button", HTMLButtonElement),
+    alignRightButton: getRequiredElement(previewPane, ".align-right-button", HTMLButtonElement),
+    alignTopButton: getRequiredElement(previewPane, ".align-top-button", HTMLButtonElement),
+    alignBottomButton: getRequiredElement(previewPane, ".align-bottom-button", HTMLButtonElement),
+    alignCenterButton: getRequiredElement(previewPane, ".align-center-button", HTMLButtonElement),
+    mirrorHorizontalButton: getRequiredElement(previewPane, ".mirror-horizontal-button", HTMLButtonElement),
+    mirrorVerticalButton: getRequiredElement(previewPane, ".mirror-vertical-button", HTMLButtonElement),
+    contextDuplicateButton: getRequiredElement(previewPane, ".context-duplicate-button", HTMLButtonElement),
+    contextDeleteButton: getRequiredElement(previewPane, ".context-delete-button", HTMLButtonElement),
+    addTextContextButton: getRequiredElement(previewPane, ".add-text-context-button", HTMLButtonElement),
+    addRectContextButton: getRequiredElement(previewPane, ".add-rect-context-button", HTMLButtonElement),
+    addCircleContextButton: getRequiredElement(previewPane, ".add-circle-context-button", HTMLButtonElement),
+    addPolylineContextButton: getRequiredElement(previewPane, ".add-polyline-context-button", HTMLButtonElement),
     closeTransferPanelButton: getRequiredElement(transferPanel, ".transfer-panel-close", HTMLButtonElement),
     importButton: getRequiredElement(transferPanel, ".import-button", HTMLButtonElement),
     formatButton: getRequiredElement(toolbar, ".format-button", HTMLButtonElement),
@@ -380,6 +408,19 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.sendBackwardButton.addEventListener("click", () => changeSelectedItemLayer(elements, "backward", documentRef));
   elements.bringToFrontButton.addEventListener("click", () => changeSelectedItemLayer(elements, "front", documentRef));
   elements.sendToBackButton.addEventListener("click", () => changeSelectedItemLayer(elements, "back", documentRef));
+  elements.alignLeftButton.addEventListener("click", () => alignSelectedItems(elements, "left", documentRef));
+  elements.alignRightButton.addEventListener("click", () => alignSelectedItems(elements, "right", documentRef));
+  elements.alignTopButton.addEventListener("click", () => alignSelectedItems(elements, "top", documentRef));
+  elements.alignBottomButton.addEventListener("click", () => alignSelectedItems(elements, "bottom", documentRef));
+  elements.alignCenterButton.addEventListener("click", () => alignSelectedItems(elements, "center", documentRef));
+  elements.mirrorHorizontalButton.addEventListener("click", () => mirrorSelectedItems(elements, "horizontal", documentRef));
+  elements.mirrorVerticalButton.addEventListener("click", () => mirrorSelectedItems(elements, "vertical", documentRef));
+  elements.contextDuplicateButton.addEventListener("click", () => duplicateSelectedItemFromContextMenu(elements, documentRef));
+  elements.contextDeleteButton.addEventListener("click", () => deleteSelectedItemFromContextMenu(elements, documentRef));
+  elements.addTextContextButton.addEventListener("click", () => addItemFromContextMenu(elements, "text", documentRef));
+  elements.addRectContextButton.addEventListener("click", () => addItemFromContextMenu(elements, "rect", documentRef));
+  elements.addCircleContextButton.addEventListener("click", () => addItemFromContextMenu(elements, "circle", documentRef));
+  elements.addPolylineContextButton.addEventListener("click", () => addItemFromContextMenu(elements, "polyline", documentRef));
   elements.closeTransferPanelButton.addEventListener("click", () => closeTransferPanel(elements));
   elements.importButton.addEventListener("click", () => importEncodedPayload(elements, documentRef));
   elements.addTextButton.addEventListener("click", () => addItem(elements, "text", documentRef));
@@ -1133,7 +1174,7 @@ function renderDisabledItemTools(elements: EditorElements, message: string): voi
   elements.inspectorStatus.dataset.state = "error";
 }
 
-function addItem(elements: EditorElements, type: AddItemType, documentRef: Document): void {
+function addItem(elements: EditorElements, type: AddItemType, documentRef: Document, point?: SchematicPoint): void {
   const result = parseAndValidatePayload(elements.jsonInput.value);
 
   if (!result.ok) {
@@ -1141,7 +1182,7 @@ function addItem(elements: EditorElements, type: AddItemType, documentRef: Docum
     return;
   }
 
-  const item = createDefaultItem(result.payload, type);
+  const item = createDefaultItem(result.payload, type, point);
   recordHistory(elements);
   result.payload.items.push(item);
   setSelectedItems(elements, [item.id]);
@@ -1150,9 +1191,9 @@ function addItem(elements: EditorElements, type: AddItemType, documentRef: Docum
   showEditorTab(elements, "inspector");
 }
 
-function createDefaultItem(payload: SchematicPayload, type: AddItemType): SchematicItem {
-  const centerX = Math.round(payload.viewport.width / 2);
-  const centerY = Math.round(payload.viewport.height / 2);
+function createDefaultItem(payload: SchematicPayload, type: AddItemType, point?: SchematicPoint): SchematicItem {
+  const centerX = Math.round(point?.x ?? payload.viewport.width / 2);
+  const centerY = Math.round(point?.y ?? payload.viewport.height / 2);
   const id = createUniqueItemId(payload, type);
 
   switch (type) {
@@ -1201,7 +1242,35 @@ function createDefaultItem(payload: SchematicPayload, type: AddItemType): Schema
           fill: "var(--divider-color)"
         }
       };
+    case "polyline":
+      return {
+        id,
+        type: "polyline",
+        layer: 100,
+        points: [
+          { x: centerX, y: centerY },
+          { x: centerX + 60, y: centerY }
+        ],
+        style: {
+          stroke: "var(--accent-color)",
+          strokeWidth: 4,
+          fill: "none"
+        }
+      };
   }
+}
+
+function addItemFromContextMenu(elements: EditorElements, type: AddItemType, documentRef: Document): void {
+  const point = elements.contextMenuState?.point;
+
+  if (!point) {
+    elements.inspectorStatus.textContent = "No preview point selected";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  addItem(elements, type, documentRef, point);
+  closePolylineContextMenu(elements);
 }
 
 function createUniqueItemId(payload: SchematicPayload, type: string): string {
@@ -1314,6 +1383,16 @@ function deleteSelectedItem(elements: EditorElements, documentRef: Document): vo
     ? `Deleted ${selectedIds[0]}`
     : `Deleted ${selectedIds.length} items`;
   elements.inspectorStatus.dataset.state = "valid";
+}
+
+function duplicateSelectedItemFromContextMenu(elements: EditorElements, documentRef: Document): void {
+  duplicateSelectedItem(elements, documentRef);
+  closePolylineContextMenu(elements);
+}
+
+function deleteSelectedItemFromContextMenu(elements: EditorElements, documentRef: Document): void {
+  deleteSelectedItem(elements, documentRef);
+  closePolylineContextMenu(elements);
 }
 
 function renderItemTools(elements: EditorElements, payload: SchematicPayload, documentRef: Document): void {
@@ -1515,19 +1594,33 @@ function openPolylineContextMenu(
     ?? findSelectablePreviewItemId(elements, payload, event.target);
   const item = itemId ? payload.items.find((candidate) => candidate.id === itemId) : undefined;
 
-  if (!item || !isSvgElement(svg, documentRef)) {
+  if (!isSvgElement(svg, documentRef)) {
     closePolylineContextMenu(elements);
     return;
   }
 
   event.preventDefault();
-  setSelectedItems(elements, [item.id]);
+  const point = snapPointIfNeeded(elements, getSvgPoint(getSvgCoordinateSpace(svg), event));
+
+  if (!item) {
+    elements.contextMenuState = { point };
+    showContextMenu(elements, event, "empty");
+    renderItemTools(elements, payload, documentRef);
+    return;
+  }
+
+  if (!elements.selectedItemIds.includes(item.id)) {
+    setSelectedItems(elements, [item.id]);
+  } else {
+    setSelectedItems(elements, elements.selectedItemIds, item.id);
+  }
+
   elements.contextMenuState = {
-    itemId: item.id
+    itemId: item.id,
+    point
   };
 
   if (item.type === "polyline") {
-    const point = snapPointIfNeeded(elements, getSvgPoint(getSvgCoordinateSpace(svg), event));
     const insertIndex = findNearestSegmentInsertIndex(item.points, point);
     const handlePointIndex = handleTarget ? Number(handleTarget.getAttribute("data-point-index")) : undefined;
     const nearestPointIndex = typeof handlePointIndex === "number" && Number.isInteger(handlePointIndex)
@@ -1542,13 +1635,20 @@ function openPolylineContextMenu(
     };
   }
 
-  elements.polylineContextMenu.hidden = false;
-  elements.polylineContextMenu.style.left = `${event.clientX}px`;
-  elements.polylineContextMenu.style.top = `${event.clientY}px`;
-  elements.addPolylinePointButton.hidden = item.type !== "polyline";
-  elements.deletePolylinePointButton.hidden = item.type !== "polyline";
+  showContextMenu(elements, event, item.type === "polyline" ? "polyline" : "item");
   elements.deletePolylinePointButton.disabled = item.type !== "polyline" || item.points.length <= 2;
   renderItemTools(elements, payload, documentRef);
+}
+
+function showContextMenu(
+  elements: EditorElements,
+  event: MouseEvent,
+  mode: "empty" | "item" | "polyline"
+): void {
+  elements.polylineContextMenu.hidden = false;
+  elements.polylineContextMenu.dataset.mode = mode;
+  elements.polylineContextMenu.style.left = `${event.clientX}px`;
+  elements.polylineContextMenu.style.top = `${event.clientY}px`;
 }
 
 function addPolylinePointFromContextMenu(elements: EditorElements, documentRef: Document): void {
@@ -1571,7 +1671,9 @@ function addPolylinePointFromContextMenu(elements: EditorElements, documentRef: 
     return;
   }
 
-  const item = result.payload.items.find((candidate) => candidate.id === state.itemId);
+  const item = state.itemId
+    ? result.payload.items.find((candidate) => candidate.id === state.itemId)
+    : undefined;
 
   if (!item || item.type !== "polyline") {
     elements.inspectorStatus.textContent = "Selected polyline was not found";
@@ -1609,7 +1711,9 @@ function deletePolylinePointFromContextMenu(elements: EditorElements, documentRe
     return;
   }
 
-  const item = result.payload.items.find((candidate) => candidate.id === state.itemId);
+  const item = state.itemId
+    ? result.payload.items.find((candidate) => candidate.id === state.itemId)
+    : undefined;
 
   if (!item || item.type !== "polyline") {
     elements.inspectorStatus.textContent = "Selected polyline was not found";
@@ -1647,7 +1751,9 @@ function changeSelectedItemLayer(elements: EditorElements, action: LayerAction, 
     return;
   }
 
-  const item = result.payload.items.find((candidate) => candidate.id === state.itemId);
+  const item = state.itemId
+    ? result.payload.items.find((candidate) => candidate.id === state.itemId)
+    : undefined;
 
   if (!item) {
     elements.inspectorStatus.textContent = "Selected item was not found";
@@ -1672,6 +1778,131 @@ function changeSelectedItemLayer(elements: EditorElements, action: LayerAction, 
   updateFromJson(elements, documentRef);
   elements.inspectorStatus.textContent = `Updated layer for ${item.id}`;
   elements.inspectorStatus.dataset.state = "valid";
+}
+
+function alignSelectedItems(elements: EditorElements, action: AlignAction, documentRef: Document): void {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  const selectedItems = getMovableSelectedItems(elements, result.payload);
+
+  if (selectedItems.length < 2) {
+    elements.inspectorStatus.textContent = "Select at least two movable items to align";
+    elements.inspectorStatus.dataset.state = "error";
+    closePolylineContextMenu(elements);
+    return;
+  }
+
+  const selectedBounds = selectedItems
+    .map((item) => ({ item, bounds: getItemBounds(item) }))
+    .filter((entry): entry is { item: SchematicItem; bounds: PreviewViewBox } => entry.bounds !== undefined);
+  const groupBounds = getBoundsFromRects(selectedBounds.map((entry) => entry.bounds));
+
+  if (!groupBounds) {
+    elements.inspectorStatus.textContent = "Selected items cannot be aligned yet";
+    elements.inspectorStatus.dataset.state = "error";
+    closePolylineContextMenu(elements);
+    return;
+  }
+
+  recordHistory(elements);
+
+  for (const { item, bounds } of selectedBounds) {
+    const dx = getAlignDeltaX(action, bounds, groupBounds);
+    const dy = getAlignDeltaY(action, bounds, groupBounds);
+    moveItem(item, dx, dy);
+  }
+
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  closePolylineContextMenu(elements);
+  updateFromJson(elements, documentRef);
+  elements.inspectorStatus.textContent = `Aligned ${selectedBounds.length} items`;
+  elements.inspectorStatus.dataset.state = "valid";
+}
+
+function mirrorSelectedItems(elements: EditorElements, action: MirrorAction, documentRef: Document): void {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  const selectedItems = getMovableSelectedItems(elements, result.payload);
+
+  if (selectedItems.length < 2) {
+    elements.inspectorStatus.textContent = "Select at least two movable items to mirror";
+    elements.inspectorStatus.dataset.state = "error";
+    closePolylineContextMenu(elements);
+    return;
+  }
+
+  const selectedBounds = selectedItems
+    .map((item) => ({ item, bounds: getItemBounds(item) }))
+    .filter((entry): entry is { item: SchematicItem; bounds: PreviewViewBox } => entry.bounds !== undefined);
+  const groupBounds = getBoundsFromRects(selectedBounds.map((entry) => entry.bounds));
+
+  if (!groupBounds) {
+    elements.inspectorStatus.textContent = "Selected items cannot be mirrored yet";
+    elements.inspectorStatus.dataset.state = "error";
+    closePolylineContextMenu(elements);
+    return;
+  }
+
+  const axis = action === "horizontal"
+    ? groupBounds.x + groupBounds.width / 2
+    : groupBounds.y + groupBounds.height / 2;
+
+  recordHistory(elements);
+
+  for (const { item, bounds } of selectedBounds) {
+    const centerX = bounds.x + bounds.width / 2;
+    const centerY = bounds.y + bounds.height / 2;
+    moveItem(item, action === "horizontal" ? 2 * (axis - centerX) : 0, action === "vertical" ? 2 * (axis - centerY) : 0);
+  }
+
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  closePolylineContextMenu(elements);
+  updateFromJson(elements, documentRef);
+  elements.inspectorStatus.textContent = `Mirrored ${selectedBounds.length} items`;
+  elements.inspectorStatus.dataset.state = "valid";
+}
+
+function getMovableSelectedItems(elements: EditorElements, payload: SchematicPayload): SchematicItem[] {
+  const selectedIds = new Set(getSelectedItemIds(elements, payload));
+  return payload.items.filter((item) => selectedIds.has(item.id) && canMoveItem(item));
+}
+
+function getAlignDeltaX(action: AlignAction, bounds: PreviewViewBox, groupBounds: PreviewViewBox): number {
+  switch (action) {
+    case "left":
+      return groupBounds.x - bounds.x;
+    case "right":
+      return groupBounds.x + groupBounds.width - (bounds.x + bounds.width);
+    case "center":
+      return groupBounds.x + groupBounds.width / 2 - (bounds.x + bounds.width / 2);
+    case "top":
+    case "bottom":
+      return 0;
+  }
+}
+
+function getAlignDeltaY(action: AlignAction, bounds: PreviewViewBox, groupBounds: PreviewViewBox): number {
+  switch (action) {
+    case "top":
+      return groupBounds.y - bounds.y;
+    case "bottom":
+      return groupBounds.y + groupBounds.height - (bounds.y + bounds.height);
+    case "center":
+      return groupBounds.y + groupBounds.height / 2 - (bounds.y + bounds.height / 2);
+    case "left":
+    case "right":
+      return 0;
+  }
 }
 
 function getNextLayerForAction(items: SchematicItem[], item: SchematicItem, action: LayerAction): number {
@@ -1702,6 +1933,7 @@ function getNextLayerForAction(items: SchematicItem[], item: SchematicItem, acti
 
 function closePolylineContextMenu(elements: EditorElements): void {
   elements.polylineContextMenu.hidden = true;
+  delete elements.polylineContextMenu.dataset.mode;
   delete elements.contextMenuState;
 }
 
@@ -2334,10 +2566,8 @@ function dragPolylinePoint(elements: EditorElements, event: MouseEvent, document
     pointDragState.historyRecorded = true;
   }
 
-  item.points[pointDragState.pointIndex] = snapPointIfNeeded(
-    elements,
-    orthogonalAnchor ? lockPointOrthogonally(orthogonalAnchor, movedPoint) : movedPoint
-  );
+  const nextPoint = orthogonalAnchor ? lockPointOrthogonally(orthogonalAnchor, movedPoint) : movedPoint;
+  item.points[pointDragState.pointIndex] = event.shiftKey ? nextPoint : snapPointIfNeeded(elements, nextPoint);
   setSelectedItems(elements, [item.id]);
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
@@ -2404,13 +2634,14 @@ function dragSelectedPreviewItem(
   const dx = currentPoint.x - elements.dragState.startPoint.x;
   const dy = currentPoint.y - elements.dragState.startPoint.y;
 
-  moveSelectedItemFromDrag(elements, dx, dy, documentRef);
+  moveSelectedItemFromDrag(elements, dx, dy, event.shiftKey, documentRef);
 }
 
 function moveSelectedItemFromDrag(
   elements: EditorElements,
   dx: number,
   dy: number,
+  snapDisabled: boolean,
   documentRef: Document
 ): void {
   const result = parseAndValidatePayload(elements.jsonInput.value);
@@ -2449,7 +2680,7 @@ function moveSelectedItemFromDrag(
     dragState.historyRecorded = true;
   }
 
-  if (elements.snapEnabled) {
+  if (elements.snapEnabled && !snapDisabled) {
     for (const start of dragState.startItems) {
       const item = result.payload.items.find((candidate) => candidate.id === start.itemId);
 
@@ -3829,38 +4060,71 @@ function createPolylineContextMenu(documentRef: Document): HTMLElement {
   menu.className = "polyline-context-menu";
   menu.hidden = true;
 
-  const bringForwardButton = documentRef.createElement("button");
-  bringForwardButton.className = "bring-forward-button";
-  bringForwardButton.type = "button";
-  bringForwardButton.textContent = "Bring forward";
+  const addSection = createContextMenuSection(documentRef, "Add", "empty");
+  addSection.append(
+    createContextMenuButton(documentRef, "add-text-context-button", "Text"),
+    createContextMenuButton(documentRef, "add-rect-context-button", "Rect"),
+    createContextMenuButton(documentRef, "add-circle-context-button", "Circle"),
+    createContextMenuButton(documentRef, "add-polyline-context-button", "Polyline")
+  );
 
-  const sendBackwardButton = documentRef.createElement("button");
-  sendBackwardButton.className = "send-backward-button";
-  sendBackwardButton.type = "button";
-  sendBackwardButton.textContent = "Send backward";
+  const actionsSection = createContextMenuSection(documentRef, "Actions", "item polyline");
+  actionsSection.append(
+    createContextMenuButton(documentRef, "context-duplicate-button", "Duplicate"),
+    createContextMenuButton(documentRef, "context-delete-button", "Delete")
+  );
 
-  const bringToFrontButton = documentRef.createElement("button");
-  bringToFrontButton.className = "bring-to-front-button";
-  bringToFrontButton.type = "button";
-  bringToFrontButton.textContent = "Bring to front";
+  const layerSection = createContextMenuSection(documentRef, "Layer", "item polyline");
+  layerSection.append(
+    createContextMenuButton(documentRef, "bring-forward-button", "Bring forward"),
+    createContextMenuButton(documentRef, "send-backward-button", "Send backward"),
+    createContextMenuButton(documentRef, "bring-to-front-button", "Bring to front"),
+    createContextMenuButton(documentRef, "send-to-back-button", "Send to back")
+  );
 
-  const sendToBackButton = documentRef.createElement("button");
-  sendToBackButton.className = "send-to-back-button";
-  sendToBackButton.type = "button";
-  sendToBackButton.textContent = "Send to back";
+  const alignSection = createContextMenuSection(documentRef, "Align", "item polyline");
+  alignSection.append(
+    createContextMenuButton(documentRef, "align-left-button", "Left"),
+    createContextMenuButton(documentRef, "align-right-button", "Right"),
+    createContextMenuButton(documentRef, "align-top-button", "Top"),
+    createContextMenuButton(documentRef, "align-bottom-button", "Bottom"),
+    createContextMenuButton(documentRef, "align-center-button", "Center")
+  );
 
-  const addPointButton = documentRef.createElement("button");
-  addPointButton.className = "add-polyline-point-button";
-  addPointButton.type = "button";
-  addPointButton.textContent = "Add point here";
+  const mirrorSection = createContextMenuSection(documentRef, "Mirror", "item polyline");
+  mirrorSection.append(
+    createContextMenuButton(documentRef, "mirror-horizontal-button", "Horizontal"),
+    createContextMenuButton(documentRef, "mirror-vertical-button", "Vertical")
+  );
 
-  const deletePointButton = documentRef.createElement("button");
-  deletePointButton.className = "delete-polyline-point-button";
-  deletePointButton.type = "button";
-  deletePointButton.textContent = "Delete nearest point";
+  const pointSection = createContextMenuSection(documentRef, "Polyline", "polyline");
+  pointSection.append(
+    createContextMenuButton(documentRef, "add-polyline-point-button", "Add point here"),
+    createContextMenuButton(documentRef, "delete-polyline-point-button", "Delete nearest point")
+  );
 
-  menu.append(bringForwardButton, sendBackwardButton, bringToFrontButton, sendToBackButton, addPointButton, deletePointButton);
+  menu.append(addSection, actionsSection, layerSection, alignSection, mirrorSection, pointSection);
   return menu;
+}
+
+function createContextMenuSection(documentRef: Document, label: string, modes: string): HTMLElement {
+  const section = documentRef.createElement("section");
+  section.className = "context-menu-section";
+  section.dataset.contextModes = modes;
+
+  const heading = documentRef.createElement("div");
+  heading.className = "context-menu-heading";
+  heading.textContent = label;
+  section.append(heading);
+  return section;
+}
+
+function createContextMenuButton(documentRef: Document, className: string, label: string): HTMLButtonElement {
+  const button = documentRef.createElement("button");
+  button.className = className;
+  button.type = "button";
+  button.textContent = label;
+  return button;
 }
 
 function createTransferPanel(documentRef: Document): HTMLElement {

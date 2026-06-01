@@ -268,16 +268,41 @@ textarea {
   position: fixed;
   z-index: 20;
   display: grid;
-  min-width: 160px;
+  min-width: 180px;
+  max-height: min(70vh, 520px);
   overflow: hidden;
   border: 1px solid #d7dde4;
   border-radius: 6px;
   background: #ffffff;
   box-shadow: 0 12px 32px rgb(23 32 42 / 20%);
+  overflow-y: auto;
 }
 
 .polyline-context-menu[hidden] {
   display: none;
+}
+
+.context-menu-section {
+  display: grid;
+  border-top: 1px solid #eef2f6;
+}
+
+.context-menu-section:first-child {
+  border-top: 0;
+}
+
+.polyline-context-menu[data-mode="empty"] [data-context-modes]:not([data-context-modes~="empty"]),
+.polyline-context-menu[data-mode="item"] [data-context-modes]:not([data-context-modes~="item"]),
+.polyline-context-menu[data-mode="polyline"] [data-context-modes]:not([data-context-modes~="polyline"]) {
+  display: none;
+}
+
+.context-menu-heading {
+  padding: 7px 10px 3px;
+  color: #5b6470;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .polyline-context-menu button {
