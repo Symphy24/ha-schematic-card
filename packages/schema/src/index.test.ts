@@ -401,6 +401,21 @@ describe("schema validation", () => {
             width: 20,
             height: 20
           },
+          parts: [
+            {
+              id: "body",
+              label: "Body",
+              itemIds: ["box-rect"]
+            }
+          ],
+          entitySlots: [
+            {
+              id: "running",
+              label: "Running state",
+              description: "Optional runtime state for future editor logic",
+              required: false
+            }
+          ],
           items: [
             {
               id: "box-rect",
@@ -431,6 +446,80 @@ describe("schema validation", () => {
       valid: true,
       errors: []
     });
+  });
+
+  it("rejects invalid symbol part metadata", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      symbols: [
+        {
+          id: "generic-box",
+          parts: [
+            {
+              id: "body",
+              itemIds: ["box-rect", ""]
+            },
+            {
+              id: "body",
+              label: 123
+            }
+          ],
+          items: [
+            {
+              id: "box-rect",
+              type: "rect",
+              layer: 300,
+              x: 0,
+              y: 0,
+              width: 20,
+              height: 20
+            }
+          ]
+        }
+      ],
+      items: []
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("symbols[0].parts[0].itemIds[1] must be a non-empty string");
+    expect(result.errors).toContain("symbols[0].parts[1].id must be unique");
+    expect(result.errors).toContain("symbols[0].parts[1].label must be a string");
+  });
+
+  it("rejects invalid symbol entity slot metadata", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      symbols: [
+        {
+          id: "generic-box",
+          entitySlots: [
+            {
+              id: "running",
+              description: 123,
+              required: "yes"
+            },
+            {
+              id: "running"
+            }
+          ],
+          items: []
+        }
+      ],
+      items: []
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("symbols[0].entitySlots[0].description must be a string");
+    expect(result.errors).toContain("symbols[0].entitySlots[0].required must be a boolean");
+    expect(result.errors).toContain("symbols[0].entitySlots[1].id must be unique");
   });
 
   it("rejects symbol instances that reference missing definitions", () => {

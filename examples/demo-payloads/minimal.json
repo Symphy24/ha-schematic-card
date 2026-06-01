@@ -16,6 +16,34 @@
         "width": 64,
         "height": 56
       },
+      "parts": [
+        {
+          "id": "body",
+          "label": "Symbol body",
+          "itemIds": [
+            "unit-box"
+          ]
+        },
+        {
+          "id": "label",
+          "label": "Symbol label",
+          "itemIds": [
+            "unit-label"
+          ]
+        }
+      ],
+      "entitySlots": [
+        {
+          "id": "running",
+          "label": "Running state",
+          "description": "Future editor metadata for an entity that indicates this symbol is running."
+        },
+        {
+          "id": "alarm",
+          "label": "Alarm state",
+          "description": "Future editor metadata for an entity that indicates this symbol is in alarm."
+        }
+      ],
       "items": [
         {
           "id": "unit-box",

@@ -96,6 +96,33 @@ describe("editor app", () => {
     expect(app.querySelector<HTMLTextAreaElement>(".payload-output")?.value.startsWith("hsc1.")).toBe(true);
   });
 
+  it("shows symbol part and entity slot metadata in the item panel", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const summary = app.querySelector<HTMLElement>(".symbol-summary");
+
+    expect(summary?.hidden).toBe(false);
+    expect(summary?.textContent).toContain("demo-generic-unit");
+    expect(summary?.textContent).toContain("Parts: body, label");
+    expect(summary?.textContent).toContain("Slots: running, alarm");
+  });
+
+  it("shows selected symbol metadata in the inspector", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, '[data-item-id="demo-component-a"]').click();
+
+    const section = app.querySelector<HTMLElement>(".symbol-inspector-section");
+
+    expect(section?.textContent).toContain("Symbol metadata");
+    expect(section?.textContent).toContain("Definition: demo-generic-unit");
+    expect(section?.textContent).toContain("body - Symbol body");
+    expect(section?.textContent).toContain("unit-box");
+    expect(section?.textContent).toContain("running - Running state");
+    expect(section?.textContent).toContain("alarm - Alarm state");
+  });
+
   it("docks a tab into a split panel and undocks it back to the tab row", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
