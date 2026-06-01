@@ -16,6 +16,8 @@ describe("demo payload fixtures", () => {
     });
     expect(Array.isArray(payload.symbols)).toBe(true);
     expect(symbolItemsFor(payload, "demo-generic-unit")).toHaveLength(2);
+    expect(symbolPartItemsFor(payload, "demo-generic-unit", "body")).toContain("unit-box");
+    expect(symbolPartItemsFor(payload, "demo-generic-unit", "status")).toContain("unit-status-dot");
     expect(symbolSlotBindingsFor(payload, "demo-component-a")).toMatchObject({
       running: "input_boolean.schematic_demo_flow",
       alarm: "input_boolean.schematic_demo_alarm"
@@ -101,6 +103,30 @@ function symbolStyleItemsFor(
   }
 
   return symbol.items.filter((item) => hasStyleWhen(item, entityId, equals));
+}
+
+function symbolPartItemsFor(payload: { symbols?: unknown[] }, symbolId: string, partId: string): string[] {
+  const symbol = payload.symbols?.find((candidate) => (
+    typeof candidate === "object"
+    && candidate !== null
+    && "id" in candidate
+    && candidate.id === symbolId
+  ));
+
+  if (typeof symbol !== "object" || symbol === null || !("items" in symbol) || !Array.isArray(symbol.items)) {
+    return [];
+  }
+
+  return symbol.items
+    .filter((item) => (
+      typeof item === "object"
+      && item !== null
+      && "partId" in item
+      && item.partId === partId
+      && "id" in item
+      && typeof item.id === "string"
+    ))
+    .map((item) => item.id as string);
 }
 
 function visibilityItemsFor(payload: { items: unknown[] }, entityId: string, equals: string): unknown[] {

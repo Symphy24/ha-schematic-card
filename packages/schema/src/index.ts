@@ -56,6 +56,7 @@ export type SchematicStyle = {
 export type SchematicBaseItem = {
   id: string;
   layer: number;
+  partId?: string;
   visible?: boolean;
   visibleWhen?: SchematicVisibilityCondition;
   style?: SchematicStyle;
@@ -311,7 +312,7 @@ function validateSymbols(value: unknown, errors: string[]): SymbolValidationCont
       validateViewport(symbol.viewport, errors);
     }
 
-    validateSymbolParts(symbol.parts, `${path}.parts`, errors);
+    const partIds = validateSymbolParts(symbol.parts, `${path}.parts`, errors);
     const entitySlotIds = validateSymbolEntitySlots(symbol.entitySlots, `${path}.entitySlots`, errors);
 
     if (typeof symbol.id === "string" && symbol.id.length > 0) {
@@ -326,7 +327,8 @@ function validateSymbols(value: unknown, errors: string[]): SymbolValidationCont
         `${path}.items[${itemIndex}]`,
         errors,
         symbols,
-        false
+        false,
+        partIds
       ));
     }
   });
@@ -334,14 +336,14 @@ function validateSymbols(value: unknown, errors: string[]): SymbolValidationCont
   return symbols;
 }
 
-function validateSymbolParts(value: unknown, path: string, errors: string[]): void {
+function validateSymbolParts(value: unknown, path: string, errors: string[]): Set<string> {
   if (value === undefined) {
-    return;
+    return new Set<string>();
   }
 
   if (!Array.isArray(value)) {
     errors.push(`${path} must be an array`);
-    return;
+    return new Set<string>();
   }
 
   const partIds = new Set<string>();
@@ -369,6 +371,8 @@ function validateSymbolParts(value: unknown, path: string, errors: string[]): vo
       }
     }
   });
+
+  return partIds;
 }
 
 function validateSymbolEntitySlots(value: unknown, path: string, errors: string[]): Set<string> {
@@ -408,7 +412,8 @@ function validateItem(
   path: string,
   errors: string[],
   symbols: SymbolValidationContext,
-  allowSymbolReference = true
+  allowSymbolReference = true,
+  allowedPartIds?: Set<string>
 ): void {
   if (!isRecord(value)) {
     errors.push(`${path} must be an object`);
@@ -427,6 +432,7 @@ function validateItem(
     errors.push(`${path}.layer must be a finite number`);
   }
 
+  validateItemPartReference(value.partId, `${path}.partId`, errors, allowedPartIds);
   validateTransforms(value.transform, `${path}.transform`, errors);
   validateVisibilityCondition(value.visibleWhen, `${path}.visibleWhen`, errors);
   validateConditionalStyles(value.styleWhen, `${path}.styleWhen`, errors);
@@ -478,9 +484,30 @@ function validateItem(
         `${path}.children[${index}]`,
         errors,
         symbols,
-        allowSymbolReference
+        allowSymbolReference,
+        allowedPartIds
       ));
     }
+  }
+}
+
+function validateItemPartReference(
+  value: unknown,
+  path: string,
+  errors: string[],
+  allowedPartIds?: Set<string>
+): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (typeof value !== "string" || value.length === 0) {
+    errors.push(`${path} must be a non-empty string`);
+    return;
+  }
+
+  if (allowedPartIds && !allowedPartIds.has(value)) {
+    errors.push(`${path} must reference a defined symbol part`);
   }
 }
 

@@ -6,7 +6,7 @@ The renderer creates SVG nodes with `createElementNS`, sorts items by numeric `l
 
 It supports safe `path` data and structured transforms from the schema. It does not render raw SVG snippets or arbitrary transform strings.
 
-It can render payload-defined reusable symbols by expanding `symbol` items into safe SVG groups. Symbol content still uses the same primitive renderer and layer sorting. Symbol `parts` and `entitySlots` remain metadata, while instance `slotBindings` can resolve safe condition references such as `slot:alarm` for existing `visibleWhen`, `styleWhen`, `flow`, and `entityValue` behavior. The renderer does not execute payload logic or inject markup.
+It can render payload-defined reusable symbols by expanding `symbol` items into safe SVG groups. Symbol content still uses the same primitive renderer and layer sorting. Symbol `parts`, internal item `partId`, and `entitySlots` remain structured data, while instance `slotBindings` can resolve safe condition references such as `slot:alarm` for existing `visibleWhen`, `styleWhen`, `flow`, and `entityValue` behavior. The renderer does not execute payload logic or inject markup.
 
 It can also apply simple `visibleWhen` entity-state conditions and `styleWhen` conditional safe styles using entity values supplied through renderer options.
 

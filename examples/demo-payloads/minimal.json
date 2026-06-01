@@ -30,6 +30,13 @@
           "itemIds": [
             "unit-label"
           ]
+        },
+        {
+          "id": "status",
+          "label": "Status indicator",
+          "itemIds": [
+            "unit-status-dot"
+          ]
         }
       ],
       "entitySlots": [
@@ -49,6 +56,7 @@
           "id": "unit-box",
           "type": "rect",
           "layer": 300,
+          "partId": "body",
           "x": 0,
           "y": 0,
           "width": 64,
@@ -74,9 +82,35 @@
           ]
         },
         {
+          "id": "unit-status-dot",
+          "type": "circle",
+          "layer": 620,
+          "partId": "status",
+          "cx": 52,
+          "cy": 12,
+          "r": 5,
+          "style": {
+            "fill": "var(--secondary-text-color)",
+            "stroke": "var(--primary-text-color)",
+            "strokeWidth": 1
+          },
+          "styleWhen": [
+            {
+              "when": {
+                "entityId": "slot:running",
+                "equals": "on"
+              },
+              "style": {
+                "fill": "var(--success-color)"
+              }
+            }
+          ]
+        },
+        {
           "id": "unit-label",
           "type": "text",
           "layer": 610,
+          "partId": "label",
           "x": 32,
           "y": 33,
           "text": "Unit",
