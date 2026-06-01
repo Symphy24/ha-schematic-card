@@ -47,6 +47,7 @@ type RenderContext = {
   document: Document;
   entityStates?: Record<string, EntityStateValue>;
   symbols: Map<string, SchematicSymbolDefinition>;
+  slotBindings?: Record<string, string>;
 };
 
 export function renderSchematicSvg(payload: SchematicPayload, options: RenderOptions = {}): SVGSVGElement {
@@ -83,7 +84,7 @@ export function sortItemsByLayer(items: SchematicItem[]): SchematicItem[] {
 }
 
 function renderItem(item: SchematicItem, context: RenderContext): SVGElement | null {
-  if (!isItemVisible(item, context.entityStates)) {
+  if (!isItemVisible(item, context)) {
     return null;
   }
 
@@ -109,7 +110,7 @@ function renderItem(item: SchematicItem, context: RenderContext): SVGElement | n
   }
 }
 
-function isItemVisible(item: SchematicItem, entityStates: Record<string, EntityStateValue> | undefined): boolean {
+function isItemVisible(item: SchematicItem, context: RenderContext): boolean {
   if (item.visible === false) {
     return false;
   }
@@ -118,19 +119,42 @@ function isItemVisible(item: SchematicItem, entityStates: Record<string, EntityS
     return true;
   }
 
-  return evaluateVisibilityCondition(item.visibleWhen, entityStates);
+  return evaluateVisibilityCondition(item.visibleWhen, context);
 }
 
 function evaluateVisibilityCondition(
   condition: SchematicVisibilityCondition,
-  entityStates: Record<string, EntityStateValue> | undefined
+  context: RenderContext
 ): boolean {
-  if (!entityStates || !Object.hasOwn(entityStates, condition.entityId)) {
+  const entityStates = context.entityStates;
+  const entityId = resolveEntityId(condition.entityId, context);
+
+  if (!entityStates || !Object.hasOwn(entityStates, entityId)) {
     return false;
   }
 
-  const state = getEntityState(entityStates[condition.entityId]);
+  const state = getEntityState(entityStates[entityId]);
   return state !== null && state !== undefined && String(state) === condition.equals;
+}
+
+function resolveEntityId(entityId: string, context: RenderContext): string {
+  if (!entityId.startsWith("slot:")) {
+    return entityId;
+  }
+
+  const slotId = entityId.slice("slot:".length);
+  return context.slotBindings?.[slotId] ?? entityId;
+}
+
+function getEntityStateValue(entityId: string, context: RenderContext): EntityStateValue | undefined {
+  const resolvedEntityId = resolveEntityId(entityId, context);
+  const entityStates = context.entityStates;
+
+  if (!entityStates || !Object.hasOwn(entityStates, resolvedEntityId)) {
+    return undefined;
+  }
+
+  return entityStates[resolvedEntityId];
 }
 
 function renderLine(documentRef: Document, item: SchematicLine, context: RenderContext): SVGElement {
@@ -140,8 +164,8 @@ function renderLine(documentRef: Document, item: SchematicLine, context: RenderC
   setNumberAttr(element, "y1", item.y1);
   setNumberAttr(element, "x2", item.x2);
   setNumberAttr(element, "y2", item.y2);
-  applyItemStyle(element, item, context.entityStates);
-  applyFlowAnimation(element, item, context.entityStates);
+  applyItemStyle(element, item, context);
+  applyFlowAnimation(element, item, context);
   return element;
 }
 
@@ -149,8 +173,8 @@ function renderPolyline(documentRef: Document, item: SchematicPolyline, context:
   const element = createSvgElement(documentRef, "polyline");
   setBaseAttrs(element, item);
   setStringAttr(element, "points", formatPoints(item.points));
-  applyItemStyle(element, item, context.entityStates);
-  applyFlowAnimation(element, item, context.entityStates);
+  applyItemStyle(element, item, context);
+  applyFlowAnimation(element, item, context);
   return element;
 }
 
@@ -163,7 +187,7 @@ function renderRect(documentRef: Document, item: SchematicRect, context: RenderC
   setNumberAttr(element, "height", item.height);
   setNumberAttr(element, "rx", item.rx);
   setNumberAttr(element, "ry", item.ry);
-  applyItemStyle(element, item, context.entityStates);
+  applyItemStyle(element, item, context);
   return element;
 }
 
@@ -173,7 +197,7 @@ function renderCircle(documentRef: Document, item: SchematicCircle, context: Ren
   setNumberAttr(element, "cx", item.cx);
   setNumberAttr(element, "cy", item.cy);
   setNumberAttr(element, "r", item.r);
-  applyItemStyle(element, item, context.entityStates);
+  applyItemStyle(element, item, context);
   return element;
 }
 
@@ -183,7 +207,7 @@ function renderText(documentRef: Document, item: SchematicText, context: RenderC
   setNumberAttr(element, "x", item.x);
   setNumberAttr(element, "y", item.y);
   element.textContent = item.text;
-  applyItemStyle(element, item, context.entityStates);
+  applyItemStyle(element, item, context);
   return element;
 }
 
@@ -191,8 +215,8 @@ function renderPath(documentRef: Document, item: SchematicPath, context: RenderC
   const element = createSvgElement(documentRef, "path");
   setBaseAttrs(element, item);
   setStringAttr(element, "d", item.d);
-  applyItemStyle(element, item, context.entityStates);
-  applyFlowAnimation(element, item, context.entityStates);
+  applyItemStyle(element, item, context);
+  applyFlowAnimation(element, item, context);
   return element;
 }
 
@@ -200,7 +224,7 @@ function renderGroup(item: SchematicGroup, context: RenderContext): SVGElement {
   const documentRef = context.document;
   const element = createSvgElement(documentRef, "g");
   setBaseAttrs(element, item);
-  applyItemStyle(element, item, context.entityStates);
+  applyItemStyle(element, item, context);
 
   for (const child of sortItemsByLayer(item.children)) {
     const childElement = renderItem(child, context);
@@ -216,7 +240,7 @@ function renderGroup(item: SchematicGroup, context: RenderContext): SVGElement {
 function renderEntityValue(documentRef: Document, item: SchematicEntityValue, context: RenderContext): SVGElement {
   const element = createSvgElement(documentRef, "g");
   setBaseAttrs(element, item);
-  applyItemStyle(element, item, context.entityStates);
+  applyItemStyle(element, item, context);
 
   if (item.label) {
     const label = createSvgElement(documentRef, "text");
@@ -231,7 +255,7 @@ function renderEntityValue(documentRef: Document, item: SchematicEntityValue, co
   setStringAttr(value, "data-role", "value");
   setNumberAttr(value, "x", item.x);
   setNumberAttr(value, "y", item.label ? item.y + 16 : item.y);
-  value.textContent = getEntityValueText(item, context.entityStates);
+  value.textContent = getEntityValueText(item, context);
   element.append(value);
 
   return element;
@@ -248,10 +272,14 @@ function renderSymbol(item: SchematicSymbolInstance, context: RenderContext): SV
   setBaseAttrs(element, item);
   setStringAttr(element, "data-symbol-id", item.symbolId);
   setStringAttr(element, "transform", formatSymbolTransform(item));
-  applyItemStyle(element, item, context.entityStates);
+  applyItemStyle(element, item, context);
+  const childContext: RenderContext = {
+    ...context,
+    slotBindings: item.slotBindings
+  };
 
   for (const child of sortItemsByLayer(symbol.items)) {
-    const childElement = renderItem(child, context);
+    const childElement = renderItem(child, childContext);
 
     if (childElement) {
       element.append(childElement);
@@ -284,11 +312,11 @@ function createFlowStyleElement(documentRef: Document): SVGStyleElement {
 function applyFlowAnimation(
   element: SVGElement,
   item: SchematicLine | SchematicPolyline | SchematicPath,
-  entityStates: Record<string, EntityStateValue> | undefined
+  context: RenderContext
 ): void {
   const flow = item.flow;
 
-  if (!flow || !isFlowEnabled(flow, entityStates)) {
+  if (!flow || !isFlowEnabled(flow, context)) {
     return;
   }
 
@@ -306,29 +334,29 @@ function applyFlowAnimation(
 
 function isFlowEnabled(
   flow: SchematicFlowAnimation,
-  entityStates: Record<string, EntityStateValue> | undefined
+  context: RenderContext
 ): boolean {
-  return !flow.enabledWhen || evaluateVisibilityCondition(flow.enabledWhen, entityStates);
+  return !flow.enabledWhen || evaluateVisibilityCondition(flow.enabledWhen, context);
 }
 
 function applyItemStyle(
   element: SVGElement,
   item: SchematicItem,
-  entityStates: Record<string, EntityStateValue> | undefined
+  context: RenderContext
 ): void {
-  applySafeStyle(element, resolveItemStyle(item, entityStates));
+  applySafeStyle(element, resolveItemStyle(item, context));
 }
 
 function resolveItemStyle(
   item: SchematicItem,
-  entityStates: Record<string, EntityStateValue> | undefined
+  context: RenderContext
 ): SchematicStyle | undefined {
   if (!item.styleWhen || item.styleWhen.length === 0) {
     return item.style;
   }
 
   const matchedStyles = item.styleWhen
-    .filter((entry) => evaluateConditionalStyle(entry, entityStates))
+    .filter((entry) => evaluateConditionalStyle(entry, context))
     .map((entry) => entry.style);
 
   return Object.assign({}, item.style, ...matchedStyles) as SchematicStyle;
@@ -336,18 +364,16 @@ function resolveItemStyle(
 
 function evaluateConditionalStyle(
   entry: SchematicConditionalStyle,
-  entityStates: Record<string, EntityStateValue> | undefined
+  context: RenderContext
 ): boolean {
-  return evaluateVisibilityCondition(entry.when, entityStates);
+  return evaluateVisibilityCondition(entry.when, context);
 }
 
 function getEntityValueText(
   item: SchematicEntityValue,
-  entityStates: Record<string, EntityStateValue> | undefined
+  context: RenderContext
 ): string {
-  const entityState = entityStates && Object.hasOwn(entityStates, item.entityId)
-    ? entityStates[item.entityId]
-    : undefined;
+  const entityState = getEntityStateValue(item.entityId, context);
   const state = getEntityState(entityState);
 
   if (isUnavailableState(state)) {

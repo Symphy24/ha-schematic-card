@@ -82,7 +82,24 @@ To test it manually, create a Home Assistant toggle helper named `schematic_demo
 Expected behavior:
 
 - When `input_boolean.schematic_demo_alarm` is `on`, the status dot changes to the error color and the red `ALARM` badge appears near the right side of the schematic.
+- The first reusable symbol instance also changes its internal box fill through its `alarm` slot binding. The second instance does not bind `alarm`, so it stays unchanged.
 - When `input_boolean.schematic_demo_alarm` is `off`, unavailable, or missing, the status dot stays in the success color and the badge is hidden.
+
+The symbol definition uses a generic condition internally:
+
+```yaml
+styleWhen:
+  - when:
+      entityId: slot:alarm
+      equals: "on"
+```
+
+The symbol instance maps that slot to Home Assistant:
+
+```yaml
+slotBindings:
+  alarm: input_boolean.schematic_demo_alarm
+```
 
 ## Flow Animation Demo
 

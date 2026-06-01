@@ -525,10 +525,15 @@ textarea {
 }
 
 .symbol-inspector-row,
-.symbol-inspector-group {
+.symbol-inspector-group,
+.symbol-slot-bindings {
   display: grid;
   gap: 4px;
   min-width: 0;
+}
+
+.symbol-slot-bindings {
+  gap: 8px;
 }
 
 .symbol-inspector-row {

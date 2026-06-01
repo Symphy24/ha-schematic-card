@@ -179,12 +179,15 @@ export type SchematicSymbolEntitySlotDefinition = {
   required?: boolean;
 };
 
+export type SchematicSymbolSlotBindings = Record<string, string>;
+
 export type SchematicSymbolInstance = SchematicBaseItem & {
   type: "symbol";
   symbolId: string;
   x: number;
   y: number;
   scale?: number;
+  slotBindings?: SchematicSymbolSlotBindings;
 };
 
 export type SchematicSymbolChildItem =
@@ -239,12 +242,12 @@ export function validateSchematicPayload(value: unknown): ValidationResult {
   }
 
   validateViewport(value.viewport, errors);
-  const symbolIds = validateSymbols(value.symbols, errors);
+  const symbols = validateSymbols(value.symbols, errors);
 
   if (!Array.isArray(value.items)) {
     errors.push("items must be an array");
   } else {
-    value.items.forEach((item, index) => validateItem(item, `items[${index}]`, errors, symbolIds));
+    value.items.forEach((item, index) => validateItem(item, `items[${index}]`, errors, symbols));
   }
 
   return {
@@ -268,16 +271,24 @@ function validateViewport(value: unknown, errors: string[]): void {
   }
 }
 
-function validateSymbols(value: unknown, errors: string[]): Set<string> {
-  const symbolIds = new Set<string>();
+type SymbolValidationContext = {
+  ids: Set<string>;
+  entitySlotIds: Map<string, Set<string>>;
+};
+
+function validateSymbols(value: unknown, errors: string[]): SymbolValidationContext {
+  const symbols: SymbolValidationContext = {
+    ids: new Set<string>(),
+    entitySlotIds: new Map<string, Set<string>>()
+  };
 
   if (value === undefined) {
-    return symbolIds;
+    return symbols;
   }
 
   if (!Array.isArray(value)) {
     errors.push("symbols must be an array");
-    return symbolIds;
+    return symbols;
   }
 
   value.forEach((symbol, index) => {
@@ -290,10 +301,10 @@ function validateSymbols(value: unknown, errors: string[]): Set<string> {
 
     if (typeof symbol.id !== "string" || symbol.id.length === 0) {
       errors.push(`${path}.id must be a non-empty string`);
-    } else if (symbolIds.has(symbol.id)) {
+    } else if (symbols.ids.has(symbol.id)) {
       errors.push(`${path}.id must be unique`);
     } else {
-      symbolIds.add(symbol.id);
+      symbols.ids.add(symbol.id);
     }
 
     if (symbol.viewport !== undefined) {
@@ -301,7 +312,11 @@ function validateSymbols(value: unknown, errors: string[]): Set<string> {
     }
 
     validateSymbolParts(symbol.parts, `${path}.parts`, errors);
-    validateSymbolEntitySlots(symbol.entitySlots, `${path}.entitySlots`, errors);
+    const entitySlotIds = validateSymbolEntitySlots(symbol.entitySlots, `${path}.entitySlots`, errors);
+
+    if (typeof symbol.id === "string" && symbol.id.length > 0) {
+      symbols.entitySlotIds.set(symbol.id, entitySlotIds);
+    }
 
     if (!Array.isArray(symbol.items)) {
       errors.push(`${path}.items must be an array`);
@@ -310,13 +325,13 @@ function validateSymbols(value: unknown, errors: string[]): Set<string> {
         item,
         `${path}.items[${itemIndex}]`,
         errors,
-        symbolIds,
+        symbols,
         false
       ));
     }
   });
 
-  return symbolIds;
+  return symbols;
 }
 
 function validateSymbolParts(value: unknown, path: string, errors: string[]): void {
@@ -356,14 +371,14 @@ function validateSymbolParts(value: unknown, path: string, errors: string[]): vo
   });
 }
 
-function validateSymbolEntitySlots(value: unknown, path: string, errors: string[]): void {
+function validateSymbolEntitySlots(value: unknown, path: string, errors: string[]): Set<string> {
   if (value === undefined) {
-    return;
+    return new Set<string>();
   }
 
   if (!Array.isArray(value)) {
     errors.push(`${path} must be an array`);
-    return;
+    return new Set<string>();
   }
 
   const slotIds = new Set<string>();
@@ -384,13 +399,15 @@ function validateSymbolEntitySlots(value: unknown, path: string, errors: string[
       errors.push(`${slotPath}.required must be a boolean`);
     }
   });
+
+  return slotIds;
 }
 
 function validateItem(
   value: unknown,
   path: string,
   errors: string[],
-  symbolIds: Set<string>,
+  symbols: SymbolValidationContext,
   allowSymbolReference = true
 ): void {
   if (!isRecord(value)) {
@@ -426,10 +443,16 @@ function validateItem(
 
     if (typeof value.symbolId !== "string" || value.symbolId.length === 0) {
       errors.push(`${path}.symbolId must be a non-empty string`);
-    } else if (!symbolIds.has(value.symbolId)) {
+    } else if (!symbols.ids.has(value.symbolId)) {
       errors.push(`${path}.symbolId must reference a defined symbol`);
     }
 
+    validateSymbolSlotBindings(
+      value.slotBindings,
+      `${path}.slotBindings`,
+      errors,
+      typeof value.symbolId === "string" ? symbols.entitySlotIds.get(value.symbolId) : undefined
+    );
     validateFiniteNumber(value.x, `${path}.x`, errors);
     validateFiniteNumber(value.y, `${path}.y`, errors);
     validateOptionalFiniteNumber(value.scale, `${path}.scale`, errors);
@@ -454,9 +477,39 @@ function validateItem(
         child,
         `${path}.children[${index}]`,
         errors,
-        symbolIds,
+        symbols,
         allowSymbolReference
       ));
+    }
+  }
+}
+
+function validateSymbolSlotBindings(
+  value: unknown,
+  path: string,
+  errors: string[],
+  allowedSlotIds?: Set<string>
+): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!isRecord(value)) {
+    errors.push(`${path} must be an object`);
+    return;
+  }
+
+  for (const [slotId, entityId] of Object.entries(value)) {
+    if (slotId.length === 0) {
+      errors.push(`${path} slot ids must be non-empty strings`);
+    }
+
+    if (allowedSlotIds && !allowedSlotIds.has(slotId)) {
+      errors.push(`${path}.${slotId} must reference a defined entity slot`);
+    }
+
+    if (typeof entityId !== "string" || entityId.length === 0) {
+      errors.push(`${path}.${slotId} must be a non-empty entity id string`);
     }
   }
 }

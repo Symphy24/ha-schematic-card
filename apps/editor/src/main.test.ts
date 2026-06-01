@@ -121,6 +121,30 @@ describe("editor app", () => {
     expect(section?.textContent).toContain("unit-box");
     expect(section?.textContent).toContain("running - Running state");
     expect(section?.textContent).toContain("alarm - Alarm state");
+    expect(getSymbolSlotBindingInput(app, "running").value).toBe("input_boolean.schematic_demo_flow");
+    expect(getSymbolSlotBindingInput(app, "alarm").value).toBe("input_boolean.schematic_demo_alarm");
+  });
+
+  it("edits selected symbol slot bindings through the inspector", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, '[data-item-id="demo-component-a"]').click();
+    getSymbolSlotBindingInput(app, "alarm").value = "binary_sensor.demo_alarm";
+    getSymbolSlotBindingInput(app, "alarm").dispatchEvent(new Event("change"));
+
+    expect(getPayloadItem(app, "demo-component-a")?.slotBindings).toMatchObject({
+      alarm: "binary_sensor.demo_alarm",
+      running: "input_boolean.schematic_demo_flow"
+    });
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+
+    getSymbolSlotBindingInput(app, "alarm").value = "";
+    getSymbolSlotBindingInput(app, "alarm").dispatchEvent(new Event("change"));
+
+    expect(getPayloadItem(app, "demo-component-a")?.slotBindings).toEqual({
+      running: "input_boolean.schematic_demo_flow"
+    });
   });
 
   it("docks a tab into a split panel and undocks it back to the tab row", () => {
@@ -1709,6 +1733,10 @@ function getInspectorField(root: ParentNode, fieldName: string): HTMLElement {
   throw new Error(`inspector field missing: ${fieldName}`);
 }
 
+function getSymbolSlotBindingInput(root: ParentNode, slotId: string): HTMLInputElement {
+  return getInput(root, `.symbol-slot-binding-field[data-slot-id="${slotId}"] input`);
+}
+
 function clickPreviewPoint(
   app: HTMLElement,
   clientX: number,
@@ -1815,9 +1843,9 @@ function getPolylinePoints(app: HTMLElement, itemId: string): unknown[] {
 function getPayloadItem(
   app: HTMLElement,
   itemId: string
-): { id: string; layer: number; style?: Record<string, unknown> } | undefined {
+): { id: string; layer: number; style?: Record<string, unknown>; slotBindings?: Record<string, string> } | undefined {
   const parsed = JSON.parse(getTextarea(app, ".json-input").value) as {
-    items: Array<{ id: string; layer: number; style?: Record<string, unknown> }>;
+    items: Array<{ id: string; layer: number; style?: Record<string, unknown>; slotBindings?: Record<string, string> }>;
   };
   return parsed.items.find((item) => item.id === itemId);
 }

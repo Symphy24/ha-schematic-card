@@ -347,6 +347,71 @@ describe("SVG renderer", () => {
     expect(childIds(symbol as Element)).toEqual(["symbol-child-bottom", "symbol-child-top"]);
   });
 
+  it("resolves symbol slot bindings for child visibility and conditional styles", () => {
+    const payload: SchematicPayload = {
+      ...createPayload([
+        {
+          id: "symbol-1",
+          type: "symbol",
+          layer: 300,
+          symbolId: "generic-box",
+          x: 10,
+          y: 20,
+          slotBindings: {
+            alarm: "input_boolean.instance_alarm",
+            running: "input_boolean.instance_running"
+          }
+        }
+      ]),
+      symbols: [
+        {
+          id: "generic-box",
+          entitySlots: [
+            { id: "alarm" },
+            { id: "running" }
+          ],
+          items: [
+            {
+              ...symbolRectItem("symbol-body", 100),
+              style: {
+                fill: "var(--success-color)"
+              },
+              styleWhen: [
+                {
+                  when: {
+                    entityId: "slot:alarm",
+                    equals: "on"
+                  },
+                  style: {
+                    fill: "var(--error-color)"
+                  }
+                }
+              ]
+            },
+            {
+              ...symbolRectItem("running-indicator", 200),
+              visibleWhen: {
+                entityId: "slot:running",
+                equals: "on"
+              }
+            }
+          ]
+        }
+      ]
+    };
+
+    const svg = renderSchematicSvg(payload, {
+      document: createDocument(),
+      entityStates: {
+        "input_boolean.instance_alarm": "on",
+        "input_boolean.instance_running": "on"
+      }
+    });
+
+    expect(svg.querySelector('[data-id="symbol-body"]')?.getAttribute("fill")).toBe("var(--error-color)");
+    expect(svg.querySelector('[data-id="running-indicator"]')).not.toBeNull();
+  });
+
   it("combines symbol placement with structured transforms", () => {
     const payload: SchematicPayload = {
       ...createPayload([
