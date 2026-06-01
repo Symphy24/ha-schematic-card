@@ -59,7 +59,19 @@
             "stroke": "var(--primary-text-color)",
             "strokeWidth": 2,
             "fill": "var(--divider-color)"
-          }
+          },
+          "styleWhen": [
+            {
+              "when": {
+                "entityId": "slot:alarm",
+                "equals": "on"
+              },
+              "style": {
+                "fill": "var(--error-color)",
+                "strokeWidth": 3
+              }
+            }
+          ]
         },
         {
           "id": "unit-label",
@@ -133,7 +145,11 @@
       "layer": 300,
       "symbolId": "demo-generic-unit",
       "x": 116,
-      "y": 68
+      "y": 68,
+      "slotBindings": {
+        "running": "input_boolean.schematic_demo_flow",
+        "alarm": "input_boolean.schematic_demo_alarm"
+      }
     },
     {
       "id": "demo-component-b",
@@ -141,7 +157,10 @@
       "layer": 300,
       "symbolId": "demo-generic-unit",
       "x": 236,
-      "y": 68
+      "y": 68,
+      "slotBindings": {
+        "running": "input_boolean.schematic_demo_flow"
+      }
     },
     {
       "id": "demo-direction-marker",

@@ -16,6 +16,11 @@ describe("demo payload fixtures", () => {
     });
     expect(Array.isArray(payload.symbols)).toBe(true);
     expect(symbolItemsFor(payload, "demo-generic-unit")).toHaveLength(2);
+    expect(symbolSlotBindingsFor(payload, "demo-component-a")).toMatchObject({
+      running: "input_boolean.schematic_demo_flow",
+      alarm: "input_boolean.schematic_demo_alarm"
+    });
+    expect(symbolStyleItemsFor(payload, "demo-generic-unit", "slot:alarm", "on")).toHaveLength(1);
     expect(visibilityItemsFor(payload, "input_boolean.schematic_demo_alarm", "on")).toHaveLength(2);
     expect(styleItemsFor(payload, "input_boolean.schematic_demo_alarm", "on")).toHaveLength(1);
     expect(flowItemsFor(payload, "input_boolean.schematic_demo_flow", "on")).toHaveLength(1);
@@ -35,7 +40,7 @@ describe("demo payload fixtures", () => {
   });
 });
 
-async function readJsonFixture(): Promise<Record<string, unknown> & { items: unknown[] }> {
+async function readJsonFixture(): Promise<Record<string, unknown> & { items: unknown[]; symbols?: unknown[] }> {
   return JSON.parse(await readTextFixture("minimal.json"));
 }
 
@@ -61,6 +66,41 @@ function hasSymbolId(value: unknown, symbolId: string): boolean {
     && "symbolId" in value
     && value.symbolId === symbolId
   );
+}
+
+function symbolSlotBindingsFor(payload: { items: unknown[] }, itemId: string): Record<string, unknown> {
+  const item = payload.items.find((candidate) => (
+    typeof candidate === "object"
+    && candidate !== null
+    && "id" in candidate
+    && candidate.id === itemId
+  ));
+
+  if (typeof item !== "object" || item === null || !("slotBindings" in item) || typeof item.slotBindings !== "object" || item.slotBindings === null) {
+    return {};
+  }
+
+  return item.slotBindings as Record<string, unknown>;
+}
+
+function symbolStyleItemsFor(
+  payload: { symbols?: unknown[] },
+  symbolId: string,
+  entityId: string,
+  equals: string
+): unknown[] {
+  const symbol = payload.symbols?.find((candidate) => (
+    typeof candidate === "object"
+    && candidate !== null
+    && "id" in candidate
+    && candidate.id === symbolId
+  ));
+
+  if (typeof symbol !== "object" || symbol === null || !("items" in symbol) || !Array.isArray(symbol.items)) {
+    return [];
+  }
+
+  return symbol.items.filter((item) => hasStyleWhen(item, entityId, equals));
 }
 
 function visibilityItemsFor(payload: { items: unknown[] }, entityId: string, equals: string): unknown[] {

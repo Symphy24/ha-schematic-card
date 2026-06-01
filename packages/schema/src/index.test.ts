@@ -437,7 +437,10 @@ describe("schema validation", () => {
           symbolId: "generic-box",
           x: 10,
           y: 20,
-          scale: 2
+          scale: 2,
+          slotBindings: {
+            running: "input_boolean.box_running"
+          }
         }
       ]
     };
@@ -446,6 +449,45 @@ describe("schema validation", () => {
       valid: true,
       errors: []
     });
+  });
+
+  it("rejects invalid symbol slot bindings", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      symbols: [
+        {
+          id: "generic-box",
+          entitySlots: [
+            {
+              id: "running"
+            }
+          ],
+          items: []
+        }
+      ],
+      items: [
+        {
+          id: "box-1",
+          type: "symbol",
+          layer: 300,
+          symbolId: "generic-box",
+          x: 10,
+          y: 20,
+          slotBindings: {
+            running: "",
+            alarm: "input_boolean.alarm"
+          }
+        }
+      ]
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("items[0].slotBindings.running must be a non-empty entity id string");
+    expect(result.errors).toContain("items[0].slotBindings.alarm must reference a defined entity slot");
   });
 
   it("rejects invalid symbol part metadata", () => {

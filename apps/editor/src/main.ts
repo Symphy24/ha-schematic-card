@@ -3020,8 +3020,59 @@ function appendSymbolMetadataInspector(
         : `${label}${required}`;
     }) ?? []
   ));
+  appendSymbolSlotBindingEditor(elements, documentRef, item, definition, section);
 
   elements.inspector.append(section);
+}
+
+function appendSymbolSlotBindingEditor(
+  elements: EditorElements,
+  documentRef: Document,
+  item: Extract<SchematicItem, { type: "symbol" }>,
+  definition: NonNullable<SchematicPayload["symbols"]>[number],
+  section: HTMLElement
+): void {
+  const slots = definition.entitySlots ?? [];
+
+  if (slots.length === 0) {
+    return;
+  }
+
+  const group = documentRef.createElement("div");
+  group.className = "symbol-slot-bindings";
+
+  const title = documentRef.createElement("div");
+  title.className = "symbol-inspector-group-title";
+  title.textContent = "Instance entity bindings";
+  group.append(title);
+
+  for (const slot of slots) {
+    const label = documentRef.createElement("label");
+    label.className = "inspector-field symbol-slot-binding-field";
+    label.dataset.slotId = slot.id;
+
+    const labelText = documentRef.createElement("span");
+    labelText.className = "field-label";
+    labelText.textContent = slot.label ? `${slot.id} - ${slot.label}` : slot.id;
+
+    const input = documentRef.createElement("input");
+    input.className = "inspector-input symbol-slot-binding-input";
+    input.type = "text";
+    input.placeholder = "sensor.example_entity";
+    input.value = item.slotBindings?.[slot.id] ?? "";
+    input.addEventListener("change", () => {
+      updateSelectedSymbolSlotBinding(elements, slot.id, input.value, documentRef);
+    });
+
+    const helper = documentRef.createElement("span");
+    helper.className = "field-helper";
+    helper.textContent = slot.description ?? "Bind this generic symbol slot to a Home Assistant entity id.";
+
+    label.append(labelText, input, helper);
+    group.append(label);
+  }
+
+  section.append(group);
 }
 
 function createSymbolMetadataGroup(documentRef: Document, label: string, values: string[]): HTMLElement {
@@ -3423,6 +3474,58 @@ function updateSelectedItemStyleField(
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef, options);
   elements.inspectorStatus.textContent = `Updated ${field.name} for ${item.id}`;
+  elements.inspectorStatus.dataset.state = "valid";
+}
+
+function updateSelectedSymbolSlotBinding(
+  elements: EditorElements,
+  slotId: string,
+  rawValue: string,
+  documentRef: Document
+): void {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  const item = result.payload.items.find((candidate) => candidate.id === elements.selectedItemId);
+
+  if (!item || item.type !== "symbol") {
+    elements.inspectorStatus.textContent = "Selected symbol was not found";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  const value = rawValue.trim();
+  const currentValue = item.slotBindings?.[slotId] ?? "";
+
+  if (currentValue === value) {
+    return;
+  }
+
+  recordHistory(elements);
+
+  if (value.length === 0) {
+    const nextBindings = { ...(item.slotBindings ?? {}) };
+    delete nextBindings[slotId];
+
+    if (Object.keys(nextBindings).length === 0) {
+      delete item.slotBindings;
+    } else {
+      item.slotBindings = nextBindings;
+    }
+  } else {
+    item.slotBindings = {
+      ...(item.slotBindings ?? {}),
+      [slotId]: value
+    };
+  }
+
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  updateFromJson(elements, documentRef);
+  elements.inspectorStatus.textContent = `Updated ${slotId} binding for ${item.id}`;
   elements.inspectorStatus.dataset.state = "valid";
 }
 
