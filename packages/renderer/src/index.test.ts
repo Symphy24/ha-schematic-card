@@ -370,26 +370,29 @@ describe("SVG renderer", () => {
             { id: "alarm" },
             { id: "running" }
           ],
+          partStyles: [
+            {
+              partId: "body",
+              when: {
+                entityId: "slot:alarm",
+                equals: "on"
+              },
+              style: {
+                fill: "var(--error-color)"
+              }
+            }
+          ],
           items: [
             {
               ...symbolRectItem("symbol-body", 100),
+              partId: "body",
               style: {
                 fill: "var(--success-color)"
-              },
-              styleWhen: [
-                {
-                  when: {
-                    entityId: "slot:alarm",
-                    equals: "on"
-                  },
-                  style: {
-                    fill: "var(--error-color)"
-                  }
-                }
-              ]
+              }
             },
             {
               ...symbolRectItem("running-indicator", 200),
+              partId: "status",
               visibleWhen: {
                 entityId: "slot:running",
                 equals: "on"
@@ -410,6 +413,7 @@ describe("SVG renderer", () => {
 
     expect(svg.querySelector('[data-id="symbol-body"]')?.getAttribute("fill")).toBe("var(--error-color)");
     expect(svg.querySelector('[data-id="running-indicator"]')).not.toBeNull();
+    expect(svg.querySelector('[data-id="running-indicator"]')?.getAttribute("fill")).toBeNull();
   });
 
   it("combines symbol placement with structured transforms", () => {

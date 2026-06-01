@@ -86,11 +86,12 @@ Expected behavior:
 - The small internal `status` part dot in each symbol turns success-colored when its `running` slot binding points at an entity that is `on`.
 - When `input_boolean.schematic_demo_alarm` is `off`, unavailable, or missing, the status dot stays in the success color and the badge is hidden.
 
-The symbol definition uses a generic condition internally:
+The symbol definition uses `partStyles` with a generic condition internally:
 
 ```yaml
-styleWhen:
-  - when:
+partStyles:
+  - partId: body
+    when:
       entityId: slot:alarm
       equals: "on"
 ```

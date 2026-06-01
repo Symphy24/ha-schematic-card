@@ -163,6 +163,7 @@ export type SchematicSymbolDefinition = {
   id: string;
   viewport?: SchematicViewport;
   parts?: SchematicSymbolPartDefinition[];
+  partStyles?: SchematicSymbolPartStyle[];
   entitySlots?: SchematicSymbolEntitySlotDefinition[];
   items: SchematicSymbolChildItem[];
 };
@@ -178,6 +179,12 @@ export type SchematicSymbolEntitySlotDefinition = {
   label?: string;
   description?: string;
   required?: boolean;
+};
+
+export type SchematicSymbolPartStyle = {
+  partId: string;
+  when: SchematicVisibilityCondition;
+  style: SchematicStyle;
 };
 
 export type SchematicSymbolSlotBindings = Record<string, string>;
@@ -313,6 +320,7 @@ function validateSymbols(value: unknown, errors: string[]): SymbolValidationCont
     }
 
     const partIds = validateSymbolParts(symbol.parts, `${path}.parts`, errors);
+    validateSymbolPartStyles(symbol.partStyles, `${path}.partStyles`, partIds, errors);
     const entitySlotIds = validateSymbolEntitySlots(symbol.entitySlots, `${path}.entitySlots`, errors);
 
     if (typeof symbol.id === "string" && symbol.id.length > 0) {
@@ -405,6 +413,35 @@ function validateSymbolEntitySlots(value: unknown, path: string, errors: string[
   });
 
   return slotIds;
+}
+
+function validateSymbolPartStyles(
+  value: unknown,
+  path: string,
+  allowedPartIds: Set<string>,
+  errors: string[]
+): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!Array.isArray(value)) {
+    errors.push(`${path} must be an array`);
+    return;
+  }
+
+  value.forEach((entry, index) => {
+    const entryPath = `${path}[${index}]`;
+
+    if (!isRecord(entry)) {
+      errors.push(`${entryPath} must be an object`);
+      return;
+    }
+
+    validateItemPartReference(entry.partId, `${entryPath}.partId`, errors, allowedPartIds);
+    validateVisibilityCondition(entry.when, `${entryPath}.when`, errors);
+    validateStyle(entry.style, `${entryPath}.style`, errors);
+  });
 }
 
 function validateItem(

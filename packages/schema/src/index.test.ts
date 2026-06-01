@@ -408,6 +408,18 @@ describe("schema validation", () => {
               itemIds: ["box-rect"]
             }
           ],
+          partStyles: [
+            {
+              partId: "body",
+              when: {
+                entityId: "slot:alarm",
+                equals: "on"
+              },
+              style: {
+                fill: "var(--error-color)"
+              }
+            }
+          ],
           entitySlots: [
             {
               id: "running",
@@ -450,6 +462,47 @@ describe("schema validation", () => {
       valid: true,
       errors: []
     });
+  });
+
+  it("rejects invalid symbol part styles", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      symbols: [
+        {
+          id: "generic-box",
+          parts: [
+            {
+              id: "body"
+            }
+          ],
+          partStyles: [
+            {
+              partId: "missing",
+              when: {
+                entityId: "",
+                equals: "on"
+              },
+              style: {
+                fill: 42,
+                cssText: "fill: red"
+              }
+            }
+          ],
+          items: []
+        }
+      ],
+      items: []
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("symbols[0].partStyles[0].partId must reference a defined symbol part");
+    expect(result.errors).toContain("symbols[0].partStyles[0].when.entityId must be a non-empty string");
+    expect(result.errors).toContain("symbols[0].partStyles[0].style.cssText is not a supported style property");
+    expect(result.errors).toContain("symbols[0].partStyles[0].style.fill must be a string");
   });
 
   it("rejects symbol child items that reference missing parts", () => {
