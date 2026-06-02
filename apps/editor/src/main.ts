@@ -6,6 +6,7 @@ import {
   type SchematicItem,
   type SchematicPoint,
   type SchematicStyle,
+  type SchematicSymbolDefinition,
   validateSchematicPayload
 } from "@ha-schematic-card/schema";
 
@@ -68,6 +69,16 @@ type EditorElements = {
   openSvgImportButton: HTMLButtonElement;
   openExportButton: HTMLButtonElement;
   openThemeButton: HTMLButtonElement;
+  openSymbolEditorButton: HTMLButtonElement;
+  symbolWorkspace: HTMLElement;
+  closeSymbolWorkspaceButton: HTMLButtonElement;
+  createSymbolButton: HTMLButtonElement;
+  symbolSelect: HTMLSelectElement;
+  symbolPreviewSurface: HTMLElement;
+  symbolItemList: HTMLElement;
+  symbolPartsList: HTMLElement;
+  symbolSlotsList: HTMLElement;
+  symbolInspector: HTMLElement;
   toggleGridButton: HTMLButtonElement;
   toggleSnapButton: HTMLButtonElement;
   panToolButton: HTMLButtonElement;
@@ -104,6 +115,8 @@ type EditorElements = {
   redoButton: HTMLButtonElement;
   selectedItemId?: string;
   selectedItemIds: string[];
+  activeSymbolId?: string;
+  selectedSymbolInternalItemId?: string;
   gridEnabled: boolean;
   snapEnabled: boolean;
   gridSize: number;
@@ -358,6 +371,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   const previewPane = createPreviewPane(documentRef);
   const resizeHandle = createResizeHandle(documentRef, shell);
   const transferPanel = createTransferPanel(documentRef);
+  const symbolWorkspace = createSymbolEditorWorkspace(documentRef);
 
   const elements: EditorElements = {
     editorRoot: shell,
@@ -400,6 +414,16 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     openSvgImportButton: getRequiredElement(toolbar, ".open-svg-import-button", HTMLButtonElement),
     openExportButton: getRequiredElement(toolbar, ".open-export-button", HTMLButtonElement),
     openThemeButton: getRequiredElement(toolbar, ".open-theme-button", HTMLButtonElement),
+    openSymbolEditorButton: getRequiredElement(toolbar, ".open-symbol-editor-button", HTMLButtonElement),
+    symbolWorkspace,
+    closeSymbolWorkspaceButton: getRequiredElement(symbolWorkspace, ".close-symbol-workspace-button", HTMLButtonElement),
+    createSymbolButton: getRequiredElement(symbolWorkspace, ".create-symbol-button", HTMLButtonElement),
+    symbolSelect: getRequiredElement(symbolWorkspace, ".symbol-select", HTMLSelectElement),
+    symbolPreviewSurface: getRequiredElement(symbolWorkspace, ".symbol-preview-surface", HTMLElement),
+    symbolItemList: getRequiredElement(symbolWorkspace, ".symbol-internal-item-list", HTMLElement),
+    symbolPartsList: getRequiredElement(symbolWorkspace, ".symbol-parts-list", HTMLElement),
+    symbolSlotsList: getRequiredElement(symbolWorkspace, ".symbol-slots-list", HTMLElement),
+    symbolInspector: getRequiredElement(symbolWorkspace, ".symbol-editor-inspector", HTMLElement),
     toggleGridButton: getRequiredElement(previewPane, ".toggle-grid-button", HTMLButtonElement),
     toggleSnapButton: getRequiredElement(previewPane, ".toggle-snap-button", HTMLButtonElement),
     panToolButton: getRequiredElement(toolbar, ".pan-tool-button", HTMLButtonElement),
@@ -453,6 +477,14 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.openSvgImportButton.addEventListener("click", () => openTransferPanel(elements, "svg"));
   elements.openExportButton.addEventListener("click", () => openTransferPanel(elements, "export"));
   elements.openThemeButton.addEventListener("click", () => openTransferPanel(elements, "theme"));
+  elements.openSymbolEditorButton.addEventListener("click", () => openSymbolWorkspace(elements, documentRef));
+  elements.closeSymbolWorkspaceButton.addEventListener("click", () => closeSymbolWorkspace(elements));
+  elements.createSymbolButton.addEventListener("click", () => createSymbolFromWorkspace(elements, documentRef));
+  elements.symbolSelect.addEventListener("change", () => {
+    elements.activeSymbolId = elements.symbolSelect.value || undefined;
+    elements.selectedSymbolInternalItemId = undefined;
+    renderSymbolWorkspace(elements, documentRef);
+  });
   elements.selectToolButton.addEventListener("click", () => activateSelectTool(elements, documentRef));
   elements.toggleGridButton.addEventListener("click", () => togglePreviewGrid(elements, documentRef));
   elements.toggleSnapButton.addEventListener("click", () => toggleSnap(elements));
@@ -498,7 +530,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   setupEditorTabDocking(elements);
   shell.addEventListener("keydown", (event) => handleEditorKeyDown(elements, event, documentRef));
 
-  shell.append(toolbar, jsonPane, resizeHandle, previewPane, transferPanel);
+  shell.append(toolbar, jsonPane, resizeHandle, previewPane, transferPanel, symbolWorkspace);
   updateFromJson(elements, documentRef);
 
   return shell;
@@ -3643,6 +3675,301 @@ function updateSelectedSymbolSlotBinding(
   elements.inspectorStatus.dataset.state = "valid";
 }
 
+function openSymbolWorkspace(elements: EditorElements, documentRef: Document): void {
+  elements.symbolWorkspace.hidden = false;
+  renderSymbolWorkspace(elements, documentRef);
+}
+
+function closeSymbolWorkspace(elements: EditorElements): void {
+  elements.symbolWorkspace.hidden = true;
+}
+
+function createSymbolFromWorkspace(elements: EditorElements, documentRef: Document): void {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderSymbolWorkspaceError(elements, result.message);
+    return;
+  }
+
+  const symbol = createDefaultSymbolDefinition(result.payload);
+  recordHistory(elements);
+  result.payload.symbols = [...(result.payload.symbols ?? []), symbol];
+  elements.activeSymbolId = symbol.id;
+  elements.selectedSymbolInternalItemId = symbol.items[0]?.id;
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  updateFromJson(elements, documentRef);
+  renderSymbolWorkspace(elements, documentRef);
+}
+
+function createDefaultSymbolDefinition(payload: SchematicPayload): SchematicSymbolDefinition {
+  const existingIds = new Set((payload.symbols ?? []).map((symbol) => symbol.id));
+  let index = 1;
+  let id = "symbol-1";
+
+  while (existingIds.has(id)) {
+    index += 1;
+    id = `symbol-${index}`;
+  }
+
+  return {
+    id,
+    viewport: {
+      width: 100,
+      height: 80
+    },
+    parts: [
+      { id: "body", label: "Body" }
+    ],
+    entitySlots: [
+      { id: "state", label: "State", description: "Future slot binding target" }
+    ],
+    items: [
+      {
+        id: `${id}-body`,
+        type: "rect",
+        layer: 300,
+        partId: "body",
+        x: 10,
+        y: 10,
+        width: 80,
+        height: 50,
+        rx: 4,
+        ry: 4,
+        style: {
+          fill: "none",
+          stroke: "currentColor",
+          strokeWidth: 2
+        }
+      },
+      {
+        id: `${id}-label`,
+        type: "text",
+        layer: 600,
+        x: 50,
+        y: 42,
+        text: "Symbol",
+        style: {
+          fill: "currentColor",
+          fontSize: 12,
+          textAnchor: "middle"
+        }
+      }
+    ]
+  };
+}
+
+function renderSymbolWorkspace(elements: EditorElements, documentRef: Document): void {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderSymbolWorkspaceError(elements, result.message);
+    return;
+  }
+
+  const symbols = result.payload.symbols ?? [];
+  renderSymbolOptions(elements, symbols, documentRef);
+
+  if (symbols.length === 0) {
+    renderEmptySymbolWorkspace(elements, "No symbols defined yet");
+    return;
+  }
+
+  const selectedSymbol = symbols.find((symbol) => symbol.id === elements.activeSymbolId) ?? symbols[0];
+  elements.activeSymbolId = selectedSymbol?.id;
+
+  if (!selectedSymbol) {
+    renderEmptySymbolWorkspace(elements, "No symbols defined yet");
+    return;
+  }
+
+  elements.symbolSelect.value = selectedSymbol.id;
+  renderSymbolPreview(elements, selectedSymbol, documentRef);
+  renderSymbolInternalItems(elements, selectedSymbol, documentRef);
+  renderSymbolPartsAndSlots(elements, selectedSymbol, documentRef);
+  renderSymbolEditorInspector(elements, selectedSymbol, documentRef);
+}
+
+function renderSymbolOptions(elements: EditorElements, symbols: SchematicSymbolDefinition[], documentRef: Document): void {
+  elements.symbolSelect.replaceChildren();
+
+  if (symbols.length === 0) {
+    const option = documentRef.createElement("option");
+    option.value = "";
+    option.textContent = "No symbols";
+    elements.symbolSelect.append(option);
+    return;
+  }
+
+  for (const symbol of symbols) {
+    const option = documentRef.createElement("option");
+    option.value = symbol.id;
+    option.textContent = symbol.id;
+    elements.symbolSelect.append(option);
+  }
+}
+
+function renderSymbolPreview(elements: EditorElements, symbol: SchematicSymbolDefinition, documentRef: Document): void {
+  const bounds = getBoundsFromItems(symbol.items);
+  const viewport = symbol.viewport ?? (bounds ? {
+    width: bounds.x + bounds.width,
+    height: bounds.y + bounds.height
+  } : { width: 100, height: 80 });
+  const previewPayload: SchematicPayload = {
+    schemaVersion: 1,
+    viewport: {
+      width: Math.max(1, viewport.width),
+      height: Math.max(1, viewport.height)
+    },
+    symbols: [symbol],
+    items: [
+      {
+        id: `symbol-preview-${symbol.id}`,
+        type: "symbol",
+        layer: 300,
+        symbolId: symbol.id,
+        x: 0,
+        y: 0
+      }
+    ]
+  };
+  const svg = renderSchematicSvg(previewPayload, {
+    document: documentRef,
+    entityStates: demoEntityStates
+  });
+  elements.symbolPreviewSurface.replaceChildren(svg);
+  highlightSelectedSymbolInternalItem(elements);
+}
+
+function renderSymbolInternalItems(
+  elements: EditorElements,
+  symbol: SchematicSymbolDefinition,
+  documentRef: Document
+): void {
+  elements.symbolItemList.replaceChildren();
+
+  if (symbol.items.length === 0) {
+    elements.symbolItemList.append(createSymbolWorkspaceEmpty(documentRef, "No internal items"));
+    return;
+  }
+
+  for (const item of symbol.items) {
+    const button = documentRef.createElement("button");
+    button.className = "symbol-internal-item-button";
+    button.type = "button";
+    button.dataset.symbolItemId = item.id;
+    button.setAttribute("aria-pressed", String(elements.selectedSymbolInternalItemId === item.id));
+    button.textContent = `${item.id} (${item.type}${item.partId ? `, ${item.partId}` : ""})`;
+    button.addEventListener("click", () => {
+      elements.selectedSymbolInternalItemId = item.id;
+      renderSymbolWorkspace(elements, documentRef);
+    });
+    elements.symbolItemList.append(button);
+  }
+}
+
+function renderSymbolPartsAndSlots(
+  elements: EditorElements,
+  symbol: SchematicSymbolDefinition,
+  documentRef: Document
+): void {
+  elements.symbolPartsList.replaceChildren();
+  elements.symbolSlotsList.replaceChildren();
+
+  if (!symbol.parts || symbol.parts.length === 0) {
+    elements.symbolPartsList.append(createSymbolWorkspaceEmpty(documentRef, "No parts"));
+  } else {
+    for (const part of symbol.parts) {
+      const row = documentRef.createElement("div");
+      row.className = "symbol-workspace-row";
+      row.textContent = part.label ? `${part.id} - ${part.label}` : part.id;
+      elements.symbolPartsList.append(row);
+    }
+  }
+
+  if (!symbol.entitySlots || symbol.entitySlots.length === 0) {
+    elements.symbolSlotsList.append(createSymbolWorkspaceEmpty(documentRef, "No entity slots"));
+  } else {
+    for (const slot of symbol.entitySlots) {
+      const row = documentRef.createElement("div");
+      row.className = "symbol-workspace-row";
+      row.textContent = slot.label ? `${slot.id} - ${slot.label}` : slot.id;
+      elements.symbolSlotsList.append(row);
+    }
+  }
+}
+
+function renderSymbolEditorInspector(
+  elements: EditorElements,
+  symbol: SchematicSymbolDefinition,
+  documentRef: Document
+): void {
+  elements.symbolInspector.replaceChildren();
+  const selectedItem = symbol.items.find((item) => item.id === elements.selectedSymbolInternalItemId);
+
+  if (!selectedItem) {
+    elements.symbolInspector.append(createSymbolWorkspaceEmpty(documentRef, "Select an internal item"));
+    return;
+  }
+
+  const rows = [
+    `Item: ${selectedItem.id}`,
+    `Type: ${selectedItem.type}`,
+    `Layer: ${selectedItem.layer}`,
+    `Part: ${selectedItem.partId ?? "none"}`
+  ];
+
+  for (const value of rows) {
+    const row = documentRef.createElement("div");
+    row.className = "symbol-workspace-row";
+    row.textContent = value;
+    elements.symbolInspector.append(row);
+  }
+}
+
+function renderEmptySymbolWorkspace(elements: EditorElements, message: string): void {
+  const documentRef = elements.editorRoot.ownerDocument;
+  elements.symbolPreviewSurface.replaceChildren(createSymbolWorkspaceEmpty(documentRef, message));
+  elements.symbolItemList.replaceChildren(createSymbolWorkspaceEmpty(documentRef, message));
+  elements.symbolPartsList.replaceChildren(createSymbolWorkspaceEmpty(documentRef, "No parts"));
+  elements.symbolSlotsList.replaceChildren(createSymbolWorkspaceEmpty(documentRef, "No entity slots"));
+  elements.symbolInspector.replaceChildren(createSymbolWorkspaceEmpty(documentRef, "Create a symbol to inspect it"));
+}
+
+function renderSymbolWorkspaceError(elements: EditorElements, message: string): void {
+  const documentRef = elements.editorRoot.ownerDocument;
+  const error = createSymbolWorkspaceEmpty(documentRef, message);
+  error.dataset.state = "error";
+  elements.symbolPreviewSurface.replaceChildren(error);
+  elements.symbolItemList.replaceChildren();
+  elements.symbolPartsList.replaceChildren();
+  elements.symbolSlotsList.replaceChildren();
+  elements.symbolInspector.replaceChildren(error.cloneNode(true));
+}
+
+function createSymbolWorkspaceEmpty(documentRef: Document, message: string): HTMLElement {
+  const empty = documentRef.createElement("div");
+  empty.className = "symbol-workspace-empty";
+  empty.textContent = message;
+  return empty;
+}
+
+function highlightSelectedSymbolInternalItem(elements: EditorElements): void {
+  for (const element of elements.symbolPreviewSurface.querySelectorAll("[data-symbol-editor-selected]")) {
+    element.removeAttribute("data-symbol-editor-selected");
+  }
+
+  if (!elements.selectedSymbolInternalItemId) {
+    return;
+  }
+
+  for (const element of elements.symbolPreviewSurface.querySelectorAll("[data-id]")) {
+    if (element.getAttribute("data-id") === elements.selectedSymbolInternalItemId) {
+      element.setAttribute("data-symbol-editor-selected", "true");
+    }
+  }
+}
+
 function parseStyleFieldValue(
   field: StyleFieldConfig,
   rawValue: string
@@ -5025,7 +5352,10 @@ function createGlobalToolbar(documentRef: Document): HTMLElement {
     createToolbarButton(documentRef, "open-theme-button", "Theme")
   );
 
-  toolbar.append(toolGroup, addGroup, selectionGroup, historyGroup, payloadGroup);
+  const workspaceGroup = createToolbarGroup(documentRef, "Workspace");
+  workspaceGroup.append(createToolbarButton(documentRef, "open-symbol-editor-button", "Symbol Editor"));
+
+  toolbar.append(toolGroup, addGroup, selectionGroup, historyGroup, payloadGroup, workspaceGroup);
   return toolbar;
 }
 
@@ -5298,6 +5628,88 @@ function createPreviewSurface(documentRef: Document): HTMLElement {
   const previewSurface = documentRef.createElement("div");
   previewSurface.className = "preview-surface";
   return previewSurface;
+}
+
+function createSymbolEditorWorkspace(documentRef: Document): HTMLElement {
+  const wrapper = documentRef.createElement("section");
+  wrapper.className = "symbol-editor-workspace";
+  wrapper.hidden = true;
+
+  const header = documentRef.createElement("header");
+  header.className = "symbol-editor-header";
+
+  const title = documentRef.createElement("div");
+  title.className = "symbol-editor-title";
+  title.textContent = "Symbol Editor";
+
+  const controls = documentRef.createElement("div");
+  controls.className = "symbol-editor-controls";
+
+  const symbolSelect = documentRef.createElement("select");
+  symbolSelect.className = "symbol-select";
+  symbolSelect.setAttribute("aria-label", "Symbol");
+
+  const createButton = documentRef.createElement("button");
+  createButton.className = "create-symbol-button utility-button";
+  createButton.type = "button";
+  createButton.textContent = "Create Symbol";
+
+  const closeButton = documentRef.createElement("button");
+  closeButton.className = "close-symbol-workspace-button utility-button";
+  closeButton.type = "button";
+  closeButton.textContent = "X";
+  closeButton.setAttribute("aria-label", "Close symbol editor");
+
+  controls.append(symbolSelect, createButton, closeButton);
+  header.append(title, controls);
+
+  const body = documentRef.createElement("div");
+  body.className = "symbol-editor-body";
+
+  const side = documentRef.createElement("aside");
+  side.className = "symbol-editor-side";
+
+  const itemsSection = createSymbolWorkspaceSection(documentRef, "Internal Items", "symbol-internal-item-list");
+  const partsSection = createSymbolWorkspaceSection(documentRef, "Parts", "symbol-parts-list");
+  const slotsSection = createSymbolWorkspaceSection(documentRef, "Entity Slots", "symbol-slots-list");
+  side.append(itemsSection, partsSection, slotsSection);
+
+  const preview = documentRef.createElement("section");
+  preview.className = "symbol-editor-preview-pane";
+  const previewTitle = documentRef.createElement("div");
+  previewTitle.className = "field-label";
+  previewTitle.textContent = "Symbol Preview";
+  const previewSurface = documentRef.createElement("div");
+  previewSurface.className = "symbol-preview-surface";
+  preview.append(previewTitle, previewSurface);
+
+  const inspectorPane = documentRef.createElement("aside");
+  inspectorPane.className = "symbol-editor-inspector-pane";
+  const inspectorTitle = documentRef.createElement("div");
+  inspectorTitle.className = "field-label";
+  inspectorTitle.textContent = "Inspector";
+  const inspector = documentRef.createElement("div");
+  inspector.className = "symbol-editor-inspector";
+  inspectorPane.append(inspectorTitle, inspector);
+
+  body.append(side, preview, inspectorPane);
+  wrapper.append(header, body);
+  return wrapper;
+}
+
+function createSymbolWorkspaceSection(documentRef: Document, title: string, listClassName: string): HTMLElement {
+  const section = documentRef.createElement("section");
+  section.className = "symbol-workspace-section";
+
+  const heading = documentRef.createElement("div");
+  heading.className = "field-label";
+  heading.textContent = title;
+
+  const list = documentRef.createElement("div");
+  list.className = listClassName;
+
+  section.append(heading, list);
+  return section;
 }
 
 function createPane(documentRef: Document, title: string): HTMLElement {

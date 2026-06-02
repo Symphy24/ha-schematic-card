@@ -154,6 +154,65 @@ describe("editor app", () => {
     });
   });
 
+  it("opens a dedicated symbol editor workspace for existing symbols", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".open-symbol-editor-button").click();
+
+    const workspace = app.querySelector<HTMLElement>(".symbol-editor-workspace");
+    const symbolSelect = app.querySelector<HTMLSelectElement>(".symbol-select");
+
+    expect(workspace?.hidden).toBe(false);
+    expect(symbolSelect?.value).toBe("demo-generic-unit");
+    expect(app.querySelector(".symbol-preview-surface svg")).not.toBeNull();
+    expect(getButton(app, '[data-symbol-item-id="unit-box"]').textContent).toContain("unit-box (rect, body)");
+    expect(app.querySelector<HTMLElement>(".symbol-parts-list")?.textContent).toContain("body - Symbol body");
+    expect(app.querySelector<HTMLElement>(".symbol-slots-list")?.textContent).toContain("running - Running state");
+
+    getButton(app, ".close-symbol-workspace-button").click();
+    expect(workspace?.hidden).toBe(true);
+  });
+
+  it("selects internal symbol items inside the symbol editor workspace", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".open-symbol-editor-button").click();
+    getButton(app, '[data-symbol-item-id="unit-status-dot"]').click();
+
+    expect(getButton(app, '[data-symbol-item-id="unit-status-dot"]').getAttribute("aria-pressed")).toBe("true");
+    expect(app.querySelector('.symbol-preview-surface [data-id="unit-status-dot"]')?.getAttribute("data-symbol-editor-selected")).toBe("true");
+    expect(app.querySelector<HTMLElement>(".symbol-editor-inspector")?.textContent).toContain("Item: unit-status-dot");
+    expect(app.querySelector<HTMLElement>(".symbol-editor-inspector")?.textContent).toContain("Part: status");
+  });
+
+  it("creates a first symbol from the symbol editor workspace", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const payloadWithoutSymbols = {
+      ...getDemoPayload(),
+      symbols: undefined,
+      items: getDemoPayload().items.filter((item) => item.type !== "symbol")
+    };
+    const jsonInput = getTextarea(app, ".json-input");
+
+    jsonInput.value = formatPayloadJson(payloadWithoutSymbols);
+    jsonInput.dispatchEvent(new Event("input"));
+    getButton(app, ".open-symbol-editor-button").click();
+
+    expect(app.querySelector<HTMLElement>(".symbol-editor-inspector")?.textContent).toContain("Create a symbol");
+
+    getButton(app, ".create-symbol-button").click();
+
+    const parsed = JSON.parse(jsonInput.value) as { symbols?: Array<{ id: string; items: Array<{ id: string }> }> };
+
+    expect(parsed.symbols?.[0]?.id).toBe("symbol-1");
+    expect(parsed.symbols?.[0]?.items[0]?.id).toBe("symbol-1-body");
+    expect(app.querySelector<HTMLSelectElement>(".symbol-select")?.value).toBe("symbol-1");
+    expect(getButton(app, '[data-symbol-item-id="symbol-1-body"]').getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("docks a tab into a split panel and undocks it back to the tab row", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
