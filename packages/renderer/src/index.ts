@@ -14,6 +14,7 @@ import type {
   SchematicStyle,
   SchematicSymbolDefinition,
   SchematicSymbolInstance,
+  SchematicSymbolPartAnimation,
   SchematicSymbolPartStyle,
   SchematicText,
   SchematicVisibilityCondition
@@ -50,6 +51,7 @@ type RenderContext = {
   symbols: Map<string, SchematicSymbolDefinition>;
   slotBindings?: Record<string, string>;
   partStyles?: SchematicSymbolPartStyle[];
+  partAnimations?: SchematicSymbolPartAnimation[];
 };
 
 export function renderSchematicSvg(payload: SchematicPayload, options: RenderOptions = {}): SVGSVGElement {
@@ -76,7 +78,7 @@ export function renderSchematicSvg(payload: SchematicPayload, options: RenderOpt
     }
   }
 
-  svg.append(createFlowStyleElement(documentRef));
+  svg.append(createAnimationStyleElement(documentRef));
 
   return svg;
 }
@@ -278,7 +280,8 @@ function renderSymbol(item: SchematicSymbolInstance, context: RenderContext): SV
   const childContext: RenderContext = {
     ...context,
     slotBindings: item.slotBindings,
-    partStyles: symbol.partStyles
+    partStyles: symbol.partStyles,
+    partAnimations: symbol.partAnimations
   };
 
   for (const child of sortItemsByLayer(symbol.items)) {
@@ -298,7 +301,7 @@ function setBaseAttrs(element: SVGElement, item: SchematicItem): void {
   setStringAttr(element, "transform", formatTransform(item.transform));
 }
 
-function createFlowStyleElement(documentRef: Document): SVGStyleElement {
+function createAnimationStyleElement(documentRef: Document): SVGStyleElement {
   const element = createSvgElement(documentRef, "style");
   element.textContent = [
     ".ha-schematic-card-flow-dash{",
@@ -307,7 +310,14 @@ function createFlowStyleElement(documentRef: Document): SVGStyleElement {
     "animation:ha-schematic-card-flow-dash var(--hsc-flow-duration, 2s) linear infinite;",
     "}",
     ".ha-schematic-card-flow-reverse{animation-direction:reverse;}",
-    "@keyframes ha-schematic-card-flow-dash{from{stroke-dashoffset:20;}to{stroke-dashoffset:0;}}"
+    "@keyframes ha-schematic-card-flow-dash{from{stroke-dashoffset:20;}to{stroke-dashoffset:0;}}",
+    ".ha-schematic-card-part-blink{animation:ha-schematic-card-part-blink var(--hsc-part-animation-duration, 1s) ease-in-out infinite;}",
+    ".ha-schematic-card-part-pulse{animation:ha-schematic-card-part-pulse var(--hsc-part-animation-duration, 1.4s) ease-in-out infinite;transform-box:fill-box;transform-origin:center;}",
+    ".ha-schematic-card-part-rotate{animation:ha-schematic-card-part-rotate var(--hsc-part-animation-duration, 2s) linear infinite;transform-box:fill-box;transform-origin:center;}",
+    ".ha-schematic-card-part-reverse{animation-direction:reverse;}",
+    "@keyframes ha-schematic-card-part-blink{0%,100%{opacity:1;}50%{opacity:.25;}}",
+    "@keyframes ha-schematic-card-part-pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.18);}}",
+    "@keyframes ha-schematic-card-part-rotate{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}"
   ].join("");
   return element;
 }
@@ -331,7 +341,7 @@ function applyFlowAnimation(
   setStringAttr(element, "data-flow", flow.type);
 
   if (flow.durationSeconds !== undefined) {
-    setStringAttr(element, "style", `--hsc-flow-duration: ${flow.durationSeconds}s`);
+    setCssCustomProperty(element, "--hsc-flow-duration", `${flow.durationSeconds}s`);
   }
 }
 
@@ -348,6 +358,7 @@ function applyItemStyle(
   context: RenderContext
 ): void {
   applySafeStyle(element, resolveItemStyle(item, context));
+  applyPartAnimation(element, item, context);
 }
 
 function resolveItemStyle(
@@ -368,6 +379,38 @@ function resolveItemStyle(
 
 function evaluateSymbolPartStyle(
   entry: SchematicSymbolPartStyle,
+  context: RenderContext
+): boolean {
+  return evaluateVisibilityCondition(entry.when, context);
+}
+
+function applyPartAnimation(element: SVGElement, item: SchematicItem, context: RenderContext): void {
+  if (!item.partId) {
+    return;
+  }
+
+  const animation = (context.partAnimations ?? []).find((entry) => (
+    entry.partId === item.partId && evaluateSymbolPartAnimation(entry, context)
+  ));
+
+  if (!animation) {
+    return;
+  }
+
+  setStringAttr(element, "class", [
+    element.getAttribute("class"),
+    `ha-schematic-card-part-${animation.preset}`,
+    animation.reverse ? "ha-schematic-card-part-reverse" : undefined
+  ].filter((value) => value !== undefined && value !== null && value.length > 0).join(" "));
+  setStringAttr(element, "data-part-animation", animation.preset);
+
+  if (animation.durationSeconds !== undefined) {
+    setCssCustomProperty(element, "--hsc-part-animation-duration", `${animation.durationSeconds}s`);
+  }
+}
+
+function evaluateSymbolPartAnimation(
+  entry: SchematicSymbolPartAnimation,
   context: RenderContext
 ): boolean {
   return evaluateVisibilityCondition(entry.when, context);
@@ -513,6 +556,10 @@ function setStringAttr(element: SVGElement, name: string, value: string | number
   }
 
   element.setAttribute(name, String(value));
+}
+
+function setCssCustomProperty(element: SVGElement, name: string, value: string): void {
+  element.style.setProperty(name, value);
 }
 
 function setSafePaintAttr(element: SVGElement, name: "stroke" | "fill", value: string | undefined): void {

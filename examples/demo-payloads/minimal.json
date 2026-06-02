@@ -52,6 +52,17 @@
           }
         }
       ],
+      "partAnimations": [
+        {
+          "partId": "status",
+          "when": {
+            "entityId": "slot:running",
+            "equals": "on"
+          },
+          "preset": "blink",
+          "durationSeconds": 1.2
+        }
+      ],
       "entitySlots": [
         {
           "id": "running",

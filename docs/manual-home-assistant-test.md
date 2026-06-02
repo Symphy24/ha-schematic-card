@@ -120,8 +120,20 @@ To test it manually, create a Home Assistant toggle helper named `schematic_demo
 
 Expected behavior:
 
-- When `input_boolean.schematic_demo_flow` is `on`, the main flow line shows a moving dashed flow indication.
-- When it is `off`, unavailable, or missing, the flow line is rendered as a normal static line.
+- When `input_boolean.schematic_demo_flow` is `on`, the main flow line shows a moving dashed flow indication, and the reusable symbol instances blink only their internal `status` part.
+- When it is `off`, unavailable, or missing, the flow line is rendered as a normal static line and the symbol status parts do not animate.
+
+The symbol definition uses a generic slot, so each symbol instance can bind `running` to a real Home Assistant entity:
+
+```yaml
+partAnimations:
+  - partId: status
+    when:
+      entityId: slot:running
+      equals: "on"
+    preset: blink
+    durationSeconds: 1.2
+```
 
 ## Theme Variables
 
