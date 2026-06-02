@@ -170,6 +170,13 @@ describe("editor app", () => {
     expect(app.querySelector<HTMLElement>(".symbol-parts-list")?.textContent).toContain("body - Symbol body");
     expect(app.querySelector<HTMLElement>(".symbol-slots-list")?.textContent).toContain("running - Running state");
 
+    getButton(app, ".symbol-file-menu-button").click();
+    expect(app.querySelector<HTMLElement>(".symbol-file-menu")?.hidden).toBe(false);
+    getButton(app, ".open-symbol-svg-import-dialog-button").click();
+    expect(app.querySelector<HTMLElement>(".symbol-import-dialog")?.hidden).toBe(false);
+    getButton(app, ".cancel-symbol-import-button").click();
+    expect(app.querySelector<HTMLElement>(".symbol-import-dialog")?.hidden).toBe(true);
+
     getButton(app, ".close-symbol-workspace-button").click();
     expect(workspace?.hidden).toBe(true);
   });
@@ -211,6 +218,61 @@ describe("editor app", () => {
     expect(parsed.symbols?.[0]?.items[0]?.id).toBe("symbol-1-body");
     expect(app.querySelector<HTMLSelectElement>(".symbol-select")?.value).toBe("symbol-1");
     expect(getButton(app, '[data-symbol-item-id="symbol-1-body"]').getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("imports SVG into the selected symbol instead of top-level items", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const jsonInput = getTextarea(app, ".json-input");
+    const beforeTopLevelCount = getDemoPayload().items.length;
+
+    getButton(app, ".open-symbol-editor-button").click();
+    getButton(app, ".symbol-file-menu-button").click();
+    getButton(app, ".open-symbol-svg-import-dialog-button").click();
+    getTextarea(app, ".symbol-svg-import-input").value = `
+      <svg viewBox="0 0 100 80">
+        <path id="symbol-import-body" d="M 10 10 H 90 V 60 H 10 Z" fill="#000000" />
+        <path id="symbol-import-mark" d="M 25 40 H 75" stroke="#ffffff" stroke-width="4" fill="none" />
+      </svg>
+    `;
+    getButton(app, ".symbol-svg-import-button").click();
+
+    const parsed = JSON.parse(jsonInput.value) as {
+      items: Array<{ id: string }>;
+      symbols?: Array<{ id: string; items: Array<{ id: string; type: string; children?: Array<{ id: string; type: string }> }> }>;
+    };
+    const symbol = parsed.symbols?.find((candidate) => candidate.id === "demo-generic-unit");
+    const importedGroup = symbol?.items.find((item) => item.id === "imported-svg-1");
+
+    expect(parsed.items).toHaveLength(beforeTopLevelCount);
+    expect(importedGroup).toMatchObject({ type: "group" });
+    expect(importedGroup?.children?.map((child) => child.id)).toEqual(["symbol-import-body", "symbol-import-mark"]);
+    expect(getButton(app, '[data-symbol-item-id="imported-svg-1"]').getAttribute("aria-pressed")).toBe("true");
+    expect(app.querySelector(".symbol-preview-surface [data-id='symbol-import-body']")).not.toBeNull();
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+    expect(app.querySelector<HTMLElement>(".symbol-workspace-status")?.textContent).toContain("Imported 1 SVG item(s) into demo-generic-unit");
+    expect(app.querySelector<HTMLElement>(".symbol-import-dialog")?.hidden).toBe(true);
+  });
+
+  it("does not change JSON when Symbol Editor SVG import is unsafe", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const jsonInput = getTextarea(app, ".json-input");
+    const originalJson = jsonInput.value;
+
+    getButton(app, ".open-symbol-editor-button").click();
+    getButton(app, ".symbol-file-menu-button").click();
+    getButton(app, ".open-symbol-svg-import-dialog-button").click();
+    getTextarea(app, ".symbol-svg-import-input").value = `
+      <svg>
+        <script>alert(1)</script>
+        <path id="bad" d="M 0 0 L 10 10" />
+      </svg>
+    `;
+    getButton(app, ".symbol-svg-import-button").click();
+
+    expect(jsonInput.value).toBe(originalJson);
+    expect(app.querySelector<HTMLElement>(".symbol-workspace-status")?.textContent).toContain("SVG import error:");
   });
 
   it("docks a tab into a split panel and undocks it back to the tab row", () => {

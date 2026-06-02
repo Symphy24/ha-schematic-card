@@ -26,71 +26,84 @@ Manual test flow:
 9. Open `Symbol Editor` from the top toolbar.
 10. Select an existing symbol, confirm the workspace shows a symbol preview, internal items, parts, entity slots, and a small inspector.
 11. Click an internal symbol item and confirm it is highlighted in the symbol preview.
-12. If a payload has no symbols, click `Create Symbol` and confirm a minimal symbol is added to JSON.
-13. Close the symbol workspace and confirm the main editor is still available.
-14. Use the top toolbar `Add` buttons to create a text, rect, or circle item.
-15. Confirm the new item is selected automatically and appears in the preview.
-16. Use `Duplicate` on a selected item and confirm the copy gets a new id, appears slightly offset, and is selected.
-17. Use `Delete`, or press `Delete` / `Backspace`, and confirm the selected item is removed.
-18. Edit simple fields such as `Text content`, `X position`, `Y position`, or `Layer / z-order` in the inspector.
-19. Edit common style fields such as `Stroke / line color`, `Fill / inside color`, `Stroke width`, `Font size`, `Font weight`, `Text anchor`, or `Opacity 0-100%`.
-20. Drag sliders for numeric style fields such as opacity while confirming the payload still stores opacity as a 0-1 value.
-21. Use the color picker or theme token presets such as `primary text`, `accent`, `error`, or `success` for paint fields.
-22. Clear a style field and confirm that style value is removed from the selected item.
-23. Use keyboard arrow keys to move positioned items.
-24. Hold `Shift` while pressing an arrow key to nudge by 10 units.
-25. Click visible top-level items in the preview and confirm the matching item is selected without forcing the `JSON` tab open.
-26. Click empty preview space, or press `Escape`, and confirm selection clears and the inspector returns to a neutral state.
-27. Open the `JSON` tab manually and confirm the selected item block is selected/scrolled into view.
-28. Toggle `Grid On` / `Grid Off` to show or hide the grid overlay.
-29. Toggle `Snap On` / `Snap Off` separately to control whether moves snap to the grid.
-30. Change the grid size field, for example `5`, `10`, or `20`.
-31. Use the mouse wheel over the preview to zoom, and `Fit` to reset the view.
-32. Use the pointer tool for selection and the hand tool, or middle mouse drag, to pan the preview.
-33. In `Pointer` mode, use Ctrl+click to add/remove items from selection.
-34. Drag on empty preview space to box-select multiple items.
-35. Confirm the inspector shows a simple multi-select state such as `2 items selected`.
-36. Drag, nudge, duplicate, or delete multiple selected items and confirm they update together.
-37. Confirm selecting, dragging, grid, and snap still use correct schematic coordinates after zooming or panning.
-38. Drag a selected text, rect, circle, entity value, or symbol item in the preview to move it.
-39. Confirm dragging follows the pointer without drift.
-40. Confirm dragging snaps moved items to the selected grid size when snap is enabled.
-41. Hold `Shift` while dragging to temporarily bypass snap without changing the `Snap On` setting.
-42. Confirm dragging updates the decoded JSON, inspector, preview, and exported payload.
-43. Right-click empty preview space and use `Add` to place text, rect, circle, or polyline at that point.
-44. Right-click selected items and use context menu actions for Duplicate, Delete, Layer, Align, and Mirror.
-45. Click `Draw Polyline`.
-46. Click the first point in the preview.
-47. Move the pointer and confirm a temporary rubber-band segment follows the cursor/snap point.
-48. Hold `Shift` while drawing and confirm the next segment locks horizontal or vertical.
-49. Click more points and confirm the polyline appears as it is built.
-50. Click `Finish` or press `Enter` to keep the new polyline.
-51. Press `Escape` while drawing another polyline to cancel it.
-52. Confirm the finished polyline is selected and appears in the JSON/export.
-53. Drag a visible polyline point handle and confirm that one point moves.
-54. Right-click a polyline and use `Add point here`.
-55. Right-click a polyline and use `Delete nearest point`.
-56. Right-click a preview item and use `Bring forward`, `Send backward`, `Bring to front`, or `Send to back`.
-57. Confirm the item's `layer` changes in JSON and the preview z-order updates.
-58. Confirm deleting is disabled when only two polyline points remain.
-59. Confirm the decoded JSON, preview, and exported payload update together.
-60. Drag the vertical handle between the editor and preview to resize the left panel.
-61. Confirm the item list and inspector scroll inside their tab panels when there are many fields/items.
-62. Confirm invalid numeric inspector values show an inspector error without changing the JSON.
-63. Click `Undo` / `Redo`, or use `Ctrl+Z` / `Ctrl+Shift+Z`, after add, duplicate, delete, drag, style, layer, inspector, and polyline point edits.
-64. Confirm invalid JSON or schema errors appear in the export panel status.
-65. Open the export side panel from the top toolbar and copy the generated `hsc1...` payload.
-66. Open the import side panel from the top toolbar, paste an existing `hsc1...` payload, and click `Import`.
-67. Confirm valid imports replace the decoded JSON and update the preview.
-68. Confirm invalid imports show an error without overwriting the decoded JSON.
-69. Open the SVG import side panel from the top toolbar, paste the sample below, and click `Import SVG`.
-70. Confirm imported items appear in the preview, item list, JSON, and exported `hsc1...` payload.
-71. Confirm unsafe SVG such as `<script>` or event handler attributes is rejected without changing the payload.
-72. Open the theme side panel from the top toolbar.
-73. Paste JSON from the Lovelace editor's `Copy current theme variables` button into `Theme preview JSON`.
-74. Click `Apply Theme` and confirm the preview uses the pasted CSS variables, including dark/light card backgrounds.
-75. Reload the editor and confirm the last valid theme preview is restored.
-76. Confirm invalid theme JSON shows a theme error without changing the payload JSON or export.
+12. Open `File` -> `Import SVG` in the Symbol Editor.
+13. Paste the Symbol Editor SVG sample below into the floating dialog, or choose/drop a `.svg` file, click `Import SVG`, and confirm the imported group appears as an internal symbol item.
+14. Confirm the imported symbol item appears in the symbol preview, JSON, and exported `hsc1...` payload without becoming a top-level schematic item.
+15. Confirm the dialog can be closed with `Cancel` or `X`.
+16. If a payload has no symbols, click `Create Symbol` and confirm a minimal symbol is added to JSON.
+17. Close the symbol workspace and confirm the main editor is still available.
+18. Use the top toolbar `Add` buttons to create a text, rect, or circle item.
+19. Confirm the new item is selected automatically and appears in the preview.
+20. Use `Duplicate` on a selected item and confirm the copy gets a new id, appears slightly offset, and is selected.
+21. Use `Delete`, or press `Delete` / `Backspace`, and confirm the selected item is removed.
+22. Edit simple fields such as `Text content`, `X position`, `Y position`, or `Layer / z-order` in the inspector.
+23. Edit common style fields such as `Stroke / line color`, `Fill / inside color`, `Stroke width`, `Font size`, `Font weight`, `Text anchor`, or `Opacity 0-100%`.
+24. Drag sliders for numeric style fields such as opacity while confirming the payload still stores opacity as a 0-1 value.
+25. Use the color picker or theme token presets such as `primary text`, `accent`, `error`, or `success` for paint fields.
+26. Clear a style field and confirm that style value is removed from the selected item.
+27. Use keyboard arrow keys to move positioned items.
+28. Hold `Shift` while pressing an arrow key to nudge by 10 units.
+29. Click visible top-level items in the preview and confirm the matching item is selected without forcing the `JSON` tab open.
+30. Click empty preview space, or press `Escape`, and confirm selection clears and the inspector returns to a neutral state.
+31. Open the `JSON` tab manually and confirm the selected item block is selected/scrolled into view.
+32. Toggle `Grid On` / `Grid Off` to show or hide the grid overlay.
+33. Toggle `Snap On` / `Snap Off` separately to control whether moves snap to the grid.
+34. Change the grid size field, for example `5`, `10`, or `20`.
+35. Use the mouse wheel over the preview to zoom, and `Fit` to reset the view.
+36. Use the pointer tool for selection and the hand tool, or middle mouse drag, to pan the preview.
+37. In `Pointer` mode, use Ctrl+click to add/remove items from selection.
+38. Drag on empty preview space to box-select multiple items.
+39. Confirm the inspector shows a simple multi-select state such as `2 items selected`.
+40. Drag, nudge, duplicate, or delete multiple selected items and confirm they update together.
+41. Confirm selecting, dragging, grid, and snap still use correct schematic coordinates after zooming or panning.
+42. Drag a selected text, rect, circle, entity value, or symbol item in the preview to move it.
+43. Confirm dragging follows the pointer without drift.
+44. Confirm dragging snaps moved items to the selected grid size when snap is enabled.
+45. Hold `Shift` while dragging to temporarily bypass snap without changing the `Snap On` setting.
+46. Confirm dragging updates the decoded JSON, inspector, preview, and exported payload.
+47. Right-click empty preview space and use `Add` to place text, rect, circle, or polyline at that point.
+48. Right-click selected items and use context menu actions for Duplicate, Delete, Layer, Align, and Mirror.
+49. Click `Draw Polyline`.
+50. Click the first point in the preview.
+51. Move the pointer and confirm a temporary rubber-band segment follows the cursor/snap point.
+52. Hold `Shift` while drawing and confirm the next segment locks horizontal or vertical.
+53. Click more points and confirm the polyline appears as it is built.
+54. Click `Finish` or press `Enter` to keep the new polyline.
+55. Press `Escape` while drawing another polyline to cancel it.
+56. Confirm the finished polyline is selected and appears in the JSON/export.
+57. Drag a visible polyline point handle and confirm that one point moves.
+58. Right-click a polyline and use `Add point here`.
+59. Right-click a polyline and use `Delete nearest point`.
+60. Right-click a preview item and use `Bring forward`, `Send backward`, `Bring to front`, or `Send to back`.
+61. Confirm the item's `layer` changes in JSON and the preview z-order updates.
+62. Confirm deleting is disabled when only two polyline points remain.
+63. Confirm the decoded JSON, preview, and exported payload update together.
+64. Drag the vertical handle between the editor and preview to resize the left panel.
+65. Confirm the item list and inspector scroll inside their tab panels when there are many fields/items.
+66. Confirm invalid numeric inspector values show an inspector error without changing the JSON.
+67. Click `Undo` / `Redo`, or use `Ctrl+Z` / `Ctrl+Shift+Z`, after add, duplicate, delete, drag, style, layer, inspector, and polyline point edits.
+68. Confirm invalid JSON or schema errors appear in the export panel status.
+69. Open the export side panel from the top toolbar and copy the generated `hsc1...` payload.
+70. Open the import side panel from the top toolbar, paste an existing `hsc1...` payload, and click `Import`.
+71. Confirm valid imports replace the decoded JSON and update the preview.
+72. Confirm invalid imports show an error without overwriting the decoded JSON.
+73. Open the SVG import side panel from the top toolbar, paste the sample below, and click `Import SVG`.
+74. Confirm imported items appear in the preview, item list, JSON, and exported `hsc1...` payload.
+75. Confirm unsafe SVG such as `<script>` or event handler attributes is rejected without changing the payload.
+76. Open the theme side panel from the top toolbar.
+77. Paste JSON from the Lovelace editor's `Copy current theme variables` button into `Theme preview JSON`.
+78. Click `Apply Theme` and confirm the preview uses the pasted CSS variables, including dark/light card backgrounds.
+79. Reload the editor and confirm the last valid theme preview is restored.
+80. Confirm invalid theme JSON shows a theme error without changing the payload JSON or export.
+
+Symbol Editor SVG import sample:
+
+```xml
+<svg viewBox="0 0 100 80" xmlns="http://www.w3.org/2000/svg">
+  <path id="symbol-import-body" d="M 10 10 H 90 V 60 H 10 Z" fill="#202124" />
+  <path id="symbol-import-mark" d="M 25 40 H 75" stroke="#ffffff" stroke-width="4" fill="none" />
+</svg>
+```
 
 Tiny SVG import sample:
 
