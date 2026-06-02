@@ -5,7 +5,8 @@ import {
   createEditorApp,
   encodeDemoPayload,
   formatPayloadJson,
-  getDemoPayload
+  getDemoPayload,
+  parseSvgImport
 } from "./main";
 
 function createDocument(): Document {
@@ -1416,15 +1417,16 @@ describe("editor app", () => {
     expect(app.querySelector<HTMLElement>(".inspector-status")?.textContent).toBe("Polyline drawing cancelled");
   });
 
-  it("opens and closes import, export, and theme side panels from the top toolbar", () => {
+  it("opens and closes import, SVG import, export, and theme side panels from the top toolbar", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
     const panel = app.querySelector<HTMLElement>(".transfer-panel");
     const importSection = app.querySelector<HTMLElement>(".import-section");
+    const svgImportSection = app.querySelector<HTMLElement>(".svg-import-section");
     const themeSection = app.querySelector<HTMLElement>(".theme-section");
     const exportSection = app.querySelector<HTMLElement>(".export-section");
 
-    if (!panel || !importSection || !themeSection || !exportSection) {
+    if (!panel || !importSection || !svgImportSection || !themeSection || !exportSection) {
       throw new Error("transfer panel missing");
     }
 
@@ -1434,18 +1436,28 @@ describe("editor app", () => {
     expect(panel.hidden).toBe(false);
     expect(panel.dataset.mode).toBe("import");
     expect(importSection.hidden).toBe(false);
+    expect(svgImportSection.hidden).toBe(true);
+    expect(themeSection.hidden).toBe(true);
+    expect(exportSection.hidden).toBe(true);
+
+    getButton(app, ".open-svg-import-button").click();
+    expect(panel.dataset.mode).toBe("svg");
+    expect(importSection.hidden).toBe(true);
+    expect(svgImportSection.hidden).toBe(false);
     expect(themeSection.hidden).toBe(true);
     expect(exportSection.hidden).toBe(true);
 
     getButton(app, ".open-export-button").click();
     expect(panel.dataset.mode).toBe("export");
     expect(importSection.hidden).toBe(true);
+    expect(svgImportSection.hidden).toBe(true);
     expect(themeSection.hidden).toBe(true);
     expect(exportSection.hidden).toBe(false);
 
     getButton(app, ".open-theme-button").click();
     expect(panel.dataset.mode).toBe("theme");
     expect(importSection.hidden).toBe(true);
+    expect(svgImportSection.hidden).toBe(true);
     expect(themeSection.hidden).toBe(false);
     expect(exportSection.hidden).toBe(true);
 
@@ -1614,6 +1626,155 @@ describe("editor app", () => {
     expect(app.querySelector("svg")).not.toBeNull();
     expect(app.querySelector<HTMLTextAreaElement>(".payload-output")?.value.startsWith("hsc1.")).toBe(true);
     expect(app.querySelector<HTMLElement>(".status")?.textContent).toContain("Import error:");
+  });
+
+  it("converts simple safe SVG markup into schema items", () => {
+    const documentRef = createDocument();
+    const result = parseSvgImport(`
+      <svg viewBox="0 0 100 100">
+        <style>.st0{fill:#000000;stroke:#ffffff;stroke-width:2}</style>
+        <rect id="box" x="10" y="12" width="24" height="16" fill="none" stroke="currentColor" stroke-width="2" />
+        <circle cx="50" cy="50" r="8" fill="var(--accent-color)" />
+        <line x1="0" y1="0" x2="20" y2="10" stroke="#123456" />
+        <polygon points="70,10 90,10 90,30" fill="none" />
+        <path d="M 10 80 L 30 80" stroke="currentColor" fill="none" />
+        <text x="10" y="95" class="st0">Imported</text>
+      </svg>
+    `, getDemoPayload(), documentRef);
+
+    expect(result.ok).toBe(true);
+
+    if (!result.ok) {
+      throw new Error("SVG import failed");
+    }
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      type: "group",
+      layer: 300,
+      transform: [
+        { type: "translate" },
+        { type: "scale" },
+        { type: "translate", x: -0, y: -0 }
+      ]
+    });
+
+    const group = result.items[0];
+
+    if (!group || group.type !== "group") {
+      throw new Error("import did not return a group");
+    }
+
+    expect(group.children.map((item) => item.type)).toEqual(["rect", "circle", "line", "polyline", "path", "text"]);
+    expect(group.children[0]).toMatchObject({
+      id: "box",
+      type: "rect",
+      x: 10,
+      y: 12,
+      width: 24,
+      height: 16,
+      style: {
+        fill: "none",
+        stroke: "currentColor",
+        strokeWidth: 2
+      }
+    });
+    expect(group.children[3]).toMatchObject({
+      type: "polyline",
+      points: [
+        { x: 70, y: 10 },
+        { x: 90, y: 10 },
+        { x: 90, y: 30 },
+        { x: 70, y: 10 }
+      ]
+    });
+    expect(group.children[5]).toMatchObject({
+      type: "text",
+      style: {
+        fill: "#000000",
+        stroke: "#ffffff",
+        strokeWidth: 2
+      }
+    });
+  });
+
+  it("rejects unsafe SVG import content", () => {
+    const documentRef = createDocument();
+    const result = parseSvgImport(`
+      <svg>
+        <script>alert(1)</script>
+        <rect x="0" y="0" width="10" height="10" onclick="alert(1)" />
+      </svg>
+    `, getDemoPayload(), documentRef);
+
+    expect(result.ok).toBe(false);
+
+    if (result.ok) {
+      throw new Error("unsafe SVG import unexpectedly succeeded");
+    }
+
+    expect(result.errors.join("\n")).toContain("<script> is not supported");
+    expect(result.errors.join("\n")).toContain("event handlers are not supported");
+  });
+
+  it("imports pasted SVG into JSON, preview, item list, and export", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const svgInput = getTextarea(app, ".svg-import-input");
+
+    svgInput.value = `
+      <svg viewBox="0 0 100 80">
+        <rect id="imported-box" x="10" y="15" width="30" height="20" fill="none" stroke="currentColor" />
+        <text id="imported-label" x="15" y="60">SVG Label</text>
+      </svg>
+    `;
+    getButton(app, ".import-svg-button").click();
+
+    const importedGroup = getPayloadItem(app, "imported-svg-1");
+
+    expect(importedGroup).toMatchObject({
+      id: "imported-svg-1",
+      type: "group",
+      layer: 300
+    });
+    expect(getPayloadGroupChild(app, "imported-svg-1", "imported-box")).toMatchObject({ type: "rect" });
+    expect(getPayloadGroupChild(app, "imported-svg-1", "imported-label")).toMatchObject({ type: "text" });
+    expect(app.querySelector('[data-id="imported-box"]')).not.toBeNull();
+    expect(getButton(app, '[data-item-id="imported-svg-1"]').textContent).toBe("imported-svg-1 (group)");
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+    expect(app.querySelector<HTMLElement>(".status")?.textContent).toContain("Imported 1 SVG items");
+  });
+
+  it("selects and nudges an imported SVG group from a child preview path", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const svgInput = getTextarea(app, ".svg-import-input");
+
+    svgInput.value = `
+      <svg viewBox="0 0 1000 1000">
+        <path id="large-path" d="M 100 100 L 900 100 L 500 900 Z" fill="#000000" />
+        <path id="large-highlight" d="M 300 300 L 700 300" stroke="#ffffff" stroke-width="40" fill="none" />
+      </svg>
+    `;
+    getButton(app, ".import-svg-button").click();
+
+    const importedGroup = getPayloadItem(app, "imported-svg-1");
+    const initialTranslate = importedGroup?.transform?.find((entry) => entry.type === "translate");
+    const childPath = app.querySelector('[data-id="large-path"]');
+
+    if (!childPath || !initialTranslate || typeof initialTranslate.x !== "number") {
+      throw new Error("imported SVG group missing");
+    }
+
+    childPath.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    app.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+
+    const movedGroup = getPayloadItem(app, "imported-svg-1");
+    const movedTranslate = movedGroup?.transform?.find((entry) => entry.type === "translate");
+
+    expect(getButton(app, '[data-item-id="imported-svg-1"]').getAttribute("aria-pressed")).toBe("true");
+    expect(movedTranslate?.x).toBe(initialTranslate.x + 1);
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
   });
 
   it("applies pasted theme variables to the preview surface", () => {
@@ -1849,11 +2010,35 @@ function getPolylinePoints(app: HTMLElement, itemId: string): unknown[] {
 function getPayloadItem(
   app: HTMLElement,
   itemId: string
-): { id: string; layer: number; style?: Record<string, unknown>; slotBindings?: Record<string, string> } | undefined {
+): {
+  id: string;
+  type?: string;
+  layer: number;
+  style?: Record<string, unknown>;
+  slotBindings?: Record<string, string>;
+  children?: Array<{ id: string; type?: string }>;
+  transform?: Array<Record<string, unknown>>;
+} | undefined {
   const parsed = JSON.parse(getTextarea(app, ".json-input").value) as {
-    items: Array<{ id: string; layer: number; style?: Record<string, unknown>; slotBindings?: Record<string, string> }>;
+    items: Array<{
+      id: string;
+      type?: string;
+      layer: number;
+      style?: Record<string, unknown>;
+      slotBindings?: Record<string, string>;
+      children?: Array<{ id: string; type?: string }>;
+      transform?: Array<Record<string, unknown>>;
+    }>;
   };
   return parsed.items.find((item) => item.id === itemId);
+}
+
+function getPayloadGroupChild(
+  app: HTMLElement,
+  groupId: string,
+  childId: string
+): { id: string; type?: string } | undefined {
+  return getPayloadItem(app, groupId)?.children?.find((child) => child.id === childId);
 }
 
 function getPositionedPayloadItem(

@@ -2,7 +2,7 @@
 
 Early local web app foundation for the future external schematic editor/generator.
 
-The current app is intentionally small: it lets you edit decoded payload JSON manually, import/export `hsc1...` payload strings with `@ha-schematic-card/codec`, paste Home Assistant theme variables for preview, and renders a live preview with `@ha-schematic-card/renderer`.
+The current app is intentionally small: it lets you edit decoded payload JSON manually, import/export `hsc1...` payload strings with `@ha-schematic-card/codec`, paste Home Assistant theme variables for preview, import simple SVG primitives into safe schema JSON, and renders a live preview with `@ha-schematic-card/renderer`.
 
 ## Run Locally
 
@@ -78,11 +78,30 @@ Manual test flow:
 61. Open the import side panel from the top toolbar, paste an existing `hsc1...` payload, and click `Import`.
 62. Confirm valid imports replace the decoded JSON and update the preview.
 63. Confirm invalid imports show an error without overwriting the decoded JSON.
-64. Open the theme side panel from the top toolbar.
-65. Paste JSON from the Lovelace editor's `Copy current theme variables` button into `Theme preview JSON`.
-66. Click `Apply Theme` and confirm the preview uses the pasted CSS variables, including dark/light card backgrounds.
-67. Reload the editor and confirm the last valid theme preview is restored.
-68. Confirm invalid theme JSON shows a theme error without changing the payload JSON or export.
+64. Open the SVG import side panel from the top toolbar, paste the sample below, and click `Import SVG`.
+65. Confirm imported items appear in the preview, item list, JSON, and exported `hsc1...` payload.
+66. Confirm unsafe SVG such as `<script>` or event handler attributes is rejected without changing the payload.
+67. Open the theme side panel from the top toolbar.
+68. Paste JSON from the Lovelace editor's `Copy current theme variables` button into `Theme preview JSON`.
+69. Click `Apply Theme` and confirm the preview uses the pasted CSS variables, including dark/light card backgrounds.
+70. Reload the editor and confirm the last valid theme preview is restored.
+71. Confirm invalid theme JSON shows a theme error without changing the payload JSON or export.
+
+Tiny SVG import sample:
+
+```xml
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .st0{fill:#202124}
+    .st1{fill:none;stroke:#ffffff;stroke-width:48}
+  </style>
+  <path id="icon-body" class="st0" d="M 512 96 L 896 800 H 128 Z" />
+  <path id="icon-mark" class="st1" d="M 512 320 V 600 M 512 720 V 760" />
+  <text id="icon-label" x="512" y="960" fill="currentColor" text-anchor="middle">Imported SVG</text>
+</svg>
+```
+
+Imported SVG elements are converted into schema JSON and grouped as one top-level item so the imported icon can be selected and moved together. The source `viewBox` is used to scale the group into a reasonable size inside the current schematic viewport. Fill-only paths keep their fill; set a stroke color before changing stroke width if you want an outline.
 
 
 ## Build
