@@ -987,6 +987,15 @@ textarea {
   background: #eef4ff;
 }
 
+.symbol-part-create-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.symbol-part-create-controls .inspector-input {
+  min-width: 0;
+}
+
 .symbol-preview-surface {
   display: flex;
   flex: 1;
