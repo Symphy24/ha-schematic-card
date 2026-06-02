@@ -56,13 +56,16 @@ type EditorElements = {
   transferPanel: HTMLElement;
   transferPanelTitle: HTMLElement;
   importSection: HTMLElement;
+  svgImportSection: HTMLElement;
   exportSection: HTMLElement;
   importInput: HTMLTextAreaElement;
+  svgImportInput: HTMLTextAreaElement;
   exportOutput: HTMLTextAreaElement;
   status: HTMLElement;
   copyButton: HTMLButtonElement;
   applyThemeButton: HTMLButtonElement;
   openImportButton: HTMLButtonElement;
+  openSvgImportButton: HTMLButtonElement;
   openExportButton: HTMLButtonElement;
   openThemeButton: HTMLButtonElement;
   toggleGridButton: HTMLButtonElement;
@@ -94,6 +97,7 @@ type EditorElements = {
   addPolylineContextButton: HTMLButtonElement;
   closeTransferPanelButton: HTMLButtonElement;
   importButton: HTMLButtonElement;
+  importSvgButton: HTMLButtonElement;
   formatButton: HTMLButtonElement;
   resetButton: HTMLButtonElement;
   undoButton: HTMLButtonElement;
@@ -197,12 +201,60 @@ type ThemeTokenPreset = {
   value: string;
 };
 
+type SvgImportResult =
+  | { ok: true; items: SchematicItem[]; warnings: string[] }
+  | { ok: false; errors: string[] };
+
+type SvgImportContext = {
+  existingIds: Set<string>;
+  classStyles: Map<string, SchematicStyle>;
+  warnings: string[];
+};
+
 type StyleSliderConfig = {
   min: number;
   max: number;
   step: number;
   fallback: number;
 };
+
+const UNSAFE_SVG_TAGS = new Set([
+  "script",
+  "style",
+  "foreignobject",
+  "iframe",
+  "html",
+  "body",
+  "head",
+  "object",
+  "embed",
+  "image",
+  "a",
+  "use"
+]);
+
+const SUPPORTED_SVG_IMPORT_TAGS = new Set([
+  "svg",
+  "g",
+  "rect",
+  "circle",
+  "line",
+  "polyline",
+  "polygon",
+  "path",
+  "text"
+]);
+
+const SAFE_SVG_STYLE_ATTRIBUTES = new Set([
+  "stroke",
+  "stroke-width",
+  "stroke-dasharray",
+  "fill",
+  "opacity",
+  "font-size",
+  "font-weight",
+  "text-anchor"
+]);
 
 const THEME_TOKEN_PRESETS: ThemeTokenPreset[] = [
   { label: "primary text", value: "var(--primary-text-color)" },
@@ -236,7 +288,7 @@ const STYLE_FIELD_LABELS: Record<StyleFieldName, string> = {
 const STYLE_FIELD_HELPERS: Partial<Record<StyleFieldName, string>> = {
   stroke: "Use a color, none, or a Home Assistant CSS variable.",
   fill: "Use a color, none, transparent, or a theme token.",
-  strokeWidth: "Line width in SVG units.",
+  strokeWidth: "Line width in SVG units. Fill-only shapes need a stroke color before stroke width is visible.",
   strokeDasharray: "Numbers separated by spaces or commas.",
   opacity: "0 is transparent, 100 is solid. Stored as schema opacity 0-1.",
   fontSize: "Text size in SVG units.",
@@ -336,13 +388,16 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     transferPanel: getRequiredElement(transferPanel, ".transfer-panel", HTMLElement),
     transferPanelTitle: getRequiredElement(transferPanel, ".transfer-panel-title", HTMLElement),
     importSection: getRequiredElement(transferPanel, ".import-section", HTMLElement),
+    svgImportSection: getRequiredElement(transferPanel, ".svg-import-section", HTMLElement),
     exportSection: getRequiredElement(transferPanel, ".export-section", HTMLElement),
     importInput: getRequiredElement(transferPanel, ".import-input", HTMLTextAreaElement),
+    svgImportInput: getRequiredElement(transferPanel, ".svg-import-input", HTMLTextAreaElement),
     exportOutput: getRequiredElement(transferPanel, ".payload-output", HTMLTextAreaElement),
     status: getRequiredElement(transferPanel, ".status", HTMLElement),
     copyButton: getRequiredElement(transferPanel, ".copy-button", HTMLButtonElement),
     applyThemeButton: getRequiredElement(transferPanel, ".apply-theme-button", HTMLButtonElement),
     openImportButton: getRequiredElement(toolbar, ".open-import-button", HTMLButtonElement),
+    openSvgImportButton: getRequiredElement(toolbar, ".open-svg-import-button", HTMLButtonElement),
     openExportButton: getRequiredElement(toolbar, ".open-export-button", HTMLButtonElement),
     openThemeButton: getRequiredElement(toolbar, ".open-theme-button", HTMLButtonElement),
     toggleGridButton: getRequiredElement(previewPane, ".toggle-grid-button", HTMLButtonElement),
@@ -374,6 +429,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     addPolylineContextButton: getRequiredElement(previewPane, ".add-polyline-context-button", HTMLButtonElement),
     closeTransferPanelButton: getRequiredElement(transferPanel, ".transfer-panel-close", HTMLButtonElement),
     importButton: getRequiredElement(transferPanel, ".import-button", HTMLButtonElement),
+    importSvgButton: getRequiredElement(transferPanel, ".import-svg-button", HTMLButtonElement),
     formatButton: getRequiredElement(toolbar, ".format-button", HTMLButtonElement),
     resetButton: getRequiredElement(toolbar, ".reset-button", HTMLButtonElement),
     undoButton: getRequiredElement(toolbar, ".undo-button", HTMLButtonElement),
@@ -394,6 +450,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.copyButton.addEventListener("click", async () => copyExportedPayload(elements));
   elements.applyThemeButton.addEventListener("click", () => applyThemePreview(elements));
   elements.openImportButton.addEventListener("click", () => openTransferPanel(elements, "import"));
+  elements.openSvgImportButton.addEventListener("click", () => openTransferPanel(elements, "svg"));
   elements.openExportButton.addEventListener("click", () => openTransferPanel(elements, "export"));
   elements.openThemeButton.addEventListener("click", () => openTransferPanel(elements, "theme"));
   elements.selectToolButton.addEventListener("click", () => activateSelectTool(elements, documentRef));
@@ -425,6 +482,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.addPolylineContextButton.addEventListener("click", () => addItemFromContextMenu(elements, "polyline", documentRef));
   elements.closeTransferPanelButton.addEventListener("click", () => closeTransferPanel(elements));
   elements.importButton.addEventListener("click", () => importEncodedPayload(elements, documentRef));
+  elements.importSvgButton.addEventListener("click", () => importSvgMarkup(elements, documentRef));
   elements.addTextButton.addEventListener("click", () => addItem(elements, "text", documentRef));
   elements.addRectButton.addEventListener("click", () => addItem(elements, "rect", documentRef));
   elements.addCircleButton.addEventListener("click", () => addItem(elements, "circle", documentRef));
@@ -1010,10 +1068,36 @@ function getItemBounds(item: SchematicItem): PreviewViewBox | undefined {
     case "symbol":
       return { x: item.x, y: item.y, width: 1, height: 1 };
     case "group":
-      return getBoundsFromItems(item.children);
+      return applyBoundsTransform(getBoundsFromItems(item.children), item.transform);
     case "path":
       return undefined;
   }
+}
+
+function applyBoundsTransform(bounds: PreviewViewBox | undefined, transform: SchematicItem["transform"]): PreviewViewBox | undefined {
+  if (!bounds || !transform || transform.length === 0) {
+    return bounds;
+  }
+
+  let x = bounds.x;
+  let y = bounds.y;
+  let width = bounds.width;
+  let height = bounds.height;
+
+  for (const entry of transform) {
+    if (entry.type === "translate") {
+      x += entry.x;
+      y += entry.y;
+    } else if (entry.type === "scale") {
+      const scaleY = entry.y ?? entry.x;
+      x *= entry.x;
+      y *= scaleY;
+      width *= Math.abs(entry.x);
+      height *= Math.abs(scaleY);
+    }
+  }
+
+  return { x, y, width, height };
 }
 
 function getBoundsFromItems(items: SchematicItem[]): PreviewViewBox | undefined {
@@ -3768,7 +3852,8 @@ function canMoveItem(item: SchematicItem): boolean {
   return hasNumberField(item, "x")
     || hasNumberField(item, "cx")
     || hasNumberField(item, "x1")
-    || (item.type === "polyline" && item.points.length > 0);
+    || (item.type === "polyline" && item.points.length > 0)
+    || item.type === "group";
 }
 
 function moveItem(item: SchematicItem, dx: number, dy: number): boolean {
@@ -3803,6 +3888,11 @@ function moveItem(item: SchematicItem, dx: number, dy: number): boolean {
       y: point.y + dy
     }));
     return item.points.length > 0;
+  }
+
+  if (item.type === "group") {
+    moveGroupTransform(item, dx, dy);
+    return true;
   }
 
   return false;
@@ -3856,7 +3946,49 @@ function moveItemFromStart(item: SchematicItem, startItem: SchematicItem, dx: nu
     return true;
   }
 
+  if (item.type === "group" && startItem.type === "group") {
+    item.transform = moveGroupTransformFromStart(startItem, dx, dy);
+    return true;
+  }
+
   return false;
+}
+
+function moveGroupTransform(item: SchematicItem, dx: number, dy: number): void {
+  if (item.type !== "group") {
+    return;
+  }
+
+  item.transform = moveGroupTransformFromStart(item, dx, dy);
+}
+
+function moveGroupTransformFromStart(item: SchematicItem, dx: number, dy: number): SchematicItem["transform"] {
+  if (item.type !== "group") {
+    return undefined;
+  }
+
+  const transform = [...(item.transform ?? [])];
+  const translateIndex = transform.findIndex((entry) => entry.type === "translate");
+
+  if (translateIndex === -1) {
+    return [
+      { type: "translate", x: dx, y: dy },
+      ...transform
+    ];
+  }
+
+  const translate = transform[translateIndex];
+
+  if (translate?.type !== "translate") {
+    return transform;
+  }
+
+  transform[translateIndex] = {
+    ...translate,
+    x: translate.x + dx,
+    y: translate.y + dy
+  };
+  return transform;
 }
 
 function snapItemToGrid(item: SchematicItem, gridSize: number): boolean {
@@ -3893,7 +4025,37 @@ function snapItemToGrid(item: SchematicItem, gridSize: number): boolean {
     return item.points.length > 0;
   }
 
+  if (item.type === "group") {
+    snapGroupTransform(item, gridSize);
+    return true;
+  }
+
   return false;
+}
+
+function snapGroupTransform(item: SchematicItem, gridSize: number): void {
+  if (item.type !== "group") {
+    return;
+  }
+
+  const transform = [...(item.transform ?? [])];
+  const translateIndex = transform.findIndex((entry) => entry.type === "translate");
+  const translate = transform[translateIndex];
+
+  if (translate?.type !== "translate") {
+    item.transform = [
+      { type: "translate", x: 0, y: 0 },
+      ...transform
+    ];
+    return;
+  }
+
+  transform[translateIndex] = {
+    ...translate,
+    x: snapNumber(translate.x, gridSize),
+    y: snapNumber(translate.y, gridSize)
+  };
+  item.transform = transform;
 }
 
 function snapNumber(value: number, gridSize: number): number {
@@ -3938,6 +4100,603 @@ function importEncodedPayload(elements: EditorElements, documentRef: Document): 
   updateFromJson(elements, documentRef);
   elements.status.textContent = "Imported payload";
   elements.status.dataset.state = "valid";
+}
+
+function importSvgMarkup(elements: EditorElements, documentRef: Document): void {
+  const payloadResult = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!payloadResult.ok) {
+    elements.status.textContent = `SVG import error:\n${payloadResult.message}`;
+    elements.status.dataset.state = "error";
+    return;
+  }
+
+  const importResult = parseSvgImport(elements.svgImportInput.value, payloadResult.payload, documentRef);
+
+  if (!importResult.ok) {
+    elements.status.textContent = `SVG import error:\n${importResult.errors.map((error) => `- ${error}`).join("\n")}`;
+    elements.status.dataset.state = "error";
+    return;
+  }
+
+  if (importResult.items.length === 0) {
+    elements.status.textContent = "SVG import skipped: no supported SVG primitives found";
+    elements.status.dataset.state = "error";
+    return;
+  }
+
+  const nextPayload = {
+    ...payloadResult.payload,
+    items: [
+      ...payloadResult.payload.items,
+      ...importResult.items
+    ]
+  };
+  const validation = validateSchematicPayload(nextPayload);
+
+  if (!validation.valid) {
+    elements.status.textContent = `SVG import error:\n${validation.errors.map((error) => `- ${error}`).join("\n")}`;
+    elements.status.dataset.state = "error";
+    return;
+  }
+
+  recordHistory(elements);
+  setSelectedItems(elements, importResult.items.map((item) => item.id));
+  elements.jsonInput.value = formatPayloadJson(nextPayload);
+  updateFromJson(elements, documentRef);
+  elements.status.textContent = importResult.warnings.length === 0
+    ? `Imported ${importResult.items.length} SVG items`
+    : `Imported ${importResult.items.length} SVG items\n${importResult.warnings.map((warning) => `- ${warning}`).join("\n")}`;
+  elements.status.dataset.state = "valid";
+}
+
+export function parseSvgImport(markup: string, payload: SchematicPayload, documentRef: Document = document): SvgImportResult {
+  if (markup.trim().length === 0) {
+    return {
+      ok: false,
+      errors: ["SVG markup is required"]
+    };
+  }
+
+  const DOMParserConstructor = documentRef.defaultView?.DOMParser ?? globalThis.DOMParser;
+
+  if (!DOMParserConstructor) {
+    return {
+      ok: false,
+      errors: ["DOMParser is unavailable in this browser"]
+    };
+  }
+
+  const parsed = new DOMParserConstructor().parseFromString(markup, "image/svg+xml");
+  const parserError = parsed.querySelector("parsererror");
+
+  if (parserError) {
+    return {
+      ok: false,
+      errors: ["SVG markup could not be parsed"]
+    };
+  }
+
+  const root = parsed.documentElement;
+
+  if (!root || root.tagName.toLowerCase() !== "svg") {
+    return {
+      ok: false,
+      errors: ["SVG markup must start with an <svg> element"]
+    };
+  }
+
+  const safetyErrors = findUnsafeSvgContent(root);
+
+  if (safetyErrors.length > 0) {
+    return {
+      ok: false,
+      errors: safetyErrors
+    };
+  }
+
+  const warnings: string[] = [];
+  const existingIds = new Set(payload.items.map((item) => item.id));
+  const classStyles = parseSvgClassStyles(root, warnings);
+  const items = convertSvgChildren(root, {
+    existingIds,
+    classStyles,
+    warnings
+  });
+  const groupedItems = groupImportedSvgItems(root, payload, existingIds, items);
+
+  return {
+    ok: true,
+    items: groupedItems,
+    warnings
+  };
+}
+
+function findUnsafeSvgContent(root: Element): string[] {
+  const errors: string[] = [];
+  const elements = [root, ...Array.from(root.querySelectorAll("*"))];
+
+  for (const element of elements) {
+    const tagName = element.tagName.toLowerCase();
+
+    if (UNSAFE_SVG_TAGS.has(tagName) && tagName !== "style") {
+      errors.push(`<${tagName}> is not supported for safe SVG import`);
+    }
+
+    for (const attribute of Array.from(element.attributes)) {
+      const name = attribute.name.toLowerCase();
+      const value = attribute.value.toLowerCase();
+
+      if (name.startsWith("on")) {
+        errors.push(`${tagName}.${attribute.name} event handlers are not supported`);
+      } else if (name === "style") {
+        errors.push(`${tagName}.style is not supported; use presentation attributes instead`);
+      } else if (name === "href" || name === "xlink:href" || name === "src") {
+        errors.push(`${tagName}.${attribute.name} external references are not supported`);
+      } else if (value.includes("javascript:") || value.includes("url(") || value.includes("<") || value.includes(">")) {
+        errors.push(`${tagName}.${attribute.name} contains unsupported or unsafe content`);
+      }
+    }
+  }
+
+  return [...new Set(errors)];
+}
+
+function convertSvgChildren(root: Element, context: SvgImportContext): SchematicItem[] {
+  const items: SchematicItem[] = [];
+
+  for (const child of Array.from(root.children)) {
+    convertSvgElement(child, context, items);
+  }
+
+  return items;
+}
+
+function convertSvgElement(
+  element: Element,
+  context: SvgImportContext,
+  items: SchematicItem[]
+): void {
+  const tagName = element.tagName.toLowerCase();
+
+  if (tagName === "g" || tagName === "svg") {
+    for (const child of Array.from(element.children)) {
+      convertSvgElement(child, context, items);
+    }
+    return;
+  }
+
+  if (tagName === "style") {
+    return;
+  }
+
+  if (!SUPPORTED_SVG_IMPORT_TAGS.has(tagName)) {
+    context.warnings.push(`Skipped unsupported <${tagName}> element`);
+    return;
+  }
+
+  const item = createItemFromSvgElement(element, context, items.length);
+
+  if (!item) {
+    context.warnings.push(`Skipped <${tagName}> element with missing or invalid required attributes`);
+    return;
+  }
+
+  items.push(item);
+}
+
+function groupImportedSvgItems(
+  root: Element,
+  payload: SchematicPayload,
+  existingIds: Set<string>,
+  items: SchematicItem[]
+): SchematicItem[] {
+  if (items.length === 0) {
+    return items;
+  }
+
+  const sourceViewBox = readSvgSourceViewBox(root) ?? getBoundsFromItems(items);
+
+  if (!sourceViewBox) {
+    return items;
+  }
+
+  const targetSize = Math.max(24, Math.min(payload.viewport.width, payload.viewport.height) * 0.35);
+  const sourceMaxDimension = Math.max(sourceViewBox.width, sourceViewBox.height);
+  const scale = sourceMaxDimension > 0 ? targetSize / sourceMaxDimension : 1;
+  const targetX = Math.round((payload.viewport.width - sourceViewBox.width * scale) / 2);
+  const targetY = Math.round((payload.viewport.height - sourceViewBox.height * scale) / 2);
+  const transform = [
+    {
+      type: "translate" as const,
+      x: targetX,
+      y: targetY
+    },
+    {
+      type: "scale" as const,
+      x: Number(scale.toFixed(4))
+    },
+    {
+      type: "translate" as const,
+      x: -sourceViewBox.x,
+      y: -sourceViewBox.y
+    }
+  ];
+
+  return [
+    {
+      id: createImportedSvgItemId(existingIds, root.getAttribute("id"), "svg", 0),
+      type: "group",
+      layer: 300,
+      transform,
+      children: items
+    }
+  ];
+}
+
+function readSvgSourceViewBox(root: Element): PreviewViewBox | undefined {
+  const viewBox = root.getAttribute("viewBox");
+
+  if (viewBox) {
+    const values = viewBox.trim().split(/[\s,]+/).map((part) => Number(part));
+
+    if (values.length === 4 && values.every((value) => Number.isFinite(value)) && values[2]! > 0 && values[3]! > 0) {
+      return {
+        x: values[0]!,
+        y: values[1]!,
+        width: values[2]!,
+        height: values[3]!
+      };
+    }
+  }
+
+  const width = readSvgNumber(root, "width");
+  const height = readSvgNumber(root, "height");
+
+  if (width !== undefined && height !== undefined && width > 0 && height > 0) {
+    return {
+      x: 0,
+      y: 0,
+      width,
+      height
+    };
+  }
+
+  return undefined;
+}
+
+function createItemFromSvgElement(element: Element, context: SvgImportContext, index: number): SchematicItem | undefined {
+  const tagName = element.tagName.toLowerCase();
+  const id = createImportedSvgItemId(context.existingIds, element.getAttribute("id"), tagName, index);
+  const style = readSafeSvgStyle(element, context.classStyles);
+
+  switch (tagName) {
+    case "rect": {
+      const x = readSvgNumber(element, "x", 0);
+      const y = readSvgNumber(element, "y", 0);
+      const width = readSvgNumber(element, "width");
+      const height = readSvgNumber(element, "height");
+
+      if (width === undefined || height === undefined) {
+        return undefined;
+      }
+
+      return removeUndefinedProperties({
+        id,
+        type: "rect",
+        layer: 300,
+        x,
+        y,
+        width,
+        height,
+        rx: readSvgNumber(element, "rx"),
+        ry: readSvgNumber(element, "ry"),
+        style
+      }) as SchematicItem;
+    }
+    case "circle": {
+      const cx = readSvgNumber(element, "cx");
+      const cy = readSvgNumber(element, "cy");
+      const r = readSvgNumber(element, "r");
+
+      if (cx === undefined || cy === undefined || r === undefined) {
+        return undefined;
+      }
+
+      return removeUndefinedProperties({
+        id,
+        type: "circle",
+        layer: 300,
+        cx,
+        cy,
+        r,
+        style
+      }) as SchematicItem;
+    }
+    case "line": {
+      const x1 = readSvgNumber(element, "x1");
+      const y1 = readSvgNumber(element, "y1");
+      const x2 = readSvgNumber(element, "x2");
+      const y2 = readSvgNumber(element, "y2");
+
+      if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined) {
+        return undefined;
+      }
+
+      return removeUndefinedProperties({
+        id,
+        type: "line",
+        layer: 100,
+        x1,
+        y1,
+        x2,
+        y2,
+        style
+      }) as SchematicItem;
+    }
+    case "polyline":
+    case "polygon": {
+      const points = readSvgPoints(element.getAttribute("points"), tagName === "polygon");
+
+      if (points.length < 2) {
+        return undefined;
+      }
+
+      return removeUndefinedProperties({
+        id,
+        type: "polyline",
+        layer: 100,
+        points,
+        style
+      }) as SchematicItem;
+    }
+    case "path": {
+      const d = element.getAttribute("d")?.trim();
+
+      if (!d) {
+        return undefined;
+      }
+
+      return removeUndefinedProperties({
+        id,
+        type: "path",
+        layer: 100,
+        d,
+        style
+      }) as SchematicItem;
+    }
+    case "text": {
+      const x = readSvgNumber(element, "x");
+      const y = readSvgNumber(element, "y");
+      const text = element.textContent?.trim();
+
+      if (x === undefined || y === undefined || !text) {
+        return undefined;
+      }
+
+      return removeUndefinedProperties({
+        id,
+        type: "text",
+        layer: 600,
+        x,
+        y,
+        text,
+        style
+      }) as SchematicItem;
+    }
+    default:
+      return undefined;
+  }
+}
+
+function createImportedSvgItemId(existingIds: Set<string>, sourceId: string | null, tagName: string, index: number): string {
+  const baseId = sanitizeImportedSvgId(sourceId) ?? `imported-${tagName}-${index + 1}`;
+  let candidate = baseId;
+  let suffix = 2;
+
+  while (existingIds.has(candidate)) {
+    candidate = `${baseId}-${suffix}`;
+    suffix += 1;
+  }
+
+  existingIds.add(candidate);
+  return candidate;
+}
+
+function sanitizeImportedSvgId(value: string | null): string | undefined {
+  const trimmed = value?.trim();
+
+  if (!trimmed || !/^[A-Za-z][A-Za-z0-9_-]*$/.test(trimmed)) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
+function readSvgNumber(element: Element, attribute: string, fallback?: number): number | undefined {
+  const value = element.getAttribute(attribute);
+
+  if (value === null || value.trim().length === 0) {
+    return fallback;
+  }
+
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+function readSvgPoints(value: string | null, closePolygon: boolean): SchematicPoint[] {
+  if (!value) {
+    return [];
+  }
+
+  const numbers = value
+    .trim()
+    .split(/[\s,]+/)
+    .map((part) => Number(part));
+
+  if (numbers.length < 4 || numbers.length % 2 !== 0 || numbers.some((numberValue) => !Number.isFinite(numberValue))) {
+    return [];
+  }
+
+  const points: SchematicPoint[] = [];
+
+  for (let index = 0; index < numbers.length; index += 2) {
+    points.push({
+      x: numbers[index],
+      y: numbers[index + 1]
+    });
+  }
+
+  const firstPoint = points[0];
+  const lastPoint = points[points.length - 1];
+
+  if (closePolygon && firstPoint && lastPoint && (firstPoint.x !== lastPoint.x || firstPoint.y !== lastPoint.y)) {
+    points.push({ ...firstPoint });
+  }
+
+  return points;
+}
+
+function parseSvgClassStyles(root: Element, warnings: string[]): Map<string, SchematicStyle> {
+  const classStyles = new Map<string, SchematicStyle>();
+
+  for (const styleElement of Array.from(root.querySelectorAll("style"))) {
+    const styleText = styleElement.textContent ?? "";
+
+    if (styleText.includes("@") || /url\s*\(/i.test(styleText) || /javascript\s*:/i.test(styleText)) {
+      warnings.push("Skipped unsafe or unsupported SVG <style> content");
+      continue;
+    }
+
+    const rulePattern = /\.([A-Za-z][A-Za-z0-9_-]*)\s*\{([^{}]*)\}/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = rulePattern.exec(styleText)) !== null) {
+      const className = match[1]!;
+      const declarations = match[2]!;
+      const style = parseSvgStyleDeclarations(declarations);
+
+      if (Object.keys(style).length > 0) {
+        classStyles.set(className, style);
+      }
+    }
+  }
+
+  return classStyles;
+}
+
+function parseSvgStyleDeclarations(declarations: string): SchematicStyle {
+  const style: SchematicStyle = {};
+
+  for (const declaration of declarations.split(";")) {
+    const separatorIndex = declaration.indexOf(":");
+
+    if (separatorIndex === -1) {
+      continue;
+    }
+
+    const property = declaration.slice(0, separatorIndex).trim().toLowerCase();
+    const value = declaration.slice(separatorIndex + 1).trim();
+
+    if (!SAFE_SVG_STYLE_ATTRIBUTES.has(property) || isUnsafeSvgStyleValue(value)) {
+      continue;
+    }
+
+    applySafeSvgStyleAttribute(style, property, value);
+  }
+
+  return style;
+}
+
+function readSafeSvgStyle(element: Element, classStyles: Map<string, SchematicStyle>): SchematicStyle | undefined {
+  const style: SchematicStyle = {};
+
+  for (const className of (element.getAttribute("class") ?? "").split(/\s+/).filter((value) => value.length > 0)) {
+    Object.assign(style, classStyles.get(className));
+  }
+
+  for (const attribute of Array.from(element.attributes)) {
+    const name = attribute.name.toLowerCase();
+
+    if (!SAFE_SVG_STYLE_ATTRIBUTES.has(name)) {
+      continue;
+    }
+
+    if (isUnsafeSvgStyleValue(attribute.value)) {
+      continue;
+    }
+
+    applySafeSvgStyleAttribute(style, name, attribute.value.trim());
+  }
+
+  return Object.keys(style).length === 0 ? undefined : style;
+}
+
+function isUnsafeSvgStyleValue(value: string): boolean {
+  const lowerValue = value.toLowerCase();
+  return lowerValue.includes("javascript:")
+    || lowerValue.includes("url(")
+    || lowerValue.includes("<")
+    || lowerValue.includes(">");
+}
+
+function applySafeSvgStyleAttribute(style: SchematicStyle, name: string, value: string): void {
+  switch (name) {
+    case "stroke":
+      style.stroke = value;
+      break;
+    case "stroke-width":
+      assignNumberStyle(style, "strokeWidth", value);
+      break;
+    case "stroke-dasharray":
+      style.strokeDasharray = value;
+      break;
+    case "fill":
+      style.fill = value;
+      break;
+    case "opacity":
+      assignNumberStyle(style, "opacity", value);
+      break;
+    case "font-size":
+      assignNumberStyle(style, "fontSize", value);
+      break;
+    case "font-weight": {
+      const numberValue = Number(value);
+      if (Number.isFinite(numberValue)) {
+        style.fontWeight = numberValue;
+      } else if (value === "normal" || value === "bold") {
+        style.fontWeight = value;
+      }
+      break;
+    }
+    case "text-anchor":
+      if (value === "start" || value === "middle" || value === "end") {
+        style.textAnchor = value;
+      }
+      break;
+  }
+}
+
+function assignNumberStyle<T extends "strokeWidth" | "opacity" | "fontSize">(
+  style: SchematicStyle,
+  key: T,
+  value: string
+): void {
+  const numberValue = Number(value);
+
+  if (Number.isFinite(numberValue)) {
+    style[key] = numberValue;
+  }
+}
+
+function removeUndefinedProperties<T extends Record<string, unknown>>(value: T): T {
+  for (const key of Object.keys(value)) {
+    if (value[key] === undefined) {
+      delete value[key];
+    }
+  }
+
+  return value;
 }
 
 function applyThemePreview(elements: EditorElements): void {
@@ -4041,17 +4800,27 @@ async function copyExportedPayload(elements: EditorElements): Promise<void> {
   }
 }
 
-function openTransferPanel(elements: EditorElements, mode: "import" | "export" | "theme"): void {
+function openTransferPanel(elements: EditorElements, mode: "import" | "svg" | "export" | "theme"): void {
   elements.transferPanel.hidden = false;
   elements.transferPanel.dataset.mode = mode;
-  elements.transferPanelTitle.textContent = mode === "import"
-    ? "Import Payload"
-    : mode === "export"
-      ? "Export Payload"
-      : "Theme Preview";
+  elements.transferPanelTitle.textContent = getTransferPanelTitle(mode);
   elements.importSection.hidden = mode !== "import";
+  elements.svgImportSection.hidden = mode !== "svg";
   elements.exportSection.hidden = mode !== "export";
   elements.themeInput.closest<HTMLElement>(".theme-section")!.hidden = mode !== "theme";
+}
+
+function getTransferPanelTitle(mode: "import" | "svg" | "export" | "theme"): string {
+  switch (mode) {
+    case "import":
+      return "Import Payload";
+    case "svg":
+      return "Import SVG";
+    case "export":
+      return "Export Payload";
+    case "theme":
+      return "Theme Preview";
+  }
 }
 
 function closeTransferPanel(elements: EditorElements): void {
@@ -4251,6 +5020,7 @@ function createGlobalToolbar(documentRef: Document): HTMLElement {
     createToolbarButton(documentRef, "format-button", "Format JSON"),
     createToolbarButton(documentRef, "reset-button", "Reset Demo"),
     createToolbarButton(documentRef, "open-import-button", "Import"),
+    createToolbarButton(documentRef, "open-svg-import-button", "Import SVG"),
     createToolbarButton(documentRef, "open-export-button", "Export"),
     createToolbarButton(documentRef, "open-theme-button", "Theme")
   );
@@ -4443,6 +5213,29 @@ function createTransferPanel(documentRef: Document): HTMLElement {
   importButton.type = "button";
   importButton.textContent = "Import";
 
+  const svgImportSection = documentRef.createElement("section");
+  svgImportSection.className = "svg-import-section";
+  svgImportSection.hidden = true;
+
+  const svgImportLabel = documentRef.createElement("label");
+  svgImportLabel.className = "field-label";
+  svgImportLabel.textContent = "Import safe SVG primitives";
+
+  const svgImportInput = documentRef.createElement("textarea");
+  svgImportInput.className = "svg-import-input";
+  svgImportInput.placeholder = "Paste simple SVG markup with rect, circle, line, polyline, polygon, path, or text";
+  svgImportInput.spellcheck = false;
+  svgImportInput.wrap = "soft";
+
+  const svgImportButton = documentRef.createElement("button");
+  svgImportButton.className = "import-svg-button utility-button";
+  svgImportButton.type = "button";
+  svgImportButton.textContent = "Import SVG";
+
+  const svgImportHelp = documentRef.createElement("p");
+  svgImportHelp.className = "field-helper";
+  svgImportHelp.textContent = "Unsafe SVG content is rejected. Supported elements are converted to schema JSON items.";
+
   const themeSection = documentRef.createElement("section");
   themeSection.className = "theme-section";
   themeSection.hidden = true;
@@ -4493,9 +5286,10 @@ function createTransferPanel(documentRef: Document): HTMLElement {
   payloadOutput.wrap = "soft";
 
   importSection.append(importLabel, importInput, importButton);
+  svgImportSection.append(svgImportLabel, svgImportInput, svgImportButton, svgImportHelp);
   exportHeader.append(exportLabel, copyButton);
   exportSection.append(exportHeader, payloadOutput);
-  panel.append(header, statusRow, importSection, themeSection, exportSection);
+  panel.append(header, statusRow, importSection, svgImportSection, themeSection, exportSection);
   wrapper.append(panel);
   return wrapper;
 }
