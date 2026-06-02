@@ -72,6 +72,11 @@ type EditorElements = {
   openSymbolEditorButton: HTMLButtonElement;
   symbolWorkspace: HTMLElement;
   closeSymbolWorkspaceButton: HTMLButtonElement;
+  symbolFileMenuButton: HTMLButtonElement;
+  symbolFileMenu: HTMLElement;
+  symbolImportDialog: HTMLElement;
+  closeSymbolImportDialogButton: HTMLButtonElement;
+  cancelSymbolImportButton: HTMLButtonElement;
   createSymbolButton: HTMLButtonElement;
   symbolSelect: HTMLSelectElement;
   symbolPreviewSurface: HTMLElement;
@@ -79,6 +84,11 @@ type EditorElements = {
   symbolPartsList: HTMLElement;
   symbolSlotsList: HTMLElement;
   symbolInspector: HTMLElement;
+  symbolSvgImportInput: HTMLTextAreaElement;
+  symbolSvgFileInput: HTMLInputElement;
+  symbolSvgDropZone: HTMLElement;
+  symbolSvgImportButton: HTMLButtonElement;
+  symbolWorkspaceStatus: HTMLElement;
   toggleGridButton: HTMLButtonElement;
   toggleSnapButton: HTMLButtonElement;
   panToolButton: HTMLButtonElement;
@@ -417,6 +427,11 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     openSymbolEditorButton: getRequiredElement(toolbar, ".open-symbol-editor-button", HTMLButtonElement),
     symbolWorkspace,
     closeSymbolWorkspaceButton: getRequiredElement(symbolWorkspace, ".close-symbol-workspace-button", HTMLButtonElement),
+    symbolFileMenuButton: getRequiredElement(symbolWorkspace, ".symbol-file-menu-button", HTMLButtonElement),
+    symbolFileMenu: getRequiredElement(symbolWorkspace, ".symbol-file-menu", HTMLElement),
+    symbolImportDialog: getRequiredElement(symbolWorkspace, ".symbol-import-dialog", HTMLElement),
+    closeSymbolImportDialogButton: getRequiredElement(symbolWorkspace, ".close-symbol-import-dialog-button", HTMLButtonElement),
+    cancelSymbolImportButton: getRequiredElement(symbolWorkspace, ".cancel-symbol-import-button", HTMLButtonElement),
     createSymbolButton: getRequiredElement(symbolWorkspace, ".create-symbol-button", HTMLButtonElement),
     symbolSelect: getRequiredElement(symbolWorkspace, ".symbol-select", HTMLSelectElement),
     symbolPreviewSurface: getRequiredElement(symbolWorkspace, ".symbol-preview-surface", HTMLElement),
@@ -424,6 +439,11 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     symbolPartsList: getRequiredElement(symbolWorkspace, ".symbol-parts-list", HTMLElement),
     symbolSlotsList: getRequiredElement(symbolWorkspace, ".symbol-slots-list", HTMLElement),
     symbolInspector: getRequiredElement(symbolWorkspace, ".symbol-editor-inspector", HTMLElement),
+    symbolSvgImportInput: getRequiredElement(symbolWorkspace, ".symbol-svg-import-input", HTMLTextAreaElement),
+    symbolSvgFileInput: getRequiredElement(symbolWorkspace, ".symbol-svg-file-input", HTMLInputElement),
+    symbolSvgDropZone: getRequiredElement(symbolWorkspace, ".symbol-svg-drop-zone", HTMLElement),
+    symbolSvgImportButton: getRequiredElement(symbolWorkspace, ".symbol-svg-import-button", HTMLButtonElement),
+    symbolWorkspaceStatus: getRequiredElement(symbolWorkspace, ".symbol-workspace-status", HTMLElement),
     toggleGridButton: getRequiredElement(previewPane, ".toggle-grid-button", HTMLButtonElement),
     toggleSnapButton: getRequiredElement(previewPane, ".toggle-snap-button", HTMLButtonElement),
     panToolButton: getRequiredElement(toolbar, ".pan-tool-button", HTMLButtonElement),
@@ -479,7 +499,13 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.openThemeButton.addEventListener("click", () => openTransferPanel(elements, "theme"));
   elements.openSymbolEditorButton.addEventListener("click", () => openSymbolWorkspace(elements, documentRef));
   elements.closeSymbolWorkspaceButton.addEventListener("click", () => closeSymbolWorkspace(elements));
+  elements.symbolFileMenuButton.addEventListener("click", () => toggleSymbolFileMenu(elements));
   elements.createSymbolButton.addEventListener("click", () => createSymbolFromWorkspace(elements, documentRef));
+  elements.symbolSvgImportButton.addEventListener("click", () => importSvgIntoSelectedSymbol(elements, documentRef));
+  elements.closeSymbolImportDialogButton.addEventListener("click", () => closeSymbolImportDialog(elements));
+  elements.cancelSymbolImportButton.addEventListener("click", () => closeSymbolImportDialog(elements));
+  elements.symbolSvgFileInput.addEventListener("change", () => readSelectedSymbolSvgFile(elements));
+  setupSymbolSvgDropZone(elements);
   elements.symbolSelect.addEventListener("change", () => {
     elements.activeSymbolId = elements.symbolSelect.value || undefined;
     elements.selectedSymbolInternalItemId = undefined;
@@ -3684,6 +3710,72 @@ function closeSymbolWorkspace(elements: EditorElements): void {
   elements.symbolWorkspace.hidden = true;
 }
 
+function toggleSymbolFileMenu(elements: EditorElements): void {
+  elements.symbolFileMenu.hidden = !elements.symbolFileMenu.hidden;
+  elements.symbolFileMenuButton.setAttribute("aria-expanded", String(!elements.symbolFileMenu.hidden));
+}
+
+function openSymbolImportDialog(root: ParentNode): void {
+  const dialog = root.querySelector<HTMLElement>(".symbol-import-dialog");
+
+  if (dialog) {
+    dialog.hidden = false;
+  }
+}
+
+function closeSymbolImportDialog(elements: EditorElements): void {
+  elements.symbolImportDialog.hidden = true;
+  elements.symbolFileMenu.hidden = true;
+  elements.symbolFileMenuButton.setAttribute("aria-expanded", "false");
+}
+
+function setupSymbolSvgDropZone(elements: EditorElements): void {
+  elements.symbolSvgDropZone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    elements.symbolSvgDropZone.dataset.dragging = "true";
+  });
+  elements.symbolSvgDropZone.addEventListener("dragleave", () => {
+    delete elements.symbolSvgDropZone.dataset.dragging;
+  });
+  elements.symbolSvgDropZone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    delete elements.symbolSvgDropZone.dataset.dragging;
+    const file = event.dataTransfer?.files[0];
+
+    if (file) {
+      readSymbolSvgFile(elements, file);
+    }
+  });
+}
+
+function readSelectedSymbolSvgFile(elements: EditorElements): void {
+  const file = elements.symbolSvgFileInput.files?.[0];
+
+  if (file) {
+    readSymbolSvgFile(elements, file);
+  }
+}
+
+function readSymbolSvgFile(elements: EditorElements, file: File): void {
+  if (!file.name.toLowerCase().endsWith(".svg") && file.type !== "image/svg+xml") {
+    elements.symbolWorkspaceStatus.textContent = "Choose an .svg file.";
+    elements.symbolWorkspaceStatus.dataset.state = "error";
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    elements.symbolSvgImportInput.value = typeof reader.result === "string" ? reader.result : "";
+    elements.symbolWorkspaceStatus.textContent = `Loaded ${file.name}`;
+    elements.symbolWorkspaceStatus.dataset.state = "valid";
+  });
+  reader.addEventListener("error", () => {
+    elements.symbolWorkspaceStatus.textContent = "Could not read SVG file.";
+    elements.symbolWorkspaceStatus.dataset.state = "error";
+  });
+  reader.readAsText(file);
+}
+
 function createSymbolFromWorkspace(elements: EditorElements, documentRef: Document): void {
   const result = parseAndValidatePayload(elements.jsonInput.value);
 
@@ -3759,6 +3851,71 @@ function createDefaultSymbolDefinition(payload: SchematicPayload): SchematicSymb
   };
 }
 
+function importSvgIntoSelectedSymbol(elements: EditorElements, documentRef: Document): void {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderSymbolWorkspaceError(elements, result.message);
+    return;
+  }
+
+  const symbol = getActiveSymbol(result.payload, elements.activeSymbolId);
+
+  if (!symbol) {
+    elements.symbolWorkspaceStatus.textContent = "Create or select a symbol before importing SVG.";
+    elements.symbolWorkspaceStatus.dataset.state = "error";
+    return;
+  }
+
+  const importResult = parseSvgImportForSymbol(elements.symbolSvgImportInput.value, symbol, documentRef);
+
+  if (!importResult.ok) {
+    elements.symbolWorkspaceStatus.textContent = `SVG import error:\n${importResult.errors.map((error) => `- ${error}`).join("\n")}`;
+    elements.symbolWorkspaceStatus.dataset.state = "error";
+    return;
+  }
+
+  if (importResult.items.length === 0) {
+    elements.symbolWorkspaceStatus.textContent = "SVG import skipped: no supported SVG primitives found";
+    elements.symbolWorkspaceStatus.dataset.state = "error";
+    return;
+  }
+
+  recordHistory(elements);
+  const importedSymbolItems = importResult.items as SchematicSymbolDefinition["items"];
+  symbol.items = [
+    ...symbol.items,
+    ...importedSymbolItems
+  ];
+  elements.activeSymbolId = symbol.id;
+  elements.selectedSymbolInternalItemId = importedSymbolItems[0]?.id;
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  updateFromJson(elements, documentRef);
+  renderSymbolWorkspace(elements, documentRef);
+  elements.symbolWorkspaceStatus.textContent = importResult.warnings.length === 0
+    ? `Imported ${importResult.items.length} SVG item(s) into ${symbol.id}`
+    : `Imported ${importResult.items.length} SVG item(s) into ${symbol.id}\n${importResult.warnings.map((warning) => `- ${warning}`).join("\n")}`;
+  elements.symbolWorkspaceStatus.dataset.state = "valid";
+  closeSymbolImportDialog(elements);
+}
+
+function getActiveSymbol(payload: SchematicPayload, activeSymbolId: string | undefined): SchematicSymbolDefinition | undefined {
+  const symbols = payload.symbols ?? [];
+  return symbols.find((symbol) => symbol.id === activeSymbolId) ?? symbols[0];
+}
+
+function parseSvgImportForSymbol(
+  markup: string,
+  symbol: SchematicSymbolDefinition,
+  documentRef: Document
+): SvgImportResult {
+  return parseSvgImport(markup, {
+    schemaVersion: 1,
+    viewport: symbol.viewport ?? { width: 100, height: 80 },
+    items: symbol.items as SchematicItem[]
+  }, documentRef);
+}
+
 function renderSymbolWorkspace(elements: EditorElements, documentRef: Document): void {
   const result = parseAndValidatePayload(elements.jsonInput.value);
 
@@ -3775,7 +3932,7 @@ function renderSymbolWorkspace(elements: EditorElements, documentRef: Document):
     return;
   }
 
-  const selectedSymbol = symbols.find((symbol) => symbol.id === elements.activeSymbolId) ?? symbols[0];
+  const selectedSymbol = getActiveSymbol(result.payload, elements.activeSymbolId);
   elements.activeSymbolId = selectedSymbol?.id;
 
   if (!selectedSymbol) {
@@ -5642,6 +5799,36 @@ function createSymbolEditorWorkspace(documentRef: Document): HTMLElement {
   title.className = "symbol-editor-title";
   title.textContent = "Symbol Editor";
 
+  const menuBar = documentRef.createElement("div");
+  menuBar.className = "symbol-editor-menubar";
+
+  const fileMenuWrapper = documentRef.createElement("div");
+  fileMenuWrapper.className = "symbol-file-menu-wrapper";
+
+  const fileMenuButton = documentRef.createElement("button");
+  fileMenuButton.className = "symbol-file-menu-button utility-button";
+  fileMenuButton.type = "button";
+  fileMenuButton.textContent = "File";
+  fileMenuButton.setAttribute("aria-expanded", "false");
+
+  const fileMenu = documentRef.createElement("div");
+  fileMenu.className = "symbol-file-menu";
+  fileMenu.hidden = true;
+
+  const importSvgMenuButton = documentRef.createElement("button");
+  importSvgMenuButton.className = "open-symbol-svg-import-dialog-button";
+  importSvgMenuButton.type = "button";
+  importSvgMenuButton.textContent = "Import SVG";
+  importSvgMenuButton.addEventListener("click", () => {
+    fileMenu.hidden = true;
+    fileMenuButton.setAttribute("aria-expanded", "false");
+    openSymbolImportDialog(wrapper);
+  });
+
+  fileMenu.append(importSvgMenuButton);
+  fileMenuWrapper.append(fileMenuButton, fileMenu);
+  menuBar.append(fileMenuWrapper);
+
   const controls = documentRef.createElement("div");
   controls.className = "symbol-editor-controls";
 
@@ -5661,7 +5848,7 @@ function createSymbolEditorWorkspace(documentRef: Document): HTMLElement {
   closeButton.setAttribute("aria-label", "Close symbol editor");
 
   controls.append(symbolSelect, createButton, closeButton);
-  header.append(title, controls);
+  header.append(menuBar, title, controls);
 
   const body = documentRef.createElement("div");
   body.className = "symbol-editor-body";
@@ -5690,10 +5877,69 @@ function createSymbolEditorWorkspace(documentRef: Document): HTMLElement {
   inspectorTitle.textContent = "Inspector";
   const inspector = documentRef.createElement("div");
   inspector.className = "symbol-editor-inspector";
+
+  const importDialog = documentRef.createElement("section");
+  importDialog.className = "symbol-import-dialog";
+  importDialog.hidden = true;
+
+  const importHeader = documentRef.createElement("div");
+  importHeader.className = "symbol-import-dialog-header";
+
+  const importTitle = documentRef.createElement("h2");
+  importTitle.className = "symbol-import-dialog-title";
+  importTitle.textContent = "Import SVG Into Symbol";
+
+  const closeImportDialogButton = documentRef.createElement("button");
+  closeImportDialogButton.className = "close-symbol-import-dialog-button utility-button";
+  closeImportDialogButton.type = "button";
+  closeImportDialogButton.textContent = "X";
+  closeImportDialogButton.setAttribute("aria-label", "Close SVG import dialog");
+
+  importHeader.append(importTitle, closeImportDialogButton);
+
+  const importBody = documentRef.createElement("div");
+  importBody.className = "symbol-import-dialog-body";
+
+  const dropZone = documentRef.createElement("label");
+  dropZone.className = "symbol-svg-drop-zone";
+  dropZone.textContent = "Choose or drop a .svg file";
+
+  const fileInput = documentRef.createElement("input");
+  fileInput.className = "symbol-svg-file-input";
+  fileInput.type = "file";
+  fileInput.accept = ".svg,image/svg+xml";
+  dropZone.append(fileInput);
+
+  const importInput = documentRef.createElement("textarea");
+  importInput.className = "symbol-svg-import-input";
+  importInput.placeholder = "Paste simple safe SVG markup";
+  importInput.spellcheck = false;
+  importInput.wrap = "soft";
+
+  const importButton = documentRef.createElement("button");
+  importButton.className = "symbol-svg-import-button utility-button";
+  importButton.type = "button";
+  importButton.textContent = "Import SVG";
+
+  const cancelButton = documentRef.createElement("button");
+  cancelButton.className = "cancel-symbol-import-button utility-button";
+  cancelButton.type = "button";
+  cancelButton.textContent = "Cancel";
+
+  const importActions = documentRef.createElement("div");
+  importActions.className = "symbol-import-dialog-actions";
+
+  const workspaceStatus = documentRef.createElement("div");
+  workspaceStatus.className = "symbol-workspace-status";
+  workspaceStatus.textContent = "Ready";
+
+  importActions.append(importButton, cancelButton);
+  importBody.append(dropZone, importInput, importActions, workspaceStatus);
+  importDialog.append(importHeader, importBody);
   inspectorPane.append(inspectorTitle, inspector);
 
   body.append(side, preview, inspectorPane);
-  wrapper.append(header, body);
+  wrapper.append(header, body, importDialog);
   return wrapper;
 }
 
