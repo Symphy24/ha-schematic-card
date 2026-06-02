@@ -164,6 +164,7 @@ export type SchematicSymbolDefinition = {
   viewport?: SchematicViewport;
   parts?: SchematicSymbolPartDefinition[];
   partStyles?: SchematicSymbolPartStyle[];
+  partAnimations?: SchematicSymbolPartAnimation[];
   entitySlots?: SchematicSymbolEntitySlotDefinition[];
   items: SchematicSymbolChildItem[];
 };
@@ -185,6 +186,14 @@ export type SchematicSymbolPartStyle = {
   partId: string;
   when: SchematicVisibilityCondition;
   style: SchematicStyle;
+};
+
+export type SchematicSymbolPartAnimation = {
+  partId: string;
+  when: SchematicVisibilityCondition;
+  preset: "blink" | "pulse" | "rotate";
+  durationSeconds?: number;
+  reverse?: boolean;
 };
 
 export type SchematicSymbolSlotBindings = Record<string, string>;
@@ -321,6 +330,7 @@ function validateSymbols(value: unknown, errors: string[]): SymbolValidationCont
 
     const partIds = validateSymbolParts(symbol.parts, `${path}.parts`, errors);
     validateSymbolPartStyles(symbol.partStyles, `${path}.partStyles`, partIds, errors);
+    validateSymbolPartAnimations(symbol.partAnimations, `${path}.partAnimations`, partIds, errors);
     const entitySlotIds = validateSymbolEntitySlots(symbol.entitySlots, `${path}.entitySlots`, errors);
 
     if (typeof symbol.id === "string" && symbol.id.length > 0) {
@@ -441,6 +451,44 @@ function validateSymbolPartStyles(
     validateItemPartReference(entry.partId, `${entryPath}.partId`, errors, allowedPartIds);
     validateVisibilityCondition(entry.when, `${entryPath}.when`, errors);
     validateStyle(entry.style, `${entryPath}.style`, errors);
+  });
+}
+
+function validateSymbolPartAnimations(
+  value: unknown,
+  path: string,
+  allowedPartIds: Set<string>,
+  errors: string[]
+): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!Array.isArray(value)) {
+    errors.push(`${path} must be an array`);
+    return;
+  }
+
+  value.forEach((entry, index) => {
+    const entryPath = `${path}[${index}]`;
+
+    if (!isRecord(entry)) {
+      errors.push(`${entryPath} must be an object`);
+      return;
+    }
+
+    validateItemPartReference(entry.partId, `${entryPath}.partId`, errors, allowedPartIds);
+    validateVisibilityCondition(entry.when, `${entryPath}.when`, errors);
+
+    if (entry.preset !== "blink" && entry.preset !== "pulse" && entry.preset !== "rotate") {
+      errors.push(`${entryPath}.preset must be a supported animation preset`);
+    }
+
+    validateOptionalPositiveNumber(entry.durationSeconds, `${entryPath}.durationSeconds`, errors);
+
+    if (entry.reverse !== undefined && typeof entry.reverse !== "boolean") {
+      errors.push(`${entryPath}.reverse must be a boolean`);
+    }
   });
 }
 

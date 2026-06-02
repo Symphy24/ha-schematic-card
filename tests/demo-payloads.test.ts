@@ -23,6 +23,7 @@ describe("demo payload fixtures", () => {
       alarm: "input_boolean.schematic_demo_alarm"
     });
     expect(symbolPartStylesFor(payload, "demo-generic-unit", "body", "slot:alarm", "on")).toHaveLength(1);
+    expect(symbolPartAnimationsFor(payload, "demo-generic-unit", "status", "blink", "slot:running", "on")).toHaveLength(1);
     expect(visibilityItemsFor(payload, "input_boolean.schematic_demo_alarm", "on")).toHaveLength(2);
     expect(styleItemsFor(payload, "input_boolean.schematic_demo_alarm", "on")).toHaveLength(1);
     expect(flowItemsFor(payload, "input_boolean.schematic_demo_flow", "on")).toHaveLength(1);
@@ -113,15 +114,36 @@ function symbolPartStylesFor(
   ));
 }
 
-function symbolPartItemsFor(payload: { symbols?: unknown[] }, symbolId: string, partId: string): string[] {
-  const symbol = payload.symbols?.find((candidate) => (
-    typeof candidate === "object"
-    && candidate !== null
-    && "id" in candidate
-    && candidate.id === symbolId
-  ));
+function symbolPartAnimationsFor(
+  payload: { symbols?: unknown[] },
+  symbolId: string,
+  partId: string,
+  preset: string,
+  entityId: string,
+  equals: string
+): unknown[] {
+  const symbol = findSymbol(payload, symbolId);
 
-  if (typeof symbol !== "object" || symbol === null || !("items" in symbol) || !Array.isArray(symbol.items)) {
+  if (!symbol || !("partAnimations" in symbol) || !Array.isArray(symbol.partAnimations)) {
+    return [];
+  }
+
+  return symbol.partAnimations.filter((entry) => (
+    typeof entry === "object"
+    && entry !== null
+    && "partId" in entry
+    && entry.partId === partId
+    && "preset" in entry
+    && entry.preset === preset
+    && "when" in entry
+    && hasCondition(entry.when, entityId, equals)
+  ));
+}
+
+function symbolPartItemsFor(payload: { symbols?: unknown[] }, symbolId: string, partId: string): string[] {
+  const symbol = findSymbol(payload, symbolId);
+
+  if (!symbol || !("items" in symbol) || !Array.isArray(symbol.items)) {
     return [];
   }
 
@@ -135,6 +157,19 @@ function symbolPartItemsFor(payload: { symbols?: unknown[] }, symbolId: string, 
       && typeof item.id === "string"
     ))
     .map((item) => item.id as string);
+}
+
+function findSymbol(payload: { symbols?: unknown[] }, symbolId: string): Record<string, unknown> | undefined {
+  const symbol = payload.symbols?.find((candidate) => (
+    typeof candidate === "object"
+    && candidate !== null
+    && "id" in candidate
+    && candidate.id === symbolId
+  ));
+
+  return typeof symbol === "object" && symbol !== null
+    ? symbol as Record<string, unknown>
+    : undefined;
 }
 
 function visibilityItemsFor(payload: { items: unknown[] }, entityId: string, equals: string): unknown[] {

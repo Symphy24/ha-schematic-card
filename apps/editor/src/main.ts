@@ -3028,6 +3028,13 @@ function appendSymbolMetadataInspector(
       `${entry.partId} when ${entry.when.entityId} = ${entry.when.equals}`
     )) ?? []
   ));
+  section.append(createSymbolMetadataGroup(
+    documentRef,
+    "Part animations",
+    definition.partAnimations?.map((entry) => (
+      `${entry.partId} ${entry.preset} when ${entry.when.entityId} = ${entry.when.equals}`
+    )) ?? []
+  ));
   appendSymbolSlotBindingEditor(elements, documentRef, item, definition, section);
 
   elements.inspector.append(section);

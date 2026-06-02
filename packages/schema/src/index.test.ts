@@ -420,6 +420,17 @@ describe("schema validation", () => {
               }
             }
           ],
+          partAnimations: [
+            {
+              partId: "body",
+              when: {
+                entityId: "slot:running",
+                equals: "on"
+              },
+              preset: "pulse",
+              durationSeconds: 1.5
+            }
+          ],
           entitySlots: [
             {
               id: "running",
@@ -503,6 +514,47 @@ describe("schema validation", () => {
     expect(result.errors).toContain("symbols[0].partStyles[0].when.entityId must be a non-empty string");
     expect(result.errors).toContain("symbols[0].partStyles[0].style.cssText is not a supported style property");
     expect(result.errors).toContain("symbols[0].partStyles[0].style.fill must be a string");
+  });
+
+  it("rejects invalid symbol part animations", () => {
+    const result = validateSchematicPayload({
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      symbols: [
+        {
+          id: "generic-box",
+          parts: [
+            {
+              id: "body"
+            }
+          ],
+          partAnimations: [
+            {
+              partId: "missing",
+              when: {
+                entityId: "",
+                equals: "on"
+              },
+              preset: "spin-fast",
+              durationSeconds: 0,
+              reverse: "yes"
+            }
+          ],
+          items: []
+        }
+      ],
+      items: []
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain("symbols[0].partAnimations[0].partId must reference a defined symbol part");
+    expect(result.errors).toContain("symbols[0].partAnimations[0].when.entityId must be a non-empty string");
+    expect(result.errors).toContain("symbols[0].partAnimations[0].preset must be a supported animation preset");
+    expect(result.errors).toContain("symbols[0].partAnimations[0].durationSeconds must be a positive number");
+    expect(result.errors).toContain("symbols[0].partAnimations[0].reverse must be a boolean");
   });
 
   it("rejects symbol child items that reference missing parts", () => {

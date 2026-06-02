@@ -245,7 +245,7 @@ describe("SVG renderer", () => {
     expect(flowLine?.getAttribute("class")).toContain("ha-schematic-card-flow-dash");
     expect(flowLine?.getAttribute("class")).not.toContain("ha-schematic-card-flow-reverse");
     expect(flowLine?.getAttribute("data-flow")).toBe("dash");
-    expect(flowLine?.getAttribute("style")).toBe("--hsc-flow-duration: 1.5s");
+    expect((flowLine as SVGElement | null)?.style.getPropertyValue("--hsc-flow-duration")).toBe("1.5s");
   });
 
   it("does not apply flow animation when condition does not match", () => {
@@ -382,6 +382,17 @@ describe("SVG renderer", () => {
               }
             }
           ],
+          partAnimations: [
+            {
+              partId: "status",
+              when: {
+                entityId: "slot:running",
+                equals: "on"
+              },
+              preset: "blink",
+              durationSeconds: 1.2
+            }
+          ],
           items: [
             {
               ...symbolRectItem("symbol-body", 100),
@@ -412,8 +423,11 @@ describe("SVG renderer", () => {
     });
 
     expect(svg.querySelector('[data-id="symbol-body"]')?.getAttribute("fill")).toBe("var(--error-color)");
-    expect(svg.querySelector('[data-id="running-indicator"]')).not.toBeNull();
-    expect(svg.querySelector('[data-id="running-indicator"]')?.getAttribute("fill")).toBeNull();
+    const indicator = svg.querySelector('[data-id="running-indicator"]');
+    expect(indicator).not.toBeNull();
+    expect(indicator?.getAttribute("fill")).toBeNull();
+    expect(indicator?.getAttribute("data-part-animation")).toBe("blink");
+    expect(indicator?.getAttribute("class")).toContain("ha-schematic-card-part-blink");
   });
 
   it("combines symbol placement with structured transforms", () => {
