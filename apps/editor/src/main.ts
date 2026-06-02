@@ -234,6 +234,11 @@ type SvgImportContext = {
   warnings: string[];
 };
 
+type SymbolInternalItemEntry = {
+  item: SchematicItem;
+  depth: number;
+};
+
 type StyleSliderConfig = {
   min: number;
   max: number;
@@ -3888,7 +3893,7 @@ function importSvgIntoSelectedSymbol(elements: EditorElements, documentRef: Docu
     ...importedSymbolItems
   ];
   elements.activeSymbolId = symbol.id;
-  elements.selectedSymbolInternalItemId = importedSymbolItems[0]?.id;
+  elements.selectedSymbolInternalItemId = getSymbolInternalItemEntries(importedSymbolItems)[0]?.item.id;
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
   renderSymbolWorkspace(elements, documentRef);
@@ -3994,8 +3999,39 @@ function renderSymbolPreview(elements: EditorElements, symbol: SchematicSymbolDe
     document: documentRef,
     entityStates: demoEntityStates
   });
+  svg.addEventListener("click", (event) => {
+    const itemId = findSymbolPreviewInternalItemId(elements, symbol, event.target);
+
+    if (!itemId) {
+      return;
+    }
+
+    elements.selectedSymbolInternalItemId = itemId;
+    renderSymbolWorkspace(elements, documentRef);
+  });
   elements.symbolPreviewSurface.replaceChildren(svg);
   highlightSelectedSymbolInternalItem(elements);
+}
+
+function findSymbolPreviewInternalItemId(
+  elements: EditorElements,
+  symbol: SchematicSymbolDefinition,
+  target: EventTarget | null
+): string | undefined {
+  const itemIds = new Set(getSymbolInternalItemEntries(symbol.items).map((entry) => entry.item.id));
+  let current = target instanceof Element ? target : undefined;
+
+  while (current && current !== elements.symbolPreviewSurface) {
+    const itemId = current.getAttribute("data-id");
+
+    if (itemId && itemIds.has(itemId)) {
+      return itemId;
+    }
+
+    current = current.parentElement ?? undefined;
+  }
+
+  return undefined;
 }
 
 function renderSymbolInternalItems(
@@ -4004,18 +4040,20 @@ function renderSymbolInternalItems(
   documentRef: Document
 ): void {
   elements.symbolItemList.replaceChildren();
+  const entries = getSymbolInternalItemEntries(symbol.items);
 
-  if (symbol.items.length === 0) {
+  if (entries.length === 0) {
     elements.symbolItemList.append(createSymbolWorkspaceEmpty(documentRef, "No internal items"));
     return;
   }
 
-  for (const item of symbol.items) {
+  for (const { item, depth } of entries) {
     const button = documentRef.createElement("button");
     button.className = "symbol-internal-item-button";
     button.type = "button";
     button.dataset.symbolItemId = item.id;
     button.setAttribute("aria-pressed", String(elements.selectedSymbolInternalItemId === item.id));
+    button.style.paddingLeft = `${10 + depth * 16}px`;
     button.textContent = `${item.id} (${item.type}${item.partId ? `, ${item.partId}` : ""})`;
     button.addEventListener("click", () => {
       elements.selectedSymbolInternalItemId = item.id;
@@ -4062,26 +4100,536 @@ function renderSymbolEditorInspector(
   documentRef: Document
 ): void {
   elements.symbolInspector.replaceChildren();
-  const selectedItem = symbol.items.find((item) => item.id === elements.selectedSymbolInternalItemId);
+  const selectedItem = findSymbolInternalItem(symbol, elements.selectedSymbolInternalItemId);
 
   if (!selectedItem) {
     elements.symbolInspector.append(createSymbolWorkspaceEmpty(documentRef, "Select an internal item"));
     return;
   }
 
-  const rows = [
-    `Item: ${selectedItem.id}`,
-    `Type: ${selectedItem.type}`,
-    `Layer: ${selectedItem.layer}`,
-    `Part: ${selectedItem.partId ?? "none"}`
-  ];
+  const summary = documentRef.createElement("div");
+  summary.className = "symbol-workspace-row";
+  summary.textContent = `Item: ${selectedItem.id} (${selectedItem.type})`;
+  elements.symbolInspector.append(summary);
 
-  for (const value of rows) {
-    const row = documentRef.createElement("div");
-    row.className = "symbol-workspace-row";
-    row.textContent = value;
-    elements.symbolInspector.append(row);
+  const partSummary = documentRef.createElement("div");
+  partSummary.className = "symbol-workspace-row";
+  partSummary.textContent = `Part: ${selectedItem.partId ?? "none"}`;
+  elements.symbolInspector.append(partSummary);
+
+  appendSymbolInternalItemField(elements, documentRef, selectedItem, "id", "text");
+  appendSymbolInternalItemField(elements, documentRef, selectedItem, "layer", "number");
+  appendSymbolPartAssignmentField(elements, documentRef, symbol, selectedItem);
+  appendSymbolInternalStyleInspector(elements, documentRef, selectedItem);
+}
+
+function appendSymbolInternalItemField(
+  elements: EditorElements,
+  documentRef: Document,
+  item: SchematicItem,
+  fieldName: "id" | "layer",
+  valueType: "number" | "text"
+): void {
+  const label = documentRef.createElement("label");
+  label.className = "inspector-field symbol-inspector-field";
+  label.dataset.fieldName = fieldName;
+
+  const labelText = documentRef.createElement("span");
+  labelText.className = "field-label";
+  labelText.textContent = fieldName === "id" ? "Internal item id" : "Layer / z-order";
+
+  const input = documentRef.createElement("input");
+  input.className = "inspector-input symbol-internal-item-input";
+  input.type = "text";
+  input.value = String((item as Record<string, unknown>)[fieldName]);
+
+  if (valueType === "number") {
+    input.inputMode = "decimal";
   }
+
+  input.addEventListener("change", () => {
+    updateSelectedSymbolInternalItemField(elements, fieldName, input.value, valueType, documentRef);
+  });
+
+  const helper = documentRef.createElement("span");
+  helper.className = "field-helper";
+  helper.textContent = fieldName === "id"
+    ? "Unique inside this symbol. Used for selection, parts, and JSON lookup."
+    : "Higher layers render in front inside the symbol.";
+
+  label.append(labelText, input, helper);
+  elements.symbolInspector.append(label);
+}
+
+function appendSymbolPartAssignmentField(
+  elements: EditorElements,
+  documentRef: Document,
+  symbol: SchematicSymbolDefinition,
+  item: SchematicItem
+): void {
+  const partIds = symbol.parts?.map((part) => part.id) ?? [];
+  const field = documentRef.createElement("div");
+  field.className = "inspector-field symbol-inspector-field";
+  field.dataset.fieldName = "partId";
+
+  const labelText = documentRef.createElement("span");
+  labelText.className = "field-label";
+  labelText.textContent = "Symbol part";
+
+  const select = documentRef.createElement("select");
+  select.className = "inspector-input symbol-part-select";
+
+  const noneOption = documentRef.createElement("option");
+  noneOption.value = "";
+  noneOption.textContent = "No part";
+  select.append(noneOption);
+
+  for (const part of symbol.parts ?? []) {
+    const option = documentRef.createElement("option");
+    option.value = part.id;
+    option.textContent = part.label ? `${part.id} - ${part.label}` : part.id;
+    select.append(option);
+  }
+
+  select.value = item.partId ?? "";
+  select.addEventListener("change", () => {
+    updateSelectedSymbolInternalItemPart(elements, select.value, documentRef);
+  });
+
+  const createControls = documentRef.createElement("div");
+  createControls.className = "symbol-part-create-controls";
+
+  const newPartInput = documentRef.createElement("input");
+  newPartInput.className = "inspector-input symbol-new-part-input";
+  newPartInput.type = "text";
+  newPartInput.placeholder = partIds.length === 0 ? "body" : "new-part-id";
+
+  const createButton = documentRef.createElement("button");
+  createButton.className = "secondary-button symbol-create-part-button";
+  createButton.type = "button";
+  createButton.textContent = "Create part";
+  createButton.addEventListener("click", () => {
+    createSymbolPartForSelectedItem(elements, newPartInput.value, documentRef);
+  });
+
+  const helper = documentRef.createElement("span");
+  helper.className = "field-helper";
+  helper.textContent = "Assign this internal item to a symbol part, or create a simple new part from its id.";
+
+  createControls.append(newPartInput, createButton);
+  field.append(labelText, select, createControls, helper);
+  elements.symbolInspector.append(field);
+}
+
+function appendSymbolInternalStyleInspector(elements: EditorElements, documentRef: Document, item: SchematicItem): void {
+  const fields = getStyleFieldConfigs(item);
+
+  if (fields.length === 0) {
+    return;
+  }
+
+  const section = documentRef.createElement("section");
+  section.className = "style-inspector-section symbol-style-inspector-section";
+
+  const heading = documentRef.createElement("div");
+  heading.className = "field-label";
+  heading.textContent = "Style";
+
+  section.append(heading);
+
+  for (const field of fields) {
+    appendSymbolInternalStyleField(elements, documentRef, section, item, field);
+  }
+
+  elements.symbolInspector.append(section);
+}
+
+function appendSymbolInternalStyleField(
+  elements: EditorElements,
+  documentRef: Document,
+  section: HTMLElement,
+  item: SchematicItem,
+  field: StyleFieldConfig
+): void {
+  const fieldElement = documentRef.createElement("div");
+  fieldElement.className = "inspector-field style-inspector-field symbol-style-field";
+  fieldElement.dataset.fieldName = field.name;
+
+  const labelText = documentRef.createElement("span");
+  labelText.className = "field-label";
+  labelText.textContent = STYLE_FIELD_LABELS[field.name];
+
+  const input = documentRef.createElement("input");
+  input.className = "inspector-input style-inspector-input symbol-style-input";
+  input.type = "text";
+  input.dataset.styleField = field.name;
+  input.value = formatStyleFieldValue(item.style?.[field.name], field.name);
+
+  if (field.valueType === "number") {
+    input.inputMode = "decimal";
+  }
+
+  input.addEventListener("change", () => {
+    updateSelectedSymbolInternalItemStyleField(elements, field, input.value, documentRef);
+  });
+
+  fieldElement.append(labelText);
+
+  if (field.name === "stroke" || field.name === "fill") {
+    fieldElement.append(createSymbolPaintFieldControls(elements, documentRef, field, input));
+  } else if (field.valueType === "number") {
+    fieldElement.append(createSymbolNumberFieldControls(elements, documentRef, field, input));
+  } else {
+    fieldElement.append(input);
+  }
+
+  const helperText = STYLE_FIELD_HELPERS[field.name];
+
+  if (helperText) {
+    const helper = documentRef.createElement("span");
+    helper.className = "field-helper";
+    helper.textContent = helperText;
+    fieldElement.append(helper);
+  }
+
+  section.append(fieldElement);
+}
+
+function createSymbolNumberFieldControls(
+  elements: EditorElements,
+  documentRef: Document,
+  field: StyleFieldConfig,
+  input: HTMLInputElement
+): HTMLElement {
+  const controls = documentRef.createElement("div");
+  controls.className = "number-field-controls";
+  const sliderConfig = getStyleSliderConfig(field.name);
+
+  if (!sliderConfig) {
+    controls.append(input);
+    return controls;
+  }
+
+  const slider = documentRef.createElement("input");
+  slider.className = "style-slider-input symbol-style-slider-input";
+  slider.type = "range";
+  slider.min = String(sliderConfig.min);
+  slider.max = String(sliderConfig.max);
+  slider.step = String(sliderConfig.step);
+  slider.value = input.value.length > 0 ? input.value : String(sliderConfig.fallback);
+  slider.title = STYLE_FIELD_LABELS[field.name];
+
+  input.addEventListener("change", () => {
+    if (input.value.length > 0 && Number.isFinite(Number(input.value))) {
+      slider.value = input.value;
+    }
+  });
+  slider.addEventListener("input", () => {
+    input.value = slider.value;
+    updateSelectedSymbolInternalItemStyleField(elements, field, input.value, documentRef);
+  });
+
+  controls.append(input, slider);
+  return controls;
+}
+
+function createSymbolPaintFieldControls(
+  elements: EditorElements,
+  documentRef: Document,
+  field: StyleFieldConfig,
+  input: HTMLInputElement
+): HTMLElement {
+  const group = documentRef.createElement("div");
+  group.className = "paint-field-group";
+
+  const controls = documentRef.createElement("div");
+  controls.className = "paint-field-controls";
+
+  const colorInput = documentRef.createElement("input");
+  colorInput.className = "style-color-input symbol-style-color-input";
+  colorInput.type = "color";
+  colorInput.value = isHexColor(input.value) ? normalizeHexColor(input.value) : "#000000";
+  colorInput.title = "Pick color";
+  colorInput.addEventListener("input", () => {
+    input.value = colorInput.value;
+    updateSelectedSymbolInternalItemStyleField(elements, field, input.value, documentRef);
+  });
+
+  const presetSelect = documentRef.createElement("select");
+  presetSelect.className = "style-preset-select symbol-style-preset-select";
+  presetSelect.title = "Use theme colors";
+
+  const emptyOption = documentRef.createElement("option");
+  emptyOption.value = "";
+  emptyOption.textContent = "Use theme colors...";
+  presetSelect.append(emptyOption);
+
+  for (const preset of THEME_TOKEN_PRESETS) {
+    const option = documentRef.createElement("option");
+    option.value = preset.value;
+    option.textContent = preset.label;
+    presetSelect.append(option);
+  }
+
+  presetSelect.value = THEME_TOKEN_PRESETS.some((preset) => preset.value === input.value) ? input.value : "";
+  presetSelect.addEventListener("change", () => {
+    if (!presetSelect.value) {
+      return;
+    }
+
+    input.value = presetSelect.value;
+    updateSelectedSymbolInternalItemStyleField(elements, field, input.value, documentRef);
+  });
+
+  controls.append(input, colorInput);
+  group.append(controls, presetSelect);
+  return group;
+}
+
+function updateSelectedSymbolInternalItemField(
+  elements: EditorElements,
+  fieldName: "id" | "layer",
+  rawValue: string,
+  valueType: "number" | "text",
+  documentRef: Document
+): void {
+  const edit = getSelectedSymbolInternalItemEdit(elements);
+
+  if (!edit.ok) {
+    renderSymbolWorkspaceError(elements, edit.message);
+    return;
+  }
+
+  const nextValue = valueType === "number" ? Number(rawValue) : rawValue.trim();
+
+  if (valueType === "number" && !Number.isFinite(nextValue)) {
+    showSymbolWorkspaceError(elements, `${fieldName} must be a finite number`);
+    return;
+  }
+
+  if (fieldName === "id") {
+    const itemId = String(nextValue);
+
+    if (itemId.length === 0) {
+      showSymbolWorkspaceError(elements, "Internal item id must be a non-empty string");
+      return;
+    }
+
+    const existingIds = getSymbolInternalItemEntries(edit.symbol.items)
+      .filter((entry) => entry.item !== edit.item)
+      .map((entry) => entry.item.id);
+
+    if (existingIds.includes(itemId)) {
+      showSymbolWorkspaceError(elements, `Internal item id "${itemId}" is already used`);
+      return;
+    }
+  }
+
+  if ((edit.item as Record<string, unknown>)[fieldName] === nextValue) {
+    return;
+  }
+
+  recordHistory(elements);
+  (edit.item as Record<string, unknown>)[fieldName] = nextValue;
+
+  if (fieldName === "id") {
+    elements.selectedSymbolInternalItemId = String(nextValue);
+  }
+
+  commitSymbolEditorPayload(elements, edit.payload, documentRef);
+  showSymbolWorkspaceStatus(elements, `Updated ${fieldName} for ${elements.selectedSymbolInternalItemId}`);
+}
+
+function updateSelectedSymbolInternalItemPart(
+  elements: EditorElements,
+  partId: string,
+  documentRef: Document
+): void {
+  const edit = getSelectedSymbolInternalItemEdit(elements);
+
+  if (!edit.ok) {
+    renderSymbolWorkspaceError(elements, edit.message);
+    return;
+  }
+
+  const nextPartId = partId.trim();
+  const currentPartId = edit.item.partId ?? "";
+
+  if (currentPartId === nextPartId) {
+    return;
+  }
+
+  if (nextPartId && !(edit.symbol.parts ?? []).some((part) => part.id === nextPartId)) {
+    showSymbolWorkspaceError(elements, `Part "${nextPartId}" is not defined on this symbol`);
+    return;
+  }
+
+  recordHistory(elements);
+
+  if (nextPartId.length === 0) {
+    delete edit.item.partId;
+  } else {
+    edit.item.partId = nextPartId;
+  }
+
+  commitSymbolEditorPayload(elements, edit.payload, documentRef);
+  showSymbolWorkspaceStatus(elements, nextPartId ? `Assigned ${edit.item.id} to ${nextPartId}` : `Removed part assignment from ${edit.item.id}`);
+}
+
+function createSymbolPartForSelectedItem(
+  elements: EditorElements,
+  rawPartId: string,
+  documentRef: Document
+): void {
+  const edit = getSelectedSymbolInternalItemEdit(elements);
+
+  if (!edit.ok) {
+    renderSymbolWorkspaceError(elements, edit.message);
+    return;
+  }
+
+  const partId = rawPartId.trim();
+
+  if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(partId)) {
+    showSymbolWorkspaceError(elements, "New part id must start with a letter and use letters, numbers, _ or -");
+    return;
+  }
+
+  if ((edit.symbol.parts ?? []).some((part) => part.id === partId)) {
+    showSymbolWorkspaceError(elements, `Part "${partId}" already exists`);
+    return;
+  }
+
+  recordHistory(elements);
+  edit.symbol.parts = [
+    ...(edit.symbol.parts ?? []),
+    {
+      id: partId,
+      label: partId,
+      itemIds: [edit.item.id]
+    }
+  ];
+  edit.item.partId = partId;
+  commitSymbolEditorPayload(elements, edit.payload, documentRef);
+  showSymbolWorkspaceStatus(elements, `Created part ${partId} and assigned ${edit.item.id}`);
+}
+
+function updateSelectedSymbolInternalItemStyleField(
+  elements: EditorElements,
+  field: StyleFieldConfig,
+  rawValue: string,
+  documentRef: Document
+): void {
+  const edit = getSelectedSymbolInternalItemEdit(elements);
+
+  if (!edit.ok) {
+    renderSymbolWorkspaceError(elements, edit.message);
+    return;
+  }
+
+  const parsedValue = parseStyleFieldValue(field, rawValue);
+
+  if (!parsedValue.ok) {
+    showSymbolWorkspaceError(elements, parsedValue.message);
+    return;
+  }
+
+  const currentValue = edit.item.style?.[field.name];
+
+  if (currentValue === parsedValue.value) {
+    return;
+  }
+
+  recordHistory(elements);
+
+  if (parsedValue.value === undefined) {
+    delete edit.item.style?.[field.name];
+
+    if (edit.item.style && Object.keys(edit.item.style).length === 0) {
+      delete edit.item.style;
+    }
+  } else {
+    edit.item.style = {
+      ...edit.item.style,
+      [field.name]: parsedValue.value
+    };
+  }
+
+  commitSymbolEditorPayload(elements, edit.payload, documentRef);
+  showSymbolWorkspaceStatus(elements, `Updated ${field.name} for ${edit.item.id}`);
+}
+
+function getSelectedSymbolInternalItemEdit(
+  elements: EditorElements
+): { ok: true; payload: SchematicPayload; symbol: SchematicSymbolDefinition; item: SchematicItem } | { ok: false; message: string } {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    return result;
+  }
+
+  const symbol = getActiveSymbol(result.payload, elements.activeSymbolId);
+
+  if (!symbol) {
+    return {
+      ok: false,
+      message: "Selected symbol was not found"
+    };
+  }
+
+  const item = findSymbolInternalItem(symbol, elements.selectedSymbolInternalItemId);
+
+  if (!item) {
+    return {
+      ok: false,
+      message: "Selected internal item was not found"
+    };
+  }
+
+  return {
+    ok: true,
+    payload: result.payload,
+    symbol,
+    item
+  };
+}
+
+function commitSymbolEditorPayload(elements: EditorElements, payload: SchematicPayload, documentRef: Document): void {
+  elements.jsonInput.value = formatPayloadJson(payload);
+  updateFromJson(elements, documentRef);
+  renderSymbolWorkspace(elements, documentRef);
+}
+
+function showSymbolWorkspaceStatus(elements: EditorElements, message: string): void {
+  elements.symbolWorkspaceStatus.textContent = message;
+  elements.symbolWorkspaceStatus.dataset.state = "valid";
+}
+
+function showSymbolWorkspaceError(elements: EditorElements, message: string): void {
+  elements.symbolWorkspaceStatus.textContent = message;
+  elements.symbolWorkspaceStatus.dataset.state = "error";
+}
+
+function getSymbolInternalItemEntries(items: SchematicItem[], depth = 0): SymbolInternalItemEntry[] {
+  const entries: SymbolInternalItemEntry[] = [];
+
+  for (const item of items) {
+    entries.push({ item, depth });
+
+    if (item.type === "group") {
+      entries.push(...getSymbolInternalItemEntries(item.children, depth + 1));
+    }
+  }
+
+  return entries;
+}
+
+function findSymbolInternalItem(symbol: SchematicSymbolDefinition, itemId: string | undefined): SchematicItem | undefined {
+  if (!itemId) {
+    return undefined;
+  }
+
+  return getSymbolInternalItemEntries(symbol.items).find((entry) => entry.item.id === itemId)?.item;
 }
 
 function renderEmptySymbolWorkspace(elements: EditorElements, message: string): void {

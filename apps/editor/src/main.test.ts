@@ -194,6 +194,66 @@ describe("editor app", () => {
     expect(app.querySelector<HTMLElement>(".symbol-editor-inspector")?.textContent).toContain("Part: status");
   });
 
+  it("selects and edits nested imported symbol items in the symbol editor workspace", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".open-symbol-editor-button").click();
+    getButton(app, ".symbol-file-menu-button").click();
+    getButton(app, ".open-symbol-svg-import-dialog-button").click();
+    getTextarea(app, ".symbol-svg-import-input").value = `
+      <svg viewBox="0 0 100 80">
+        <path id="symbol-import-body" d="M 10 10 H 90 V 60 H 10 Z" fill="#000000" />
+        <path id="symbol-import-mark" d="M 25 40 H 75" stroke="#ffffff" stroke-width="4" fill="none" />
+      </svg>
+    `;
+    getButton(app, ".symbol-svg-import-button").click();
+
+    getButton(app, '[data-symbol-item-id="symbol-import-body"]').click();
+
+    expect(getButton(app, '[data-symbol-item-id="symbol-import-body"]').getAttribute("aria-pressed")).toBe("true");
+    expect(app.querySelector('.symbol-preview-surface [data-id="symbol-import-body"]')?.getAttribute("data-symbol-editor-selected")).toBe("true");
+    expect(app.querySelector<HTMLElement>(".symbol-editor-inspector")?.textContent).toContain("Item: symbol-import-body (path)");
+
+    const partSelect = app.querySelector<HTMLSelectElement>(".symbol-part-select");
+
+    if (!partSelect) {
+      throw new Error("symbol part select missing");
+    }
+
+    partSelect.value = "body";
+    partSelect.dispatchEvent(new Event("change"));
+
+    expect(getSymbolInternalItem(app, "demo-generic-unit", "symbol-import-body")?.partId).toBe("body");
+
+    const fillInput = app.querySelector<HTMLInputElement>('.symbol-style-input[data-style-field="fill"]');
+
+    if (!fillInput) {
+      throw new Error("symbol fill input missing");
+    }
+
+    fillInput.value = "#ff0000";
+    fillInput.dispatchEvent(new Event("change"));
+
+    expect(getSymbolInternalItem(app, "demo-generic-unit", "symbol-import-body")?.style?.fill).toBe("#ff0000");
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+  });
+
+  it("creates a symbol part from the selected internal symbol item", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".open-symbol-editor-button").click();
+    getButton(app, '[data-symbol-item-id="unit-status-dot"]').click();
+    getInput(app, ".symbol-new-part-input").value = "indicator";
+    getButton(app, ".symbol-create-part-button").click();
+
+    const symbol = getSymbol(app, "demo-generic-unit");
+
+    expect(symbol?.parts?.some((part) => part.id === "indicator")).toBe(true);
+    expect(getSymbolInternalItem(app, "demo-generic-unit", "unit-status-dot")?.partId).toBe("indicator");
+  });
+
   it("creates a first symbol from the symbol editor workspace", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
@@ -2160,6 +2220,53 @@ function getPayloadGroupChild(
   childId: string
 ): { id: string; type?: string } | undefined {
   return getPayloadItem(app, groupId)?.children?.find((child) => child.id === childId);
+}
+
+type TestSymbol = {
+  id: string;
+  parts?: Array<{ id: string }>;
+  items: TestItem[];
+};
+
+type TestItem = {
+  id: string;
+  type?: string;
+  partId?: string;
+  style?: Record<string, unknown>;
+  children?: TestItem[];
+};
+
+function getSymbol(app: HTMLElement, symbolId: string): TestSymbol | undefined {
+  const parsed = JSON.parse(getTextarea(app, ".json-input").value) as {
+    symbols?: TestSymbol[];
+  };
+  return parsed.symbols?.find((symbol) => symbol.id === symbolId);
+}
+
+function getSymbolInternalItem(app: HTMLElement, symbolId: string, itemId: string): TestItem | undefined {
+  const symbol = getSymbol(app, symbolId);
+
+  if (!symbol) {
+    return undefined;
+  }
+
+  return findNestedTestItem(symbol.items, itemId);
+}
+
+function findNestedTestItem(items: TestItem[], itemId: string): TestItem | undefined {
+  for (const item of items) {
+    if (item.id === itemId) {
+      return item;
+    }
+
+    const child = item.children ? findNestedTestItem(item.children, itemId) : undefined;
+
+    if (child) {
+      return child;
+    }
+  }
+
+  return undefined;
 }
 
 function getPositionedPayloadItem(
