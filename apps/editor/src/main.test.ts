@@ -164,6 +164,9 @@ describe("editor app", () => {
     const symbolSelect = app.querySelector<HTMLSelectElement>(".symbol-select");
 
     expect(workspace?.hidden).toBe(false);
+    expect(app.querySelector<HTMLElement>(".symbol-start-dialog")?.hidden).toBe(false);
+    getButton(app, ".symbol-start-edit-button").click();
+    expect(app.querySelector<HTMLElement>(".symbol-start-dialog")?.hidden).toBe(true);
     expect(symbolSelect?.value).toBe("demo-generic-unit");
     expect(app.querySelector(".symbol-preview-surface svg")).not.toBeNull();
     expect(getButton(app, '[data-symbol-item-id="unit-box"]').textContent).toContain("unit-box (rect, body)");
@@ -186,6 +189,7 @@ describe("editor app", () => {
     const app = createEditorApp(documentRef);
 
     getButton(app, ".open-symbol-editor-button").click();
+    getButton(app, ".symbol-start-edit-button").click();
     getButton(app, '[data-symbol-item-id="unit-status-dot"]').click();
 
     expect(getButton(app, '[data-symbol-item-id="unit-status-dot"]').getAttribute("aria-pressed")).toBe("true");
@@ -199,6 +203,7 @@ describe("editor app", () => {
     const app = createEditorApp(documentRef);
 
     getButton(app, ".open-symbol-editor-button").click();
+    getButton(app, ".symbol-start-edit-button").click();
     getButton(app, ".symbol-file-menu-button").click();
     getButton(app, ".open-symbol-svg-import-dialog-button").click();
     getTextarea(app, ".symbol-svg-import-input").value = `
@@ -244,6 +249,7 @@ describe("editor app", () => {
     const app = createEditorApp(documentRef);
 
     getButton(app, ".open-symbol-editor-button").click();
+    getButton(app, ".symbol-start-edit-button").click();
     getButton(app, '[data-symbol-item-id="unit-status-dot"]').click();
     getInput(app, ".symbol-new-part-input").value = "indicator";
     getButton(app, ".symbol-create-part-button").click();
@@ -252,6 +258,144 @@ describe("editor app", () => {
 
     expect(symbol?.parts?.some((part) => part.id === "indicator")).toBe(true);
     expect(getSymbolInternalItem(app, "demo-generic-unit", "unit-status-dot")?.partId).toBe("indicator");
+  });
+
+  it("edits symbol parts and slots from the symbol editor manager", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".open-symbol-editor-button").click();
+    getButton(app, ".symbol-start-edit-button").click();
+
+    const bodyLabel = getInput(app, '.symbol-part-row[data-part-id="body"] .symbol-part-label-input');
+    bodyLabel.value = "Main body";
+    bodyLabel.dispatchEvent(new Event("change"));
+
+    expect(getSymbol(app, "demo-generic-unit")?.parts?.find((part) => part.id === "body")?.label).toBe("Main body");
+
+    getInput(app, ".symbol-add-slot-input").value = "temperature";
+    getButton(app, ".symbol-add-slot-button").click();
+
+    expect(getSymbol(app, "demo-generic-unit")?.entitySlots?.some((slot) => slot.id === "temperature")).toBe(true);
+
+    const temperatureLabel = getInput(app, '.symbol-slot-row[data-slot-id="temperature"] .symbol-slot-label-input');
+    temperatureLabel.value = "Temperature";
+    temperatureLabel.dispatchEvent(new Event("change"));
+
+    expect(getSymbol(app, "demo-generic-unit")?.entitySlots?.find((slot) => slot.id === "temperature")?.label).toBe("Temperature");
+    expect(app.querySelector('.symbol-slot-row[data-slot-id="temperature"]')?.textContent).toContain("No effect configured");
+    expect(app.querySelector('.symbol-slot-row[data-slot-id="temperature"] .symbol-slot-simulation-input')).not.toBeNull();
+    expect(app.querySelector<HTMLSelectElement>('.symbol-slot-row[data-slot-id="temperature"] .symbol-slot-type-select')?.value).toBe("temperature");
+
+    getInput(app, ".symbol-add-slot-input").value = "speed_percent";
+    getButton(app, ".symbol-add-slot-button").click();
+
+    expect(app.querySelector('.symbol-slot-row[data-slot-id="speed_percent"] .symbol-slot-simulation-slider')).not.toBeNull();
+
+    const speedType = app.querySelector<HTMLSelectElement>('.symbol-slot-row[data-slot-id="speed_percent"] .symbol-slot-type-select');
+    expect(speedType?.value).toBe("percent");
+    speedType!.value = "text";
+    speedType!.dispatchEvent(new Event("change"));
+
+    expect(getSymbol(app, "demo-generic-unit")?.entitySlots?.find((slot) => slot.id === "speed_percent")?.valueType).toBe("text");
+    expect(app.querySelector('.symbol-slot-row[data-slot-id="speed_percent"] .symbol-slot-simulation-input')).not.toBeNull();
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+  });
+
+  it("simulates symbol slot states in the symbol preview", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".open-symbol-editor-button").click();
+    getButton(app, ".symbol-start-edit-button").click();
+
+    expect(app.querySelector('.symbol-preview-surface [data-id="unit-box"]')?.getAttribute("fill")).not.toBe("var(--error-color)");
+    expect(app.querySelector('.symbol-preview-surface [data-id="unit-status-dot"]')?.getAttribute("data-part-animation")).toBeNull();
+
+    expect(app.querySelector('.symbol-slot-row[data-slot-id="alarm"]')?.textContent).toContain("Affects: body style when alarm = on");
+    getButton(app, '.symbol-slot-row[data-slot-id="alarm"] .symbol-slot-simulation-on-button').click();
+
+    expect(app.querySelector('.symbol-preview-surface [data-id="unit-box"]')?.getAttribute("fill")).toBe("var(--error-color)");
+
+    getButton(app, '.symbol-slot-row[data-slot-id="running"] .symbol-slot-simulation-on-button').click();
+
+    expect(app.querySelector('.symbol-preview-surface [data-id="unit-status-dot"]')?.getAttribute("data-part-animation")).toBe("blink");
+  });
+
+  it("zooms, pans, clears, drags, and deletes symbol items in the symbol editor preview", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".open-symbol-editor-button").click();
+    getButton(app, ".symbol-start-edit-button").click();
+
+    const svg = app.querySelector<SVGSVGElement>(".symbol-preview-surface svg");
+    const statusDot = app.querySelector<Element>('.symbol-preview-surface [data-id="unit-status-dot"]');
+
+    if (!svg || !statusDot) {
+      throw new Error("symbol preview target missing");
+    }
+
+    setSvgBounds(svg, { left: 0, top: 0, width: 320, height: 280 });
+    const wheelEvent = new MouseEvent("wheel", {
+      clientX: 160,
+      clientY: 140,
+      bubbles: true,
+      cancelable: true
+    });
+    Object.defineProperty(wheelEvent, "deltaY", { value: -100 });
+    svg.dispatchEvent(wheelEvent);
+
+    expect(svg.getAttribute("viewBox")?.endsWith("57.6 50.4")).toBe(true);
+
+    getButton(app, ".symbol-pan-tool-button").click();
+    svg.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 100, clientY: 80, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 120, clientY: 110 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(svg.getAttribute("viewBox")?.endsWith("57.6 50.4")).toBe(true);
+
+    getButton(app, ".symbol-reset-view-button").click();
+    expect(svg.getAttribute("viewBox")).toBe("0 0 64 56");
+
+    getButton(app, ".symbol-select-tool-button").click();
+    statusDot.dispatchEvent(new MouseEvent("mousedown", { button: 0, clientX: 48, clientY: 12, bubbles: true }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 58, clientY: 22 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(getSymbolInternalItem(app, "demo-generic-unit", "unit-status-dot")?.cx).toBe(54);
+    expect(getSymbolInternalItem(app, "demo-generic-unit", "unit-status-dot")?.cy).toBe(14);
+
+    getButton(app, ".symbol-clear-selection-button").click();
+    expect(getButton(app, ".symbol-delete-item-button").disabled).toBe(true);
+
+    getButton(app, '[data-symbol-item-id="unit-status-dot"]').click();
+    getButton(app, ".symbol-delete-item-button").click();
+
+    expect(getSymbolInternalItem(app, "demo-generic-unit", "unit-status-dot")).toBeUndefined();
+  });
+
+  it("multi-selects and deletes symbol internal items", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".open-symbol-editor-button").click();
+    getButton(app, ".symbol-start-edit-button").click();
+
+    getButton(app, '[data-symbol-item-id="unit-box"]').click();
+    getButton(app, '[data-symbol-item-id="unit-label"]').dispatchEvent(new MouseEvent("click", { ctrlKey: true, bubbles: true }));
+
+    expect(app.querySelector(".symbol-editor-inspector")?.textContent).toContain("2 internal items selected");
+
+    getButton(app, ".symbol-delete-item-button").click();
+
+    expect(getSymbolInternalItem(app, "demo-generic-unit", "unit-box")).toBeUndefined();
+    expect(getSymbolInternalItem(app, "demo-generic-unit", "unit-label")).toBeUndefined();
+
+    getButton(app, ".symbol-undo-button").click();
+
+    expect(getSymbolInternalItem(app, "demo-generic-unit", "unit-box")).toBeDefined();
+    expect(getSymbolInternalItem(app, "demo-generic-unit", "unit-label")).toBeDefined();
   });
 
   it("creates a first symbol from the symbol editor workspace", () => {
@@ -267,6 +411,7 @@ describe("editor app", () => {
     jsonInput.value = formatPayloadJson(payloadWithoutSymbols);
     jsonInput.dispatchEvent(new Event("input"));
     getButton(app, ".open-symbol-editor-button").click();
+    getButton(app, ".symbol-start-edit-button").click();
 
     expect(app.querySelector<HTMLElement>(".symbol-editor-inspector")?.textContent).toContain("Create a symbol");
 
@@ -287,8 +432,7 @@ describe("editor app", () => {
     const beforeTopLevelCount = getDemoPayload().items.length;
 
     getButton(app, ".open-symbol-editor-button").click();
-    getButton(app, ".symbol-file-menu-button").click();
-    getButton(app, ".open-symbol-svg-import-dialog-button").click();
+    getButton(app, ".symbol-start-import-button").click();
     getTextarea(app, ".symbol-svg-import-input").value = `
       <svg viewBox="0 0 100 80">
         <path id="symbol-import-body" d="M 10 10 H 90 V 60 H 10 Z" fill="#000000" />
@@ -301,7 +445,7 @@ describe("editor app", () => {
       items: Array<{ id: string }>;
       symbols?: Array<{ id: string; items: Array<{ id: string; type: string; children?: Array<{ id: string; type: string }> }> }>;
     };
-    const symbol = parsed.symbols?.find((candidate) => candidate.id === "demo-generic-unit");
+    const symbol = parsed.symbols?.find((candidate) => candidate.id === "imported-symbol-1");
     const importedGroup = symbol?.items.find((item) => item.id === "imported-svg-1");
 
     expect(parsed.items).toHaveLength(beforeTopLevelCount);
@@ -310,7 +454,7 @@ describe("editor app", () => {
     expect(getButton(app, '[data-symbol-item-id="imported-svg-1"]').getAttribute("aria-pressed")).toBe("true");
     expect(app.querySelector(".symbol-preview-surface [data-id='symbol-import-body']")).not.toBeNull();
     expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
-    expect(app.querySelector<HTMLElement>(".symbol-workspace-status")?.textContent).toContain("Imported 1 SVG item(s) into demo-generic-unit");
+    expect(app.querySelector<HTMLElement>(".symbol-workspace-status")?.textContent).toContain("Imported 1 SVG item(s) into imported-symbol-1");
     expect(app.querySelector<HTMLElement>(".symbol-import-dialog")?.hidden).toBe(true);
   });
 
@@ -321,6 +465,7 @@ describe("editor app", () => {
     const originalJson = jsonInput.value;
 
     getButton(app, ".open-symbol-editor-button").click();
+    getButton(app, ".symbol-start-edit-button").click();
     getButton(app, ".symbol-file-menu-button").click();
     getButton(app, ".open-symbol-svg-import-dialog-button").click();
     getTextarea(app, ".symbol-svg-import-input").value = `
@@ -2224,7 +2369,8 @@ function getPayloadGroupChild(
 
 type TestSymbol = {
   id: string;
-  parts?: Array<{ id: string }>;
+  parts?: Array<{ id: string; label?: string }>;
+  entitySlots?: Array<{ id: string; label?: string; valueType?: string }>;
   items: TestItem[];
 };
 
@@ -2232,6 +2378,8 @@ type TestItem = {
   id: string;
   type?: string;
   partId?: string;
+  cx?: number;
+  cy?: number;
   style?: Record<string, unknown>;
   children?: TestItem[];
 };

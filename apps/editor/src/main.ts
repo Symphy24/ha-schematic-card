@@ -71,7 +71,17 @@ type EditorElements = {
   openThemeButton: HTMLButtonElement;
   openSymbolEditorButton: HTMLButtonElement;
   symbolWorkspace: HTMLElement;
+  symbolStartDialog: HTMLElement;
+  symbolStartImportButton: HTMLButtonElement;
+  symbolStartEditButton: HTMLButtonElement;
   closeSymbolWorkspaceButton: HTMLButtonElement;
+  symbolSelectToolButton: HTMLButtonElement;
+  symbolPanToolButton: HTMLButtonElement;
+  symbolResetViewButton: HTMLButtonElement;
+  symbolClearSelectionButton: HTMLButtonElement;
+  symbolDeleteItemButton: HTMLButtonElement;
+  symbolUndoButton: HTMLButtonElement;
+  symbolRedoButton: HTMLButtonElement;
   symbolFileMenuButton: HTMLButtonElement;
   symbolFileMenu: HTMLElement;
   symbolImportDialog: HTMLElement;
@@ -80,6 +90,16 @@ type EditorElements = {
   createSymbolButton: HTMLButtonElement;
   symbolSelect: HTMLSelectElement;
   symbolPreviewSurface: HTMLElement;
+  symbolItemsTabButton: HTMLButtonElement;
+  symbolPartsTabButton: HTMLButtonElement;
+  symbolSlotsTabButton: HTMLButtonElement;
+  symbolPrimaryPanel: HTMLElement;
+  symbolDockedPanel: HTMLElement;
+  symbolDockedPanelTab: HTMLButtonElement;
+  symbolTabDropZone: HTMLElement;
+  symbolItemsSection: HTMLElement;
+  symbolPartsSection: HTMLElement;
+  symbolSlotsSection: HTMLElement;
   symbolItemList: HTMLElement;
   symbolPartsList: HTMLElement;
   symbolSlotsList: HTMLElement;
@@ -127,14 +147,26 @@ type EditorElements = {
   selectedItemIds: string[];
   activeSymbolId?: string;
   selectedSymbolInternalItemId?: string;
+  selectedSymbolInternalItemIds: string[];
+  symbolSimulationStates: Record<string, string>;
+  symbolPreviewViewBox?: PreviewViewBox;
+  symbolPanMode: boolean;
+  symbolPanState?: PreviewPanState;
+  symbolDragState?: SymbolDragState;
+  symbolSelectionRectState?: SelectionRectState;
+  symbolSelectionRectSuppressNextClick?: boolean;
+  symbolWorkspaceStarted: boolean;
   gridEnabled: boolean;
   snapEnabled: boolean;
   gridSize: number;
   panMode: boolean;
   previewViewBox?: PreviewViewBox;
   activeTab: EditorTabName;
+  activeSymbolTab: SymbolEditorTabName;
   dockedTab?: EditorTabName;
   draggedTab?: EditorTabName;
+  dockedSymbolTab?: SymbolEditorTabName;
+  draggedSymbolTab?: SymbolEditorTabName;
   undoStack: EditorSnapshot[];
   redoStack: EditorSnapshot[];
   dragState?: PreviewDragState;
@@ -209,6 +241,7 @@ type MirrorAction = "horizontal" | "vertical";
 type AddItemType = "text" | "rect" | "circle" | "polyline";
 
 type EditorTabName = "items" | "inspector" | "json";
+type SymbolEditorTabName = "items" | "parts" | "slots";
 
 type StyleFieldName = keyof SchematicStyle;
 
@@ -238,6 +271,8 @@ type SymbolInternalItemEntry = {
   item: SchematicItem;
   depth: number;
 };
+
+type SymbolSlotValueType = NonNullable<NonNullable<SchematicSymbolDefinition["entitySlots"]>[number]["valueType"]>;
 
 type StyleSliderConfig = {
   min: number;
@@ -352,6 +387,8 @@ type EditorSnapshot = {
   json: string;
   selectedItemId?: string;
   selectedItemIds?: string[];
+  selectedSymbolInternalItemId?: string;
+  selectedSymbolInternalItemIds?: string[];
 };
 
 type SvgCoordinateSpace = {
@@ -362,6 +399,14 @@ type SvgCoordinateSpace = {
     width: number;
     height: number;
   };
+};
+
+type SymbolDragState = {
+  itemId: string;
+  startPoint: SchematicPoint;
+  startItems: Array<{ itemId: string; item: SchematicItem }>;
+  coordinateSpace: SvgCoordinateSpace;
+  historyRecorded: boolean;
 };
 
 export function getDemoPayload(): SchematicPayload {
@@ -431,7 +476,17 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     openThemeButton: getRequiredElement(toolbar, ".open-theme-button", HTMLButtonElement),
     openSymbolEditorButton: getRequiredElement(toolbar, ".open-symbol-editor-button", HTMLButtonElement),
     symbolWorkspace,
+    symbolStartDialog: getRequiredElement(symbolWorkspace, ".symbol-start-dialog", HTMLElement),
+    symbolStartImportButton: getRequiredElement(symbolWorkspace, ".symbol-start-import-button", HTMLButtonElement),
+    symbolStartEditButton: getRequiredElement(symbolWorkspace, ".symbol-start-edit-button", HTMLButtonElement),
     closeSymbolWorkspaceButton: getRequiredElement(symbolWorkspace, ".close-symbol-workspace-button", HTMLButtonElement),
+    symbolSelectToolButton: getRequiredElement(symbolWorkspace, ".symbol-select-tool-button", HTMLButtonElement),
+    symbolPanToolButton: getRequiredElement(symbolWorkspace, ".symbol-pan-tool-button", HTMLButtonElement),
+    symbolResetViewButton: getRequiredElement(symbolWorkspace, ".symbol-reset-view-button", HTMLButtonElement),
+    symbolClearSelectionButton: getRequiredElement(symbolWorkspace, ".symbol-clear-selection-button", HTMLButtonElement),
+    symbolDeleteItemButton: getRequiredElement(symbolWorkspace, ".symbol-delete-item-button", HTMLButtonElement),
+    symbolUndoButton: getRequiredElement(symbolWorkspace, ".symbol-undo-button", HTMLButtonElement),
+    symbolRedoButton: getRequiredElement(symbolWorkspace, ".symbol-redo-button", HTMLButtonElement),
     symbolFileMenuButton: getRequiredElement(symbolWorkspace, ".symbol-file-menu-button", HTMLButtonElement),
     symbolFileMenu: getRequiredElement(symbolWorkspace, ".symbol-file-menu", HTMLElement),
     symbolImportDialog: getRequiredElement(symbolWorkspace, ".symbol-import-dialog", HTMLElement),
@@ -440,6 +495,16 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     createSymbolButton: getRequiredElement(symbolWorkspace, ".create-symbol-button", HTMLButtonElement),
     symbolSelect: getRequiredElement(symbolWorkspace, ".symbol-select", HTMLSelectElement),
     symbolPreviewSurface: getRequiredElement(symbolWorkspace, ".symbol-preview-surface", HTMLElement),
+    symbolItemsTabButton: getRequiredElement(symbolWorkspace, ".symbol-items-tab-button", HTMLButtonElement),
+    symbolPartsTabButton: getRequiredElement(symbolWorkspace, ".symbol-parts-tab-button", HTMLButtonElement),
+    symbolSlotsTabButton: getRequiredElement(symbolWorkspace, ".symbol-slots-tab-button", HTMLButtonElement),
+    symbolPrimaryPanel: getRequiredElement(symbolWorkspace, ".symbol-primary-panel", HTMLElement),
+    symbolDockedPanel: getRequiredElement(symbolWorkspace, ".symbol-docked-panel", HTMLElement),
+    symbolDockedPanelTab: getRequiredElement(symbolWorkspace, ".symbol-docked-panel-tab", HTMLButtonElement),
+    symbolTabDropZone: getRequiredElement(symbolWorkspace, ".symbol-tab-drop-zone", HTMLElement),
+    symbolItemsSection: getRequiredElement(symbolWorkspace, ".symbol-items-section", HTMLElement),
+    symbolPartsSection: getRequiredElement(symbolWorkspace, ".symbol-parts-section", HTMLElement),
+    symbolSlotsSection: getRequiredElement(symbolWorkspace, ".symbol-slots-section", HTMLElement),
     symbolItemList: getRequiredElement(symbolWorkspace, ".symbol-internal-item-list", HTMLElement),
     symbolPartsList: getRequiredElement(symbolWorkspace, ".symbol-parts-list", HTMLElement),
     symbolSlotsList: getRequiredElement(symbolWorkspace, ".symbol-slots-list", HTMLElement),
@@ -484,11 +549,16 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     undoButton: getRequiredElement(toolbar, ".undo-button", HTMLButtonElement),
     redoButton: getRequiredElement(toolbar, ".redo-button", HTMLButtonElement),
     selectedItemIds: [],
+    selectedSymbolInternalItemIds: [],
     gridEnabled: true,
     snapEnabled: true,
     gridSize: DEFAULT_EDITOR_GRID_SIZE,
     panMode: false,
     activeTab: "items",
+    activeSymbolTab: "items",
+    symbolSimulationStates: {},
+    symbolPanMode: false,
+    symbolWorkspaceStarted: false,
     undoStack: [],
     redoStack: []
   };
@@ -504,6 +574,15 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.openThemeButton.addEventListener("click", () => openTransferPanel(elements, "theme"));
   elements.openSymbolEditorButton.addEventListener("click", () => openSymbolWorkspace(elements, documentRef));
   elements.closeSymbolWorkspaceButton.addEventListener("click", () => closeSymbolWorkspace(elements));
+  elements.symbolStartImportButton.addEventListener("click", () => startSymbolWorkspaceWithImport(elements, documentRef));
+  elements.symbolStartEditButton.addEventListener("click", () => startSymbolWorkspaceWithExistingSymbol(elements, documentRef));
+  elements.symbolSelectToolButton.addEventListener("click", () => toggleSymbolPanMode(elements, false));
+  elements.symbolPanToolButton.addEventListener("click", () => toggleSymbolPanMode(elements, true));
+  elements.symbolResetViewButton.addEventListener("click", () => resetSymbolPreviewView(elements));
+  elements.symbolClearSelectionButton.addEventListener("click", () => clearSymbolSelection(elements, documentRef));
+  elements.symbolDeleteItemButton.addEventListener("click", () => deleteSelectedSymbolInternalItem(elements, documentRef));
+  elements.symbolUndoButton.addEventListener("click", () => undoEditorChange(elements, documentRef));
+  elements.symbolRedoButton.addEventListener("click", () => redoEditorChange(elements, documentRef));
   elements.symbolFileMenuButton.addEventListener("click", () => toggleSymbolFileMenu(elements));
   elements.createSymbolButton.addEventListener("click", () => createSymbolFromWorkspace(elements, documentRef));
   elements.symbolSvgImportButton.addEventListener("click", () => importSvgIntoSelectedSymbol(elements, documentRef));
@@ -513,7 +592,8 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   setupSymbolSvgDropZone(elements);
   elements.symbolSelect.addEventListener("change", () => {
     elements.activeSymbolId = elements.symbolSelect.value || undefined;
-    elements.selectedSymbolInternalItemId = undefined;
+    setSelectedSymbolInternalItems(elements, []);
+    delete elements.symbolPreviewViewBox;
     renderSymbolWorkspace(elements, documentRef);
   });
   elements.selectToolButton.addEventListener("click", () => activateSelectTool(elements, documentRef));
@@ -559,6 +639,10 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.inspectorTabButton.addEventListener("click", () => showEditorTab(elements, "inspector"));
   elements.jsonTabButton.addEventListener("click", () => showEditorTab(elements, "json"));
   setupEditorTabDocking(elements);
+  elements.symbolItemsTabButton.addEventListener("click", () => showSymbolEditorTab(elements, "items"));
+  elements.symbolPartsTabButton.addEventListener("click", () => showSymbolEditorTab(elements, "parts"));
+  elements.symbolSlotsTabButton.addEventListener("click", () => showSymbolEditorTab(elements, "slots"));
+  setupSymbolEditorTabDocking(elements);
   shell.addEventListener("keydown", (event) => handleEditorKeyDown(elements, event, documentRef));
 
   shell.append(toolbar, jsonPane, resizeHandle, previewPane, transferPanel, symbolWorkspace);
@@ -623,7 +707,9 @@ function getCurrentSnapshot(elements: EditorElements): EditorSnapshot {
   return {
     json: elements.jsonInput.value,
     selectedItemId: elements.selectedItemId,
-    selectedItemIds: [...elements.selectedItemIds]
+    selectedItemIds: [...elements.selectedItemIds],
+    selectedSymbolInternalItemId: elements.selectedSymbolInternalItemId,
+    selectedSymbolInternalItemIds: [...elements.selectedSymbolInternalItemIds]
   };
 }
 
@@ -670,9 +756,16 @@ function redoEditorChange(elements: EditorElements, documentRef: Document): void
 function applyEditorSnapshot(elements: EditorElements, snapshot: EditorSnapshot, documentRef: Document): void {
   elements.jsonInput.value = snapshot.json;
   setSelectedItems(elements, snapshot.selectedItemIds ?? (snapshot.selectedItemId ? [snapshot.selectedItemId] : []), snapshot.selectedItemId);
+  setSelectedSymbolInternalItems(
+    elements,
+    snapshot.selectedSymbolInternalItemIds ?? (snapshot.selectedSymbolInternalItemId ? [snapshot.selectedSymbolInternalItemId] : []),
+    snapshot.selectedSymbolInternalItemId
+  );
   delete elements.dragState;
   delete elements.pointDragState;
   delete elements.drawState;
+  delete elements.symbolDragState;
+  delete elements.symbolSelectionRectState;
   closePolylineContextMenu(elements);
   updateDrawControls(elements);
   updateFromJson(elements, documentRef);
@@ -682,6 +775,8 @@ function applyEditorSnapshot(elements: EditorElements, snapshot: EditorSnapshot,
 function updateHistoryControls(elements: EditorElements): void {
   elements.undoButton.disabled = elements.undoStack.length === 0;
   elements.redoButton.disabled = elements.redoStack.length === 0;
+  elements.symbolUndoButton.disabled = elements.undoStack.length === 0;
+  elements.symbolRedoButton.disabled = elements.redoStack.length === 0;
 }
 
 function activateSelectTool(elements: EditorElements, documentRef: Document): void {
@@ -981,6 +1076,160 @@ function undockEditorTab(elements: EditorElements, tab: EditorTabName): void {
   delete elements.dockedTab;
   elements.activeTab = tab;
   updateEditorTabs(elements);
+}
+
+function showSymbolEditorTab(elements: EditorElements, tab: SymbolEditorTabName): void {
+  if (elements.dockedSymbolTab === tab) {
+    undockSymbolEditorTab(elements, tab);
+  }
+
+  elements.activeSymbolTab = tab;
+  updateSymbolEditorTabs(elements);
+}
+
+function updateSymbolEditorTabs(elements: EditorElements): void {
+  const tabs: SymbolEditorTabName[] = ["items", "parts", "slots"];
+  const buttons = {
+    items: elements.symbolItemsTabButton,
+    parts: elements.symbolPartsTabButton,
+    slots: elements.symbolSlotsTabButton
+  };
+  const sections = {
+    items: elements.symbolItemsSection,
+    parts: elements.symbolPartsSection,
+    slots: elements.symbolSlotsSection
+  };
+
+  for (const tab of tabs) {
+    const active = elements.activeSymbolTab === tab;
+    const docked = elements.dockedSymbolTab === tab;
+    buttons[tab].setAttribute("aria-selected", String(active));
+    buttons[tab].dataset.docked = String(docked);
+    sections[tab].hidden = !active && !docked;
+
+    if (docked && sections[tab].parentElement !== elements.symbolDockedPanel) {
+      elements.symbolDockedPanel.append(sections[tab]);
+    } else if (!docked && sections[tab].parentElement !== elements.symbolPrimaryPanel) {
+      elements.symbolPrimaryPanel.append(sections[tab]);
+    }
+  }
+
+  elements.symbolDockedPanel.hidden = elements.dockedSymbolTab === undefined;
+  elements.symbolDockedPanelTab.hidden = elements.dockedSymbolTab === undefined;
+  elements.symbolDockedPanelTab.textContent = elements.dockedSymbolTab ? getSymbolEditorTabLabel(elements.dockedSymbolTab) : "";
+  elements.symbolDockedPanelTab.dataset.symbolTab = elements.dockedSymbolTab;
+}
+
+function setupSymbolEditorTabDocking(elements: EditorElements): void {
+  for (const button of [elements.symbolItemsTabButton, elements.symbolPartsTabButton, elements.symbolSlotsTabButton]) {
+    button.draggable = true;
+    button.addEventListener("dragstart", (event) => {
+      elements.draggedSymbolTab = getSymbolTabNameFromButton(button);
+      event.dataTransfer?.setData("text/plain", elements.draggedSymbolTab);
+    });
+    button.addEventListener("dragend", () => {
+      delete elements.draggedSymbolTab;
+      elements.symbolTabDropZone.dataset.dropTarget = "false";
+    });
+  }
+
+  elements.symbolDockedPanelTab.draggable = true;
+  elements.symbolDockedPanelTab.addEventListener("dragstart", (event) => {
+    if (!elements.dockedSymbolTab) {
+      return;
+    }
+
+    elements.draggedSymbolTab = elements.dockedSymbolTab;
+    event.dataTransfer?.setData("text/plain", elements.draggedSymbolTab);
+  });
+  elements.symbolDockedPanelTab.addEventListener("dragend", () => {
+    delete elements.draggedSymbolTab;
+    elements.symbolTabDropZone.dataset.dropTarget = "false";
+  });
+
+  elements.symbolTabDropZone.addEventListener("dragover", (event) => {
+    if (!elements.draggedSymbolTab || elements.draggedSymbolTab === elements.dockedSymbolTab) {
+      return;
+    }
+
+    event.preventDefault();
+    elements.symbolTabDropZone.dataset.dropTarget = "true";
+  });
+  elements.symbolTabDropZone.addEventListener("dragleave", () => {
+    elements.symbolTabDropZone.dataset.dropTarget = "false";
+  });
+  elements.symbolTabDropZone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    const tab = elements.draggedSymbolTab;
+    elements.symbolTabDropZone.dataset.dropTarget = "false";
+
+    if (!tab || tab === elements.dockedSymbolTab) {
+      return;
+    }
+
+    dockSymbolEditorTab(elements, tab);
+  });
+
+  const tabRow = elements.symbolItemsTabButton.parentElement;
+  tabRow?.addEventListener("dragover", (event) => {
+    if (elements.draggedSymbolTab && elements.draggedSymbolTab === elements.dockedSymbolTab) {
+      event.preventDefault();
+      tabRow.dataset.dropTarget = "true";
+    }
+  });
+  tabRow?.addEventListener("dragleave", () => {
+    tabRow.dataset.dropTarget = "false";
+  });
+  tabRow?.addEventListener("drop", (event) => {
+    event.preventDefault();
+    tabRow.dataset.dropTarget = "false";
+
+    if (elements.draggedSymbolTab) {
+      undockSymbolEditorTab(elements, elements.draggedSymbolTab);
+    }
+  });
+
+  updateSymbolEditorTabs(elements);
+}
+
+function getSymbolTabNameFromButton(button: HTMLButtonElement): SymbolEditorTabName {
+  const tab = button.dataset.symbolTab;
+  return tab === "parts" || tab === "slots" ? tab : "items";
+}
+
+function getSymbolEditorTabLabel(tab: SymbolEditorTabName): string {
+  switch (tab) {
+    case "items":
+      return "Items";
+    case "parts":
+      return "Parts";
+    case "slots":
+      return "Entity Slots";
+  }
+}
+
+function dockSymbolEditorTab(elements: EditorElements, tab: SymbolEditorTabName): void {
+  if (elements.dockedSymbolTab && elements.dockedSymbolTab !== tab) {
+    undockSymbolEditorTab(elements, elements.dockedSymbolTab);
+  }
+
+  elements.dockedSymbolTab = tab;
+
+  if (elements.activeSymbolTab === tab) {
+    elements.activeSymbolTab = tab === "items" ? "parts" : "items";
+  }
+
+  updateSymbolEditorTabs(elements);
+}
+
+function undockSymbolEditorTab(elements: EditorElements, tab: SymbolEditorTabName): void {
+  if (elements.dockedSymbolTab !== tab) {
+    return;
+  }
+
+  delete elements.dockedSymbolTab;
+  elements.activeSymbolTab = tab;
+  updateSymbolEditorTabs(elements);
 }
 
 function updateGridSize(elements: EditorElements, documentRef: Document): void {
@@ -1663,6 +1912,25 @@ function toggleSelectedItem(elements: EditorElements, itemId: string): void {
   }
 
   setSelectedItems(elements, [...elements.selectedItemIds, itemId], itemId);
+}
+
+function setSelectedSymbolInternalItems(elements: EditorElements, itemIds: string[], primaryItemId?: string): void {
+  elements.selectedSymbolInternalItemIds = itemIds.filter((itemId, index, ids) => ids.indexOf(itemId) === index);
+  elements.selectedSymbolInternalItemId = primaryItemId && elements.selectedSymbolInternalItemIds.includes(primaryItemId)
+    ? primaryItemId
+    : elements.selectedSymbolInternalItemIds[0];
+}
+
+function toggleSelectedSymbolInternalItem(elements: EditorElements, itemId: string): void {
+  if (elements.selectedSymbolInternalItemIds.includes(itemId)) {
+    setSelectedSymbolInternalItems(
+      elements,
+      elements.selectedSymbolInternalItemIds.filter((selectedItemId) => selectedItemId !== itemId)
+    );
+    return;
+  }
+
+  setSelectedSymbolInternalItems(elements, [...elements.selectedSymbolInternalItemIds, itemId], itemId);
 }
 
 function getSelectedItemIds(elements: EditorElements, payload: SchematicPayload): string[] {
@@ -3708,11 +3976,50 @@ function updateSelectedSymbolSlotBinding(
 
 function openSymbolWorkspace(elements: EditorElements, documentRef: Document): void {
   elements.symbolWorkspace.hidden = false;
+  if (!elements.symbolWorkspaceStarted) {
+    renderSymbolWorkspaceStart(elements, documentRef);
+    return;
+  }
+
   renderSymbolWorkspace(elements, documentRef);
 }
 
 function closeSymbolWorkspace(elements: EditorElements): void {
   elements.symbolWorkspace.hidden = true;
+}
+
+function renderSymbolWorkspaceStart(elements: EditorElements, documentRef: Document): void {
+  elements.symbolStartDialog.hidden = false;
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+  renderSymbolOptions(elements, result.ok ? result.payload.symbols ?? [] : [], documentRef);
+  renderEmptySymbolWorkspace(elements, "Choose how to start");
+}
+
+function startSymbolWorkspaceWithExistingSymbol(elements: EditorElements, documentRef: Document): void {
+  elements.symbolWorkspaceStarted = true;
+  elements.symbolStartDialog.hidden = true;
+  renderSymbolWorkspace(elements, documentRef);
+}
+
+function startSymbolWorkspaceWithImport(elements: EditorElements, documentRef: Document): void {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderSymbolWorkspaceError(elements, result.message);
+    return;
+  }
+
+  const symbol = createEmptySymbolDefinition(result.payload);
+  recordHistory(elements);
+  result.payload.symbols = [...(result.payload.symbols ?? []), symbol];
+  elements.activeSymbolId = symbol.id;
+  setSelectedSymbolInternalItems(elements, []);
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  updateFromJson(elements, documentRef);
+  elements.symbolWorkspaceStarted = true;
+  elements.symbolStartDialog.hidden = true;
+  renderSymbolWorkspace(elements, documentRef);
+  openSymbolImportDialog(elements.symbolWorkspace);
 }
 
 function toggleSymbolFileMenu(elements: EditorElements): void {
@@ -3793,7 +4100,7 @@ function createSymbolFromWorkspace(elements: EditorElements, documentRef: Docume
   recordHistory(elements);
   result.payload.symbols = [...(result.payload.symbols ?? []), symbol];
   elements.activeSymbolId = symbol.id;
-  elements.selectedSymbolInternalItemId = symbol.items[0]?.id;
+  setSelectedSymbolInternalItems(elements, symbol.items[0] ? [symbol.items[0].id] : []);
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
   renderSymbolWorkspace(elements, documentRef);
@@ -3819,7 +4126,7 @@ function createDefaultSymbolDefinition(payload: SchematicPayload): SchematicSymb
       { id: "body", label: "Body" }
     ],
     entitySlots: [
-      { id: "state", label: "State", description: "Future slot binding target" }
+      { id: "state", label: "State", description: "Future slot binding target", valueType: "binary" }
     ],
     items: [
       {
@@ -3853,6 +4160,28 @@ function createDefaultSymbolDefinition(payload: SchematicPayload): SchematicSymb
         }
       }
     ]
+  };
+}
+
+function createEmptySymbolDefinition(payload: SchematicPayload): SchematicSymbolDefinition {
+  const existingIds = new Set((payload.symbols ?? []).map((symbol) => symbol.id));
+  let index = 1;
+  let id = "imported-symbol-1";
+
+  while (existingIds.has(id)) {
+    index += 1;
+    id = `imported-symbol-${index}`;
+  }
+
+  return {
+    id,
+    viewport: {
+      width: 100,
+      height: 80
+    },
+    parts: [],
+    entitySlots: [],
+    items: []
   };
 }
 
@@ -3892,8 +4221,10 @@ function importSvgIntoSelectedSymbol(elements: EditorElements, documentRef: Docu
     ...symbol.items,
     ...importedSymbolItems
   ];
+  elements.symbolWorkspaceStarted = true;
+  elements.symbolStartDialog.hidden = true;
   elements.activeSymbolId = symbol.id;
-  elements.selectedSymbolInternalItemId = getSymbolInternalItemEntries(importedSymbolItems)[0]?.item.id;
+  setSelectedSymbolInternalItems(elements, [getSymbolInternalItemEntries(importedSymbolItems)[0]?.item.id].filter(Boolean) as string[]);
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef);
   renderSymbolWorkspace(elements, documentRef);
@@ -3922,6 +4253,7 @@ function parseSvgImportForSymbol(
 }
 
 function renderSymbolWorkspace(elements: EditorElements, documentRef: Document): void {
+  elements.symbolStartDialog.hidden = elements.symbolWorkspaceStarted;
   const result = parseAndValidatePayload(elements.jsonInput.value);
 
   if (!result.ok) {
@@ -3991,26 +4323,379 @@ function renderSymbolPreview(elements: EditorElements, symbol: SchematicSymbolDe
         layer: 300,
         symbolId: symbol.id,
         x: 0,
-        y: 0
+        y: 0,
+        slotBindings: getSymbolSimulationSlotBindings(symbol)
       }
     ]
   };
   const svg = renderSchematicSvg(previewPayload, {
     document: documentRef,
-    entityStates: demoEntityStates
+    entityStates: {
+      ...demoEntityStates,
+      ...getSymbolSimulationEntityStates(elements, symbol)
+    }
   });
+  applySymbolPreviewViewBox(elements, svg, previewPayload);
+  renderSelectionRectangle(svg, elements.symbolSelectionRectState, documentRef);
   svg.addEventListener("click", (event) => {
-    const itemId = findSymbolPreviewInternalItemId(elements, symbol, event.target);
-
-    if (!itemId) {
+    if (elements.symbolPanMode) {
       return;
     }
 
-    elements.selectedSymbolInternalItemId = itemId;
+    if (elements.symbolSelectionRectSuppressNextClick) {
+      delete elements.symbolSelectionRectSuppressNextClick;
+      return;
+    }
+
+    const itemId = findSymbolPreviewInternalItemId(elements, symbol, event.target);
+
+    if (!itemId) {
+      clearSymbolSelection(elements, documentRef);
+      return;
+    }
+
+    if (event.ctrlKey || event.metaKey) {
+      toggleSelectedSymbolInternalItem(elements, itemId);
+    } else {
+      setSelectedSymbolInternalItems(elements, [itemId], itemId);
+    }
     renderSymbolWorkspace(elements, documentRef);
   });
+  svg.addEventListener("wheel", (event) => handleSymbolPreviewWheel(elements, event));
+  svg.addEventListener("mousedown", (event) => handleSymbolPreviewMouseDown(elements, symbol, event, documentRef));
   elements.symbolPreviewSurface.replaceChildren(svg);
+  updateSymbolPreviewModeControls(elements);
   highlightSelectedSymbolInternalItem(elements);
+}
+
+function applySymbolPreviewViewBox(elements: EditorElements, svg: SVGSVGElement, payload: SchematicPayload): void {
+  const fallback = {
+    x: 0,
+    y: 0,
+    width: payload.viewport.width,
+    height: payload.viewport.height
+  };
+  setSvgViewBox(svg, elements.symbolPreviewViewBox ?? fallback);
+}
+
+function getSymbolPreviewSvg(elements: EditorElements): SVGSVGElement | undefined {
+  const svg = elements.symbolPreviewSurface.querySelector("svg");
+  return svg && isSvgElement(svg, elements.editorRoot.ownerDocument) ? svg : undefined;
+}
+
+function getCurrentSymbolPreviewViewBox(elements: EditorElements, svg: SVGSVGElement): PreviewViewBox {
+  return elements.symbolPreviewViewBox ?? getSvgIntrinsicViewBox(svg) ?? {
+    x: 0,
+    y: 0,
+    width: 1,
+    height: 1
+  };
+}
+
+function zoomSymbolPreview(elements: EditorElements, scale: number, anchor?: SchematicPoint): void {
+  const svg = getSymbolPreviewSvg(elements);
+
+  if (!svg) {
+    return;
+  }
+
+  const current = getCurrentSymbolPreviewViewBox(elements, svg);
+  const nextWidth = current.width * scale;
+  const nextHeight = current.height * scale;
+  const centerX = anchor?.x ?? current.x + current.width / 2;
+  const centerY = anchor?.y ?? current.y + current.height / 2;
+  const anchorRatioX = (centerX - current.x) / current.width;
+  const anchorRatioY = (centerY - current.y) / current.height;
+
+  elements.symbolPreviewViewBox = {
+    x: centerX - nextWidth * anchorRatioX,
+    y: centerY - nextHeight * anchorRatioY,
+    width: nextWidth,
+    height: nextHeight
+  };
+  setSvgViewBox(svg, elements.symbolPreviewViewBox);
+}
+
+function handleSymbolPreviewWheel(elements: EditorElements, event: WheelEvent): void {
+  const svg = event.currentTarget;
+
+  if (!isSvgElement(svg, elements.editorRoot.ownerDocument)) {
+    return;
+  }
+
+  event.preventDefault();
+  zoomSymbolPreview(elements, event.deltaY < 0 ? 0.9 : 1.1, getSvgPoint(getSvgCoordinateSpace(svg), event));
+}
+
+function resetSymbolPreviewView(elements: EditorElements): void {
+  const svg = getSymbolPreviewSvg(elements);
+  delete elements.symbolPreviewViewBox;
+
+  if (!svg) {
+    return;
+  }
+
+  const fallback = getSvgDefaultViewBox(svg);
+
+  if (fallback) {
+    setSvgViewBox(svg, fallback);
+  }
+}
+
+function toggleSymbolPanMode(elements: EditorElements, enabled: boolean): void {
+  elements.symbolPanMode = enabled;
+  updateSymbolPreviewModeControls(elements);
+}
+
+function updateSymbolPreviewModeControls(elements: EditorElements): void {
+  elements.symbolSelectToolButton.setAttribute("aria-pressed", String(!elements.symbolPanMode));
+  elements.symbolPanToolButton.setAttribute("aria-pressed", String(elements.symbolPanMode));
+  elements.symbolPanToolButton.textContent = elements.symbolPanMode ? "✋" : "🤚";
+  elements.symbolPreviewSurface.dataset.panMode = String(elements.symbolPanMode);
+  elements.symbolDeleteItemButton.disabled = elements.selectedSymbolInternalItemIds.length === 0;
+  elements.symbolClearSelectionButton.disabled = elements.selectedSymbolInternalItemIds.length === 0;
+}
+
+function handleSymbolPreviewMouseDown(
+  elements: EditorElements,
+  symbol: SchematicSymbolDefinition,
+  event: MouseEvent,
+  documentRef: Document
+): void {
+  const svg = event.currentTarget;
+
+  if (!isSvgElement(svg, documentRef) || event.button !== 0) {
+    return;
+  }
+
+  const coordinateSpace = getSvgCoordinateSpace(svg);
+  const startPoint = getSvgPoint(coordinateSpace, event);
+
+  if (elements.symbolPanMode) {
+    elements.symbolPanState = {
+      svg,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startViewBox: getCurrentSymbolPreviewViewBox(elements, svg),
+      moved: false
+    };
+    elements.symbolPreviewSurface.dataset.panning = "true";
+    event.preventDefault();
+
+    const onMove = (moveEvent: MouseEvent): void => {
+      panSymbolPreview(elements, moveEvent);
+    };
+    const stopPan = (): void => {
+      documentRef.removeEventListener("mousemove", onMove);
+      documentRef.removeEventListener("mouseup", stopPan);
+      delete elements.symbolPanState;
+      delete elements.symbolPreviewSurface.dataset.panning;
+    };
+
+    documentRef.addEventListener("mousemove", onMove);
+    documentRef.addEventListener("mouseup", stopPan);
+    return;
+  }
+
+  const itemId = findSymbolPreviewInternalItemId(elements, symbol, event.target);
+  const item = findSymbolInternalItem(symbol, itemId);
+
+  if (!item) {
+    startSymbolSelectionRectangle(elements, symbol, svg, coordinateSpace, startPoint, event, documentRef);
+    return;
+  }
+
+  if (event.ctrlKey || event.metaKey) {
+    toggleSelectedSymbolInternalItem(elements, item.id);
+    renderSymbolWorkspace(elements, documentRef);
+    event.preventDefault();
+    return;
+  }
+
+  const selectedIds = elements.selectedSymbolInternalItemIds.includes(item.id)
+    ? elements.selectedSymbolInternalItemIds
+    : [item.id];
+  setSelectedSymbolInternalItems(elements, selectedIds, item.id);
+  elements.symbolDragState = {
+    itemId: item.id,
+    startPoint,
+    startItems: getSymbolInternalItemEntries(symbol.items)
+      .filter((entry) => selectedIds.includes(entry.item.id))
+      .map((entry) => ({
+        itemId: entry.item.id,
+        item: cloneItem(entry.item)
+      })),
+    coordinateSpace,
+    historyRecorded: false
+  };
+  elements.symbolPreviewSurface.dataset.dragging = "true";
+  renderSymbolWorkspace(elements, documentRef);
+  event.preventDefault();
+
+  const onMove = (moveEvent: MouseEvent): void => {
+    dragSymbolInternalItem(elements, moveEvent, documentRef);
+  };
+  const stopDrag = (): void => {
+    documentRef.removeEventListener("mousemove", onMove);
+    documentRef.removeEventListener("mouseup", stopDrag);
+    delete elements.symbolDragState;
+    delete elements.symbolPreviewSurface.dataset.dragging;
+  };
+
+  documentRef.addEventListener("mousemove", onMove);
+  documentRef.addEventListener("mouseup", stopDrag);
+}
+
+function panSymbolPreview(elements: EditorElements, event: MouseEvent): void {
+  const state = elements.symbolPanState;
+  const svg = getSymbolPreviewSvg(elements);
+
+  if (!state || !svg) {
+    return;
+  }
+
+  const bounds = svg.getBoundingClientRect();
+  const dx = ((event.clientX - state.startClientX) / bounds.width) * state.startViewBox.width;
+  const dy = ((event.clientY - state.startClientY) / bounds.height) * state.startViewBox.height;
+
+  elements.symbolPreviewViewBox = {
+    ...state.startViewBox,
+    x: state.startViewBox.x - dx,
+    y: state.startViewBox.y - dy
+  };
+  setSvgViewBox(svg, elements.symbolPreviewViewBox);
+}
+
+function startSymbolSelectionRectangle(
+  elements: EditorElements,
+  symbol: SchematicSymbolDefinition,
+  svg: SVGSVGElement,
+  coordinateSpace: SvgCoordinateSpace,
+  startPoint: SchematicPoint,
+  event: MouseEvent,
+  documentRef: Document
+): void {
+  elements.symbolSelectionRectState = {
+    svg,
+    startPoint,
+    currentPoint: startPoint,
+    moved: false
+  };
+  event.preventDefault();
+
+  const onMove = (moveEvent: MouseEvent): void => {
+    const state = elements.symbolSelectionRectState;
+
+    if (!state) {
+      return;
+    }
+
+    state.currentPoint = getSvgPoint(coordinateSpace, moveEvent);
+
+    if (
+      Math.abs(moveEvent.clientX - event.clientX) > 3
+      || Math.abs(moveEvent.clientY - event.clientY) > 3
+    ) {
+      state.moved = true;
+      updateSelectionRectangleElement(state, documentRef);
+    }
+  };
+  const stopSelection = (): void => {
+    documentRef.removeEventListener("mousemove", onMove);
+    documentRef.removeEventListener("mouseup", stopSelection);
+
+    const state = elements.symbolSelectionRectState;
+    delete elements.symbolSelectionRectState;
+
+    if (!state?.moved) {
+      return;
+    }
+
+    const selectedIds = findSymbolItemsInSelectionRect(symbol, getNormalizedRect(state.startPoint, state.currentPoint));
+    setSelectedSymbolInternalItems(elements, selectedIds);
+    elements.symbolSelectionRectSuppressNextClick = true;
+    renderSymbolWorkspace(elements, documentRef);
+  };
+
+  documentRef.addEventListener("mousemove", onMove);
+  documentRef.addEventListener("mouseup", stopSelection);
+}
+
+function findSymbolItemsInSelectionRect(symbol: SchematicSymbolDefinition, selectionRect: PreviewViewBox): string[] {
+  return getSymbolInternalItemEntries(symbol.items)
+    .filter((entry) => {
+      const bounds = getItemBounds(entry.item);
+      return bounds ? rectsIntersect(selectionRect, bounds) : false;
+    })
+    .map((entry) => entry.item.id);
+}
+
+function dragSymbolInternalItem(elements: EditorElements, event: MouseEvent, documentRef: Document): void {
+  const state = elements.symbolDragState;
+
+  if (!state) {
+    return;
+  }
+
+  const currentPoint = getSvgPoint(state.coordinateSpace, event);
+  const dx = currentPoint.x - state.startPoint.x;
+  const dy = currentPoint.y - state.startPoint.y;
+  const edit = getActiveSymbolEdit(elements);
+
+  if (!edit.ok) {
+    renderSymbolWorkspaceError(elements, edit.message);
+    return;
+  }
+
+  const startItems = state.startItems
+    .map((startItem) => ({
+      startItem,
+      item: findSymbolInternalItem(edit.symbol, startItem.itemId)
+    }))
+    .filter((entry): entry is { startItem: { itemId: string; item: SchematicItem }; item: SchematicItem } => entry.item !== undefined);
+
+  if (startItems.length === 0) {
+    showSymbolWorkspaceError(elements, "Selected symbol items were not found");
+    return;
+  }
+
+  if (!state.historyRecorded) {
+    recordHistory(elements);
+    state.historyRecorded = true;
+  }
+
+  for (const { startItem, item } of startItems) {
+    moveSymbolItemFromStart(item, startItem.item, dx, dy);
+  }
+
+  elements.jsonInput.value = formatPayloadJson(edit.payload);
+  updateFromJson(elements, documentRef, { renderTools: false });
+  renderSymbolWorkspace(elements, documentRef);
+  showSymbolWorkspaceStatus(elements, startItems.length === 1 ? `Moved ${startItems[0].item.id}` : `Moved ${startItems.length} symbol items`);
+}
+
+function getSymbolSimulationSlotBindings(symbol: SchematicSymbolDefinition): Record<string, string> | undefined {
+  const slots = symbol.entitySlots ?? [];
+
+  if (slots.length === 0) {
+    return undefined;
+  }
+
+  return Object.fromEntries(slots.map((slot) => [slot.id, getSymbolSimulationEntityId(slot.id)]));
+}
+
+function getSymbolSimulationEntityStates(
+  elements: EditorElements,
+  symbol: SchematicSymbolDefinition
+): Record<string, string> {
+  return Object.fromEntries((symbol.entitySlots ?? []).map((slot) => [
+    getSymbolSimulationEntityId(slot.id),
+    elements.symbolSimulationStates[slot.id] ?? "off"
+  ]));
+}
+
+function getSymbolSimulationEntityId(slotId: string): string {
+  return `__hsc_symbol_sim_${slotId}`;
 }
 
 function findSymbolPreviewInternalItemId(
@@ -4047,20 +4732,59 @@ function renderSymbolInternalItems(
     return;
   }
 
-  for (const { item, depth } of entries) {
-    const button = documentRef.createElement("button");
-    button.className = "symbol-internal-item-button";
-    button.type = "button";
-    button.dataset.symbolItemId = item.id;
-    button.setAttribute("aria-pressed", String(elements.selectedSymbolInternalItemId === item.id));
-    button.style.paddingLeft = `${10 + depth * 16}px`;
-    button.textContent = `${item.id} (${item.type}${item.partId ? `, ${item.partId}` : ""})`;
-    button.addEventListener("click", () => {
-      elements.selectedSymbolInternalItemId = item.id;
-      renderSymbolWorkspace(elements, documentRef);
-    });
-    elements.symbolItemList.append(button);
+  const partIds = (symbol.parts ?? []).map((part) => part.id);
+  const groupedEntries = new Map<string, SymbolInternalItemEntry[]>();
+
+  for (const entry of entries) {
+    const partId = entry.item.partId && partIds.includes(entry.item.partId) ? entry.item.partId : "unassigned";
+    groupedEntries.set(partId, [...(groupedEntries.get(partId) ?? []), entry]);
   }
+
+  for (const partId of [...partIds, "unassigned"]) {
+    const group = groupedEntries.get(partId);
+
+    if (!group || group.length === 0) {
+      continue;
+    }
+
+    const heading = documentRef.createElement("div");
+    heading.className = "symbol-item-group-heading";
+    heading.textContent = partId === "unassigned"
+      ? "Unassigned"
+      : symbol.parts?.find((part) => part.id === partId)?.label
+        ? `${partId} - ${symbol.parts.find((part) => part.id === partId)?.label}`
+        : partId;
+    elements.symbolItemList.append(heading);
+
+    for (const entry of group) {
+      elements.symbolItemList.append(createSymbolInternalItemButton(elements, entry, documentRef));
+    }
+  }
+}
+
+function createSymbolInternalItemButton(
+  elements: EditorElements,
+  entry: SymbolInternalItemEntry,
+  documentRef: Document
+): HTMLButtonElement {
+  const { item, depth } = entry;
+  const button = documentRef.createElement("button");
+  button.className = "symbol-internal-item-button";
+  button.type = "button";
+  button.dataset.symbolItemId = item.id;
+  button.setAttribute("aria-pressed", String(elements.selectedSymbolInternalItemIds.includes(item.id)));
+  button.style.paddingLeft = `${10 + depth * 16}px`;
+  button.textContent = `${item.id} (${item.type}${item.partId ? `, ${item.partId}` : ""})`;
+  button.addEventListener("click", (event) => {
+    if (event.ctrlKey || event.metaKey) {
+      toggleSelectedSymbolInternalItem(elements, item.id);
+    } else {
+      setSelectedSymbolInternalItems(elements, [item.id], item.id);
+    }
+
+    renderSymbolWorkspace(elements, documentRef);
+  });
+  return button;
 }
 
 function renderSymbolPartsAndSlots(
@@ -4070,28 +4794,394 @@ function renderSymbolPartsAndSlots(
 ): void {
   elements.symbolPartsList.replaceChildren();
   elements.symbolSlotsList.replaceChildren();
+  const selectedItem = findSymbolInternalItem(symbol, elements.selectedSymbolInternalItemId);
 
   if (!symbol.parts || symbol.parts.length === 0) {
     elements.symbolPartsList.append(createSymbolWorkspaceEmpty(documentRef, "No parts"));
   } else {
     for (const part of symbol.parts) {
-      const row = documentRef.createElement("div");
-      row.className = "symbol-workspace-row";
-      row.textContent = part.label ? `${part.id} - ${part.label}` : part.id;
-      elements.symbolPartsList.append(row);
+      elements.symbolPartsList.append(createSymbolPartRow(elements, symbol, part, selectedItem, documentRef));
     }
   }
+  elements.symbolPartsList.append(createSymbolPartAddControls(elements, documentRef));
 
   if (!symbol.entitySlots || symbol.entitySlots.length === 0) {
     elements.symbolSlotsList.append(createSymbolWorkspaceEmpty(documentRef, "No entity slots"));
   } else {
     for (const slot of symbol.entitySlots) {
-      const row = documentRef.createElement("div");
-      row.className = "symbol-workspace-row";
-      row.textContent = slot.label ? `${slot.id} - ${slot.label}` : slot.id;
-      elements.symbolSlotsList.append(row);
+      elements.symbolSlotsList.append(createSymbolSlotRow(elements, symbol, slot, documentRef));
     }
   }
+  elements.symbolSlotsList.append(createSymbolSlotAddControls(elements, documentRef));
+}
+
+function createSymbolPartRow(
+  elements: EditorElements,
+  symbol: SchematicSymbolDefinition,
+  part: NonNullable<SchematicSymbolDefinition["parts"]>[number],
+  selectedItem: SchematicItem | undefined,
+  documentRef: Document
+): HTMLElement {
+  const row = documentRef.createElement("div");
+  row.className = "symbol-manager-row symbol-part-row";
+  row.dataset.partId = part.id;
+
+  const title = documentRef.createElement("div");
+  title.className = "symbol-manager-title";
+  title.textContent = part.label ? `${part.id} - ${part.label}` : part.id;
+
+  const idInput = documentRef.createElement("input");
+  idInput.className = "inspector-input symbol-part-id-input";
+  idInput.type = "text";
+  idInput.value = part.id;
+  idInput.setAttribute("aria-label", `Part id ${part.id}`);
+  idInput.addEventListener("change", () => updateSymbolPart(elements, part.id, "id", idInput.value, documentRef));
+
+  const labelInput = documentRef.createElement("input");
+  labelInput.className = "inspector-input symbol-part-label-input";
+  labelInput.type = "text";
+  labelInput.value = part.label ?? "";
+  labelInput.placeholder = "Label";
+  labelInput.setAttribute("aria-label", `Part label ${part.id}`);
+  labelInput.addEventListener("change", () => updateSymbolPart(elements, part.id, "label", labelInput.value, documentRef));
+
+  const itemSummary = documentRef.createElement("div");
+  itemSummary.className = "field-helper symbol-manager-summary";
+  const itemIds = getSymbolPartItemIds(symbol, part.id);
+  itemSummary.textContent = itemIds.length > 0 ? `Items: ${itemIds.join(", ")}` : "No assigned items";
+
+  const assignButton = documentRef.createElement("button");
+  assignButton.className = "secondary-button symbol-assign-selected-part-button";
+  assignButton.type = "button";
+  assignButton.textContent = "Assign selected";
+  assignButton.disabled = !selectedItem;
+  assignButton.addEventListener("click", () => {
+    updateSelectedSymbolInternalItemPart(elements, part.id, documentRef);
+  });
+
+  const deleteButton = documentRef.createElement("button");
+  deleteButton.className = "secondary-button symbol-delete-part-button";
+  deleteButton.type = "button";
+  deleteButton.textContent = "Delete part";
+  deleteButton.addEventListener("click", () => deleteSymbolPart(elements, part.id, documentRef));
+
+  row.append(title, idInput, labelInput, itemSummary, assignButton, deleteButton);
+  return row;
+}
+
+function createSymbolPartAddControls(elements: EditorElements, documentRef: Document): HTMLElement {
+  const row = documentRef.createElement("div");
+  row.className = "symbol-manager-add-row";
+
+  const input = documentRef.createElement("input");
+  input.className = "inspector-input symbol-add-part-input";
+  input.type = "text";
+  input.placeholder = "new-part-id";
+
+  const button = documentRef.createElement("button");
+  button.className = "secondary-button symbol-add-part-button";
+  button.type = "button";
+  button.textContent = "Add part";
+  button.addEventListener("click", () => addSymbolPart(elements, input.value, documentRef));
+
+  row.append(input, button);
+  return row;
+}
+
+function createSymbolSlotRow(
+  elements: EditorElements,
+  symbol: SchematicSymbolDefinition,
+  slot: NonNullable<SchematicSymbolDefinition["entitySlots"]>[number],
+  documentRef: Document
+): HTMLElement {
+  const row = documentRef.createElement("div");
+  row.className = "symbol-manager-row symbol-slot-row";
+  row.dataset.slotId = slot.id;
+
+  const title = documentRef.createElement("div");
+  title.className = "symbol-manager-title";
+  title.textContent = slot.label ? `${slot.id} - ${slot.label}` : slot.id;
+
+  const idInput = documentRef.createElement("input");
+  idInput.className = "inspector-input symbol-slot-id-input";
+  idInput.type = "text";
+  idInput.value = slot.id;
+  idInput.setAttribute("aria-label", `Slot id ${slot.id}`);
+  idInput.addEventListener("change", () => updateSymbolSlot(elements, slot.id, "id", idInput.value, documentRef));
+
+  const labelInput = documentRef.createElement("input");
+  labelInput.className = "inspector-input symbol-slot-label-input";
+  labelInput.type = "text";
+  labelInput.value = slot.label ?? "";
+  labelInput.placeholder = "Label";
+  labelInput.setAttribute("aria-label", `Slot label ${slot.id}`);
+  labelInput.addEventListener("change", () => updateSymbolSlot(elements, slot.id, "label", labelInput.value, documentRef));
+
+  const descriptionInput = documentRef.createElement("input");
+  descriptionInput.className = "inspector-input symbol-slot-description-input";
+  descriptionInput.type = "text";
+  descriptionInput.value = slot.description ?? "";
+  descriptionInput.placeholder = "Description";
+  descriptionInput.setAttribute("aria-label", `Slot description ${slot.id}`);
+  descriptionInput.addEventListener("change", () => updateSymbolSlot(elements, slot.id, "description", descriptionInput.value, documentRef));
+
+  const requiredLabel = documentRef.createElement("label");
+  requiredLabel.className = "symbol-manager-checkbox";
+  const requiredInput = documentRef.createElement("input");
+  requiredInput.className = "symbol-slot-required-input";
+  requiredInput.type = "checkbox";
+  requiredInput.checked = slot.required === true;
+  requiredInput.addEventListener("change", () => updateSymbolSlot(elements, slot.id, "required", String(requiredInput.checked), documentRef));
+  const requiredText = documentRef.createElement("span");
+  requiredText.textContent = "Required";
+  requiredLabel.append(requiredInput, requiredText);
+
+  const typeSelect = documentRef.createElement("select");
+  typeSelect.className = "inspector-input symbol-slot-type-select";
+  typeSelect.setAttribute("aria-label", `Slot type ${slot.id}`);
+  for (const option of [
+    ["binary", "Binary ON/OFF"],
+    ["percent", "Percent 0-100"],
+    ["temperature", "Temperature/value"],
+    ["text", "Text"]
+  ] as Array<[SymbolSlotValueType, string]>) {
+    const typeOption = documentRef.createElement("option");
+    typeOption.value = option[0];
+    typeOption.textContent = option[1];
+    typeSelect.append(typeOption);
+  }
+  typeSelect.value = getSymbolSlotValueType(symbol, slot, getSymbolSlotEffects(symbol, slot.id));
+  typeSelect.addEventListener("change", () => {
+    updateSymbolSlot(elements, slot.id, "valueType", typeSelect.value, documentRef);
+  });
+
+  const effects = getSymbolSlotEffects(symbol, slot.id);
+  const effectSummary = documentRef.createElement("div");
+  effectSummary.className = "field-helper symbol-manager-summary";
+  effectSummary.textContent = effects.length > 0 ? `Affects: ${effects.join("; ")}` : "No effect configured";
+
+  const deleteButton = documentRef.createElement("button");
+  deleteButton.className = "secondary-button symbol-delete-slot-button";
+  deleteButton.type = "button";
+  deleteButton.textContent = "Delete slot";
+  deleteButton.addEventListener("click", () => deleteSymbolSlot(elements, slot.id, documentRef));
+
+  row.append(
+    title,
+    idInput,
+    labelInput,
+    descriptionInput,
+    typeSelect,
+    requiredLabel,
+    effectSummary,
+    createSymbolSlotSimulationControls(elements, symbol, slot, effects, documentRef),
+    deleteButton
+  );
+  return row;
+}
+
+function createSymbolSlotSimulationControls(
+  elements: EditorElements,
+  symbol: SchematicSymbolDefinition,
+  slot: NonNullable<SchematicSymbolDefinition["entitySlots"]>[number],
+  effects: string[],
+  documentRef: Document
+): HTMLElement {
+  const wrapper = documentRef.createElement("div");
+  wrapper.className = "symbol-simulation-field";
+
+  const label = documentRef.createElement("span");
+  label.className = "field-helper";
+  label.textContent = "Simulate";
+  wrapper.append(label);
+
+  const currentValue = elements.symbolSimulationStates[slot.id] ?? getDefaultSymbolSlotSimulationValue(symbol, slot.id);
+  const valueType = getSymbolSlotValueType(symbol, slot, effects);
+
+  if (valueType === "binary") {
+    const offButton = documentRef.createElement("button");
+    offButton.className = "secondary-button symbol-slot-simulation-off-button";
+    offButton.type = "button";
+    offButton.textContent = "OFF";
+    offButton.setAttribute("aria-pressed", String(currentValue !== "on"));
+    offButton.addEventListener("click", () => updateSymbolSimulationState(elements, slot.id, "off", documentRef));
+
+    const onButton = documentRef.createElement("button");
+    onButton.className = "secondary-button symbol-slot-simulation-on-button";
+    onButton.type = "button";
+    onButton.textContent = "ON";
+    onButton.setAttribute("aria-pressed", String(currentValue === "on"));
+    onButton.addEventListener("click", () => updateSymbolSimulationState(elements, slot.id, "on", documentRef));
+
+    wrapper.append(offButton, onButton);
+    return wrapper;
+  }
+
+  if (valueType === "percent") {
+    const slider = documentRef.createElement("input");
+    slider.className = "style-slider-input symbol-slot-simulation-slider";
+    slider.type = "range";
+    slider.min = "0";
+    slider.max = "100";
+    slider.step = "1";
+    slider.value = Number.isFinite(Number(currentValue)) ? currentValue : "0";
+
+    const input = documentRef.createElement("input");
+    input.className = "inspector-input symbol-slot-simulation-percent-input";
+    input.type = "number";
+    input.min = "0";
+    input.max = "100";
+    input.step = "1";
+    input.value = slider.value;
+
+    slider.addEventListener("input", () => {
+      input.value = slider.value;
+    });
+    slider.addEventListener("change", () => {
+      updateSymbolSimulationState(elements, slot.id, slider.value, documentRef);
+    });
+    input.addEventListener("change", () => {
+      const value = clampNumber(Number(input.value), 0, 100);
+      input.value = String(value);
+      slider.value = String(value);
+      updateSymbolSimulationState(elements, slot.id, String(value), documentRef);
+    });
+
+    wrapper.append(slider, input);
+    return wrapper;
+  }
+
+  const input = documentRef.createElement("input");
+  input.className = "inspector-input symbol-slot-simulation-input";
+  input.type = valueType === "temperature" ? "number" : "text";
+  input.value = currentValue;
+  input.placeholder = valueType === "temperature" ? "20" : "state or value";
+  input.addEventListener("change", () => updateSymbolSimulationState(elements, slot.id, input.value, documentRef));
+  wrapper.append(input);
+  return wrapper;
+}
+
+function updateSymbolSimulationState(elements: EditorElements, slotId: string, value: string, documentRef: Document): void {
+  elements.symbolSimulationStates[slotId] = value;
+  renderSymbolWorkspace(elements, documentRef);
+}
+
+function getDefaultSymbolSlotSimulationValue(symbol: SchematicSymbolDefinition, slotId: string): string {
+  const slot = (symbol.entitySlots ?? []).find((candidate) => candidate.id === slotId);
+  const valueType = slot ? getSymbolSlotValueType(symbol, slot, getSymbolSlotEffects(symbol, slotId)) : undefined;
+
+  if (valueType === "binary") {
+    return "off";
+  }
+
+  if (valueType === "text") {
+    return "";
+  }
+
+  return "0";
+}
+
+function parseSymbolSlotValueType(value: string): SymbolSlotValueType | undefined {
+  if (value === "binary" || value === "percent" || value === "temperature" || value === "text") {
+    return value;
+  }
+
+  return undefined;
+}
+
+function getSymbolSlotValueType(
+  symbol: SchematicSymbolDefinition,
+  slot: NonNullable<SchematicSymbolDefinition["entitySlots"]>[number],
+  effects: string[]
+): SymbolSlotValueType {
+  if (slot.valueType) {
+    return slot.valueType;
+  }
+
+  if (isBinarySymbolSlot(symbol, slot.id)) {
+    return "binary";
+  }
+
+  if (isNumericSymbolSlot(slot.id, effects)) {
+    return "percent";
+  }
+
+  return /temp|temperature/i.test(slot.id) ? "temperature" : "text";
+}
+
+function isBinarySymbolSlot(symbol: SchematicSymbolDefinition, slotId: string): boolean {
+  const values = getSymbolSlotConditionValues(symbol, slotId);
+  return values.has("on") || values.has("off") || /(^|[-_])(alarm|running|enabled|active|state)($|[-_])/i.test(slotId);
+}
+
+function isNumericSymbolSlot(slotId: string, effects: string[]): boolean {
+  return /(^|[-_])(percent|percentage|level|speed|position|value)($|[-_])/i.test(slotId)
+    || effects.some((effect) => /\b0\b|\b100\b|percent/i.test(effect));
+}
+
+function getSymbolSlotConditionValues(symbol: SchematicSymbolDefinition, slotId: string): Set<string> {
+  const values = new Set<string>();
+  const entityId = `slot:${slotId}`;
+
+  for (const style of symbol.partStyles ?? []) {
+    if (style.when.entityId === entityId) {
+      values.add(style.when.equals);
+    }
+  }
+
+  for (const animation of symbol.partAnimations ?? []) {
+    if (animation.when.entityId === entityId) {
+      values.add(animation.when.equals);
+    }
+  }
+
+  return values;
+}
+
+function getSymbolSlotEffects(symbol: SchematicSymbolDefinition, slotId: string): string[] {
+  const entityId = `slot:${slotId}`;
+  const effects: string[] = [];
+
+  for (const style of symbol.partStyles ?? []) {
+    if (style.when.entityId === entityId) {
+      effects.push(`${style.partId} style when ${slotId} = ${style.when.equals}`);
+    }
+  }
+
+  for (const animation of symbol.partAnimations ?? []) {
+    if (animation.when.entityId === entityId) {
+      effects.push(`${animation.partId} ${animation.preset} when ${slotId} = ${animation.when.equals}`);
+    }
+  }
+
+  return effects;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+
+  return Math.min(max, Math.max(min, value));
+}
+
+function createSymbolSlotAddControls(elements: EditorElements, documentRef: Document): HTMLElement {
+  const row = documentRef.createElement("div");
+  row.className = "symbol-manager-add-row";
+
+  const input = documentRef.createElement("input");
+  input.className = "inspector-input symbol-add-slot-input";
+  input.type = "text";
+  input.placeholder = "new-slot-id";
+
+  const button = documentRef.createElement("button");
+  button.className = "secondary-button symbol-add-slot-button";
+  button.type = "button";
+  button.textContent = "Add slot";
+  button.addEventListener("click", () => addSymbolSlot(elements, input.value, documentRef));
+
+  row.append(input, button);
+  return row;
 }
 
 function renderSymbolEditorInspector(
@@ -4100,6 +5190,15 @@ function renderSymbolEditorInspector(
   documentRef: Document
 ): void {
   elements.symbolInspector.replaceChildren();
+
+  if (elements.selectedSymbolInternalItemIds.length > 1) {
+    elements.symbolInspector.append(createSymbolWorkspaceEmpty(
+      documentRef,
+      `${elements.selectedSymbolInternalItemIds.length} internal items selected`
+    ));
+    return;
+  }
+
   const selectedItem = findSymbolInternalItem(symbol, elements.selectedSymbolInternalItemId);
 
   if (!selectedItem) {
@@ -4121,6 +5220,373 @@ function renderSymbolEditorInspector(
   appendSymbolInternalItemField(elements, documentRef, selectedItem, "layer", "number");
   appendSymbolPartAssignmentField(elements, documentRef, symbol, selectedItem);
   appendSymbolInternalStyleInspector(elements, documentRef, selectedItem);
+}
+
+function addSymbolPart(elements: EditorElements, rawPartId: string, documentRef: Document): void {
+  const edit = getActiveSymbolEdit(elements);
+
+  if (!edit.ok) {
+    renderSymbolWorkspaceError(elements, edit.message);
+    return;
+  }
+
+  const partId = rawPartId.trim();
+
+  if (!isValidSymbolMetadataId(partId)) {
+    showSymbolWorkspaceError(elements, "Part id must start with a letter and use letters, numbers, _ or -");
+    return;
+  }
+
+  if ((edit.symbol.parts ?? []).some((part) => part.id === partId)) {
+    showSymbolWorkspaceError(elements, `Part "${partId}" already exists`);
+    return;
+  }
+
+  recordHistory(elements);
+  edit.symbol.parts = [
+    ...(edit.symbol.parts ?? []),
+    {
+      id: partId,
+      label: partId
+    }
+  ];
+  commitSymbolEditorPayload(elements, edit.payload, documentRef);
+  showSymbolWorkspaceStatus(elements, `Added part ${partId}`);
+}
+
+function updateSymbolPart(
+  elements: EditorElements,
+  partId: string,
+  fieldName: "id" | "label",
+  rawValue: string,
+  documentRef: Document
+): void {
+  const edit = getActiveSymbolEdit(elements);
+
+  if (!edit.ok) {
+    renderSymbolWorkspaceError(elements, edit.message);
+    return;
+  }
+
+  const part = (edit.symbol.parts ?? []).find((candidate) => candidate.id === partId);
+
+  if (!part) {
+    showSymbolWorkspaceError(elements, `Part "${partId}" was not found`);
+    return;
+  }
+
+  const value = rawValue.trim();
+
+  if (fieldName === "id") {
+    if (!isValidSymbolMetadataId(value)) {
+      showSymbolWorkspaceError(elements, "Part id must start with a letter and use letters, numbers, _ or -");
+      return;
+    }
+
+    if (value !== partId && (edit.symbol.parts ?? []).some((candidate) => candidate.id === value)) {
+      showSymbolWorkspaceError(elements, `Part "${value}" already exists`);
+      return;
+    }
+
+    if (value === part.id) {
+      return;
+    }
+
+    recordHistory(elements);
+    renameSymbolPartReferences(edit.symbol, part.id, value);
+    part.id = value;
+    commitSymbolEditorPayload(elements, edit.payload, documentRef);
+    showSymbolWorkspaceStatus(elements, `Renamed part ${partId} to ${value}`);
+    return;
+  }
+
+  if ((part.label ?? "") === value) {
+    return;
+  }
+
+  recordHistory(elements);
+
+  if (value.length === 0) {
+    delete part.label;
+  } else {
+    part.label = value;
+  }
+
+  commitSymbolEditorPayload(elements, edit.payload, documentRef);
+  showSymbolWorkspaceStatus(elements, `Updated part ${part.id}`);
+}
+
+function addSymbolSlot(elements: EditorElements, rawSlotId: string, documentRef: Document): void {
+  const edit = getActiveSymbolEdit(elements);
+
+  if (!edit.ok) {
+    renderSymbolWorkspaceError(elements, edit.message);
+    return;
+  }
+
+  const slotId = rawSlotId.trim();
+
+  if (!isValidSymbolMetadataId(slotId)) {
+    showSymbolWorkspaceError(elements, "Slot id must start with a letter and use letters, numbers, _ or -");
+    return;
+  }
+
+  if ((edit.symbol.entitySlots ?? []).some((slot) => slot.id === slotId)) {
+    showSymbolWorkspaceError(elements, `Slot "${slotId}" already exists`);
+    return;
+  }
+
+  recordHistory(elements);
+  edit.symbol.entitySlots = [
+    ...(edit.symbol.entitySlots ?? []),
+    {
+      id: slotId,
+      label: slotId
+    }
+  ];
+  elements.symbolSimulationStates[slotId] = elements.symbolSimulationStates[slotId] ?? "off";
+  commitSymbolEditorPayload(elements, edit.payload, documentRef);
+  showSymbolWorkspaceStatus(elements, `Added slot ${slotId}`);
+}
+
+function deleteSymbolPart(elements: EditorElements, partId: string, documentRef: Document): void {
+  const edit = getActiveSymbolEdit(elements);
+
+  if (!edit.ok) {
+    renderSymbolWorkspaceError(elements, edit.message);
+    return;
+  }
+
+  if (!confirmSymbolEditorAction(elements, `Delete part "${partId}"? Internal items will keep rendering but lose this part assignment.`)) {
+    return;
+  }
+
+  const parts = edit.symbol.parts ?? [];
+
+  if (!parts.some((part) => part.id === partId)) {
+    showSymbolWorkspaceError(elements, `Part "${partId}" was not found`);
+    return;
+  }
+
+  recordHistory(elements);
+  edit.symbol.parts = parts.filter((part) => part.id !== partId);
+  for (const entry of getSymbolInternalItemEntries(edit.symbol.items)) {
+    if (entry.item.partId === partId) {
+      delete entry.item.partId;
+    }
+  }
+  edit.symbol.partStyles = edit.symbol.partStyles?.filter((style) => style.partId !== partId);
+  edit.symbol.partAnimations = edit.symbol.partAnimations?.filter((animation) => animation.partId !== partId);
+  commitSymbolEditorPayload(elements, edit.payload, documentRef);
+  showSymbolWorkspaceStatus(elements, `Deleted part ${partId}`);
+}
+
+function deleteSymbolSlot(elements: EditorElements, slotId: string, documentRef: Document): void {
+  const edit = getActiveSymbolEdit(elements);
+
+  if (!edit.ok) {
+    renderSymbolWorkspaceError(elements, edit.message);
+    return;
+  }
+
+  if (!confirmSymbolEditorAction(elements, `Delete entity slot "${slotId}"? Related symbol effects and instance bindings will be removed.`)) {
+    return;
+  }
+
+  const slots = edit.symbol.entitySlots ?? [];
+
+  if (!slots.some((slot) => slot.id === slotId)) {
+    showSymbolWorkspaceError(elements, `Slot "${slotId}" was not found`);
+    return;
+  }
+
+  recordHistory(elements);
+  const slotEntityId = `slot:${slotId}`;
+  edit.symbol.entitySlots = slots.filter((slot) => slot.id !== slotId);
+  edit.symbol.partStyles = edit.symbol.partStyles?.filter((style) => style.when.entityId !== slotEntityId);
+  edit.symbol.partAnimations = edit.symbol.partAnimations?.filter((animation) => animation.when.entityId !== slotEntityId);
+
+  for (const item of edit.payload.items) {
+    if (item.type !== "symbol" || item.symbolId !== edit.symbol.id || !item.slotBindings) {
+      continue;
+    }
+
+    delete item.slotBindings[slotId];
+
+    if (Object.keys(item.slotBindings).length === 0) {
+      delete item.slotBindings;
+    }
+  }
+
+  delete elements.symbolSimulationStates[slotId];
+  commitSymbolEditorPayload(elements, edit.payload, documentRef);
+  showSymbolWorkspaceStatus(elements, `Deleted slot ${slotId}`);
+}
+
+function confirmSymbolEditorAction(elements: EditorElements, message: string): boolean {
+  return elements.editorRoot.ownerDocument.defaultView?.confirm?.(message) ?? true;
+}
+
+function updateSymbolSlot(
+  elements: EditorElements,
+  slotId: string,
+  fieldName: "id" | "label" | "description" | "required" | "valueType",
+  rawValue: string,
+  documentRef: Document
+): void {
+  const edit = getActiveSymbolEdit(elements);
+
+  if (!edit.ok) {
+    renderSymbolWorkspaceError(elements, edit.message);
+    return;
+  }
+
+  const slot = (edit.symbol.entitySlots ?? []).find((candidate) => candidate.id === slotId);
+
+  if (!slot) {
+    showSymbolWorkspaceError(elements, `Slot "${slotId}" was not found`);
+    return;
+  }
+
+  const value = rawValue.trim();
+
+  if (fieldName === "id") {
+    if (!isValidSymbolMetadataId(value)) {
+      showSymbolWorkspaceError(elements, "Slot id must start with a letter and use letters, numbers, _ or -");
+      return;
+    }
+
+    if (value !== slotId && (edit.symbol.entitySlots ?? []).some((candidate) => candidate.id === value)) {
+      showSymbolWorkspaceError(elements, `Slot "${value}" already exists`);
+      return;
+    }
+
+    if (value === slot.id) {
+      return;
+    }
+
+    recordHistory(elements);
+    renameSymbolSlotReferences(edit.payload, edit.symbol, slot.id, value);
+    slot.id = value;
+    elements.symbolSimulationStates[value] = elements.symbolSimulationStates[slotId] ?? "off";
+    delete elements.symbolSimulationStates[slotId];
+    commitSymbolEditorPayload(elements, edit.payload, documentRef);
+    showSymbolWorkspaceStatus(elements, `Renamed slot ${slotId} to ${value}`);
+    return;
+  }
+
+  if (fieldName === "required") {
+    const nextRequired = value === "true";
+
+    if ((slot.required ?? false) === nextRequired) {
+      return;
+    }
+
+    recordHistory(elements);
+
+    if (nextRequired) {
+      slot.required = true;
+    } else {
+      delete slot.required;
+    }
+
+    commitSymbolEditorPayload(elements, edit.payload, documentRef);
+    showSymbolWorkspaceStatus(elements, `Updated slot ${slot.id}`);
+    return;
+  }
+
+  if (fieldName === "valueType") {
+    const nextValue = parseSymbolSlotValueType(rawValue);
+
+    if (!nextValue) {
+      showSymbolWorkspaceError(elements, "Slot type must be binary, percent, temperature, or text");
+      return;
+    }
+
+    if (slot.valueType === nextValue) {
+      return;
+    }
+
+    recordHistory(elements);
+    slot.valueType = nextValue;
+    elements.symbolSimulationStates[slot.id] = getDefaultSymbolSlotSimulationValue(edit.symbol, slot.id);
+    commitSymbolEditorPayload(elements, edit.payload, documentRef);
+    showSymbolWorkspaceStatus(elements, `Updated slot type for ${slot.id}`);
+    return;
+  }
+
+  if ((slot[fieldName] ?? "") === value) {
+    return;
+  }
+
+  recordHistory(elements);
+
+  if (value.length === 0) {
+    delete slot[fieldName];
+  } else {
+    slot[fieldName] = value;
+  }
+
+  commitSymbolEditorPayload(elements, edit.payload, documentRef);
+  showSymbolWorkspaceStatus(elements, `Updated slot ${slot.id}`);
+}
+
+function renameSymbolPartReferences(symbol: SchematicSymbolDefinition, oldPartId: string, newPartId: string): void {
+  for (const entry of getSymbolInternalItemEntries(symbol.items)) {
+    if (entry.item.partId === oldPartId) {
+      entry.item.partId = newPartId;
+    }
+  }
+
+  for (const style of symbol.partStyles ?? []) {
+    if (style.partId === oldPartId) {
+      style.partId = newPartId;
+    }
+  }
+
+  for (const animation of symbol.partAnimations ?? []) {
+    if (animation.partId === oldPartId) {
+      animation.partId = newPartId;
+    }
+  }
+}
+
+function renameSymbolSlotReferences(
+  payload: SchematicPayload,
+  symbol: SchematicSymbolDefinition,
+  oldSlotId: string,
+  newSlotId: string
+): void {
+  const oldEntityId = `slot:${oldSlotId}`;
+  const newEntityId = `slot:${newSlotId}`;
+
+  for (const style of symbol.partStyles ?? []) {
+    if (style.when.entityId === oldEntityId) {
+      style.when.entityId = newEntityId;
+    }
+  }
+
+  for (const animation of symbol.partAnimations ?? []) {
+    if (animation.when.entityId === oldEntityId) {
+      animation.when.entityId = newEntityId;
+    }
+  }
+
+  for (const item of payload.items) {
+    if (item.type !== "symbol" || item.symbolId !== symbol.id || !item.slotBindings?.[oldSlotId]) {
+      continue;
+    }
+
+    item.slotBindings = {
+      ...item.slotBindings,
+      [newSlotId]: item.slotBindings[oldSlotId]
+    };
+    delete item.slotBindings[oldSlotId];
+  }
+}
+
+function isValidSymbolMetadataId(value: string): boolean {
+  return /^[A-Za-z][A-Za-z0-9_-]*$/.test(value);
 }
 
 function appendSymbolInternalItemField(
@@ -4326,6 +5792,8 @@ function createSymbolNumberFieldControls(
   });
   slider.addEventListener("input", () => {
     input.value = slider.value;
+  });
+  slider.addEventListener("change", () => {
     updateSelectedSymbolInternalItemStyleField(elements, field, input.value, documentRef);
   });
 
@@ -4430,10 +5898,15 @@ function updateSelectedSymbolInternalItemField(
   }
 
   recordHistory(elements);
+  const previousItemId = edit.item.id;
   (edit.item as Record<string, unknown>)[fieldName] = nextValue;
 
   if (fieldName === "id") {
-    elements.selectedSymbolInternalItemId = String(nextValue);
+    setSelectedSymbolInternalItems(
+      elements,
+      elements.selectedSymbolInternalItemIds.map((itemId) => itemId === previousItemId ? String(nextValue) : itemId),
+      String(nextValue)
+    );
   }
 
   commitSymbolEditorPayload(elements, edit.payload, documentRef);
@@ -4562,6 +6035,30 @@ function updateSelectedSymbolInternalItemStyleField(
 function getSelectedSymbolInternalItemEdit(
   elements: EditorElements
 ): { ok: true; payload: SchematicPayload; symbol: SchematicSymbolDefinition; item: SchematicItem } | { ok: false; message: string } {
+  const edit = getActiveSymbolEdit(elements);
+
+  if (!edit.ok) {
+    return edit;
+  }
+
+  const item = findSymbolInternalItem(edit.symbol, elements.selectedSymbolInternalItemId);
+
+  if (!item) {
+    return {
+      ok: false,
+      message: "Selected internal item was not found"
+    };
+  }
+
+  return {
+    ...edit,
+    item
+  };
+}
+
+function getActiveSymbolEdit(
+  elements: EditorElements
+): { ok: true; payload: SchematicPayload; symbol: SchematicSymbolDefinition } | { ok: false; message: string } {
   const result = parseAndValidatePayload(elements.jsonInput.value);
 
   if (!result.ok) {
@@ -4577,20 +6074,10 @@ function getSelectedSymbolInternalItemEdit(
     };
   }
 
-  const item = findSymbolInternalItem(symbol, elements.selectedSymbolInternalItemId);
-
-  if (!item) {
-    return {
-      ok: false,
-      message: "Selected internal item was not found"
-    };
-  }
-
   return {
     ok: true,
     payload: result.payload,
-    symbol,
-    item
+    symbol
   };
 }
 
@@ -4608,6 +6095,81 @@ function showSymbolWorkspaceStatus(elements: EditorElements, message: string): v
 function showSymbolWorkspaceError(elements: EditorElements, message: string): void {
   elements.symbolWorkspaceStatus.textContent = message;
   elements.symbolWorkspaceStatus.dataset.state = "error";
+}
+
+function clearSymbolSelection(elements: EditorElements, documentRef: Document): void {
+  setSelectedSymbolInternalItems(elements, []);
+  renderSymbolWorkspace(elements, documentRef);
+}
+
+function deleteSelectedSymbolInternalItem(elements: EditorElements, documentRef: Document): void {
+  const edit = getActiveSymbolEdit(elements);
+
+  if (!edit.ok) {
+    renderSymbolWorkspaceError(elements, edit.message);
+    return;
+  }
+
+  const itemIds = [...elements.selectedSymbolInternalItemIds];
+
+  if (itemIds.length === 0) {
+    showSymbolWorkspaceError(elements, "No symbol item selected");
+    return;
+  }
+
+  recordHistory(elements);
+  const removedIds: string[] = [];
+
+  for (const itemId of itemIds) {
+    const deleteResult = removeSymbolInternalItem(edit.symbol.items, itemId);
+
+    if (deleteResult.removed) {
+      removedIds.push(itemId);
+      removeSymbolPartItemReferences(edit.symbol, itemId);
+    }
+  }
+
+  if (removedIds.length === 0) {
+    showSymbolWorkspaceError(elements, "Selected symbol items were not found");
+    return;
+  }
+
+  setSelectedSymbolInternalItems(elements, []);
+  commitSymbolEditorPayload(elements, edit.payload, documentRef);
+  showSymbolWorkspaceStatus(elements, removedIds.length === 1 ? `Deleted ${removedIds[0]}` : `Deleted ${removedIds.length} symbol items`);
+}
+
+function removeSymbolInternalItem(items: SchematicItem[], itemId: string): { removed: boolean } {
+  const index = items.findIndex((item) => item.id === itemId);
+
+  if (index >= 0) {
+    items.splice(index, 1);
+    return { removed: true };
+  }
+
+  for (const item of items) {
+    if (item.type !== "group") {
+      continue;
+    }
+
+    const childResult = removeSymbolInternalItem(item.children, itemId);
+
+    if (childResult.removed) {
+      return childResult;
+    }
+  }
+
+  return { removed: false };
+}
+
+function removeSymbolPartItemReferences(symbol: SchematicSymbolDefinition, itemId: string): void {
+  for (const part of symbol.parts ?? []) {
+    part.itemIds = part.itemIds?.filter((candidate) => candidate !== itemId);
+
+    if (part.itemIds && part.itemIds.length === 0) {
+      delete part.itemIds;
+    }
+  }
 }
 
 function getSymbolInternalItemEntries(items: SchematicItem[], depth = 0): SymbolInternalItemEntry[] {
@@ -4630,6 +6192,14 @@ function findSymbolInternalItem(symbol: SchematicSymbolDefinition, itemId: strin
   }
 
   return getSymbolInternalItemEntries(symbol.items).find((entry) => entry.item.id === itemId)?.item;
+}
+
+function moveSymbolItemFromStart(item: SchematicItem, startItem: SchematicItem, dx: number, dy: number): void {
+  if (moveItemFromStart(item, startItem, dx, dy)) {
+    return;
+  }
+
+  item.transform = moveGroupTransformFromStart(startItem, dx, dy);
 }
 
 function renderEmptySymbolWorkspace(elements: EditorElements, message: string): void {
@@ -4664,12 +6234,16 @@ function highlightSelectedSymbolInternalItem(elements: EditorElements): void {
     element.removeAttribute("data-symbol-editor-selected");
   }
 
-  if (!elements.selectedSymbolInternalItemId) {
+  if (elements.selectedSymbolInternalItemIds.length === 0) {
     return;
   }
 
+  const selectedIds = new Set(elements.selectedSymbolInternalItemIds);
+
   for (const element of elements.symbolPreviewSurface.querySelectorAll("[data-id]")) {
-    if (element.getAttribute("data-id") === elements.selectedSymbolInternalItemId) {
+    const itemId = element.getAttribute("data-id");
+
+    if (itemId && selectedIds.has(itemId)) {
       element.setAttribute("data-symbol-editor-selected", "true");
     }
   }
@@ -4757,6 +6331,20 @@ function handleEditorKeyDown(elements: EditorElements, event: KeyboardEvent, doc
 
   if (isTypingTarget(event.target)) {
     return;
+  }
+
+  if (!elements.symbolWorkspace.hidden && elements.symbolWorkspaceStarted) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      clearSymbolSelection(elements, documentRef);
+      return;
+    }
+
+    if (event.key === "Delete" || event.key === "Backspace") {
+      event.preventDefault();
+      deleteSelectedSymbolInternalItem(elements, documentRef);
+      return;
+    }
   }
 
   if (elements.drawState && event.key === "Enter") {
@@ -6335,10 +7923,53 @@ function createPreviewSurface(documentRef: Document): HTMLElement {
   return previewSurface;
 }
 
+function createSymbolTabButton(
+  documentRef: Document,
+  tab: SymbolEditorTabName,
+  label: string,
+  className: string
+): HTMLButtonElement {
+  const button = documentRef.createElement("button");
+  button.className = `editor-tab ${className}`;
+  button.type = "button";
+  button.dataset.symbolTab = tab;
+  button.setAttribute("role", "tab");
+  button.textContent = label;
+  return button;
+}
+
 function createSymbolEditorWorkspace(documentRef: Document): HTMLElement {
   const wrapper = documentRef.createElement("section");
   wrapper.className = "symbol-editor-workspace";
   wrapper.hidden = true;
+
+  const startDialog = documentRef.createElement("section");
+  startDialog.className = "symbol-start-dialog";
+  startDialog.hidden = true;
+
+  const startTitle = documentRef.createElement("h2");
+  startTitle.className = "symbol-start-title";
+  startTitle.textContent = "Start Symbol Editor";
+
+  const startText = documentRef.createElement("p");
+  startText.className = "field-helper";
+  startText.textContent = "Choose whether to import a fresh SVG into a symbol or inspect the existing symbol definitions.";
+
+  const startActions = documentRef.createElement("div");
+  startActions.className = "symbol-start-actions";
+
+  const startImportButton = documentRef.createElement("button");
+  startImportButton.className = "symbol-start-import-button utility-button";
+  startImportButton.type = "button";
+  startImportButton.textContent = "Import SVG";
+
+  const startEditButton = documentRef.createElement("button");
+  startEditButton.className = "symbol-start-edit-button utility-button";
+  startEditButton.type = "button";
+  startEditButton.textContent = "Edit existing symbol";
+
+  startActions.append(startImportButton, startEditButton);
+  startDialog.append(startTitle, startText, startActions);
 
   const header = documentRef.createElement("header");
   header.className = "symbol-editor-header";
@@ -6404,19 +8035,83 @@ function createSymbolEditorWorkspace(documentRef: Document): HTMLElement {
   const side = documentRef.createElement("aside");
   side.className = "symbol-editor-side";
 
+  const symbolTabs = documentRef.createElement("div");
+  symbolTabs.className = "editor-tabs symbol-tabs";
+
+  const symbolItemsTab = createSymbolTabButton(documentRef, "items", "Items", "symbol-items-tab-button");
+  const symbolPartsTab = createSymbolTabButton(documentRef, "parts", "Parts", "symbol-parts-tab-button");
+  const symbolSlotsTab = createSymbolTabButton(documentRef, "slots", "Entity Slots", "symbol-slots-tab-button");
+  symbolTabs.append(symbolItemsTab, symbolPartsTab, symbolSlotsTab);
+
+  const symbolPrimaryPanel = documentRef.createElement("div");
+  symbolPrimaryPanel.className = "editor-primary-panel symbol-primary-panel";
+
+  const symbolTabDropZone = documentRef.createElement("div");
+  symbolTabDropZone.className = "editor-tab-drop-zone symbol-tab-drop-zone";
+  symbolTabDropZone.textContent = "Drop tab here to split";
+
+  const symbolDockedPanel = documentRef.createElement("div");
+  symbolDockedPanel.className = "editor-docked-panel symbol-docked-panel";
+  symbolDockedPanel.hidden = true;
+
+  const symbolDockedPanelTab = documentRef.createElement("button");
+  symbolDockedPanelTab.className = "editor-tab editor-docked-panel-tab symbol-docked-panel-tab";
+  symbolDockedPanelTab.type = "button";
+  symbolDockedPanelTab.hidden = true;
+
   const itemsSection = createSymbolWorkspaceSection(documentRef, "Internal Items", "symbol-internal-item-list");
+  itemsSection.classList.add("symbol-items-section");
   const partsSection = createSymbolWorkspaceSection(documentRef, "Parts", "symbol-parts-list");
+  partsSection.classList.add("symbol-parts-section");
   const slotsSection = createSymbolWorkspaceSection(documentRef, "Entity Slots", "symbol-slots-list");
-  side.append(itemsSection, partsSection, slotsSection);
+  slotsSection.classList.add("symbol-slots-section");
+  symbolPrimaryPanel.append(itemsSection, partsSection, slotsSection);
+  symbolDockedPanel.append(symbolDockedPanelTab);
+  side.append(symbolTabs, symbolPrimaryPanel, symbolTabDropZone, symbolDockedPanel);
 
   const preview = documentRef.createElement("section");
   preview.className = "symbol-editor-preview-pane";
+  const previewHeader = documentRef.createElement("div");
+  previewHeader.className = "symbol-preview-header";
   const previewTitle = documentRef.createElement("div");
   previewTitle.className = "field-label";
   previewTitle.textContent = "Symbol Preview";
+  const previewControls = documentRef.createElement("div");
+  previewControls.className = "symbol-preview-controls";
+  const symbolSelectButton = createToolbarButton(documentRef, "symbol-select-tool-button", "↖");
+  symbolSelectButton.title = "Select";
+  symbolSelectButton.setAttribute("aria-label", "Select symbol items");
+  symbolSelectButton.setAttribute("aria-pressed", "true");
+  const symbolPanButton = createToolbarButton(documentRef, "symbol-pan-tool-button", "🤚");
+  symbolPanButton.title = "Pan";
+  symbolPanButton.setAttribute("aria-label", "Pan symbol preview");
+  symbolPanButton.setAttribute("aria-pressed", "false");
+  const symbolResetButton = createToolbarButton(documentRef, "symbol-reset-view-button", "Fit");
+  symbolResetButton.title = "Fit symbol preview";
+  const symbolClearButton = createToolbarButton(documentRef, "symbol-clear-selection-button", "Clear");
+  symbolClearButton.title = "Clear symbol item selection";
+  const symbolDeleteButton = createToolbarButton(documentRef, "symbol-delete-item-button", "Delete");
+  symbolDeleteButton.title = "Delete selected symbol item";
+  symbolDeleteButton.disabled = true;
+  const symbolUndoButton = createToolbarButton(documentRef, "symbol-undo-button", "Undo");
+  symbolUndoButton.title = "Undo";
+  symbolUndoButton.disabled = true;
+  const symbolRedoButton = createToolbarButton(documentRef, "symbol-redo-button", "Redo");
+  symbolRedoButton.title = "Redo";
+  symbolRedoButton.disabled = true;
+  previewControls.append(
+    symbolSelectButton,
+    symbolPanButton,
+    symbolResetButton,
+    symbolClearButton,
+    symbolDeleteButton,
+    symbolUndoButton,
+    symbolRedoButton
+  );
+  previewHeader.append(previewTitle, previewControls);
   const previewSurface = documentRef.createElement("div");
   previewSurface.className = "symbol-preview-surface";
-  preview.append(previewTitle, previewSurface);
+  preview.append(previewHeader, previewSurface);
 
   const inspectorPane = documentRef.createElement("aside");
   inspectorPane.className = "symbol-editor-inspector-pane";
@@ -6487,7 +8182,7 @@ function createSymbolEditorWorkspace(documentRef: Document): HTMLElement {
   inspectorPane.append(inspectorTitle, inspector);
 
   body.append(side, preview, inspectorPane);
-  wrapper.append(header, body, importDialog);
+  wrapper.append(header, body, importDialog, startDialog);
   return wrapper;
 }
 
