@@ -754,6 +754,44 @@ textarea {
   display: none;
 }
 
+.symbol-start-dialog {
+  position: absolute;
+  top: 86px;
+  left: 50%;
+  z-index: 4;
+  display: grid;
+  width: min(440px, calc(100vw - 64px));
+  gap: 12px;
+  transform: translateX(-50%);
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 54px rgb(23 32 42 / 24%);
+  padding: 18px;
+}
+
+.symbol-start-dialog[hidden] {
+  display: none;
+}
+
+.symbol-start-title {
+  margin: 0;
+  font-size: 18px;
+}
+
+.symbol-start-actions,
+.symbol-preview-header,
+.symbol-preview-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.symbol-start-actions,
+.symbol-preview-header {
+  justify-content: space-between;
+}
+
 .symbol-editor-header {
   display: flex;
   align-items: center;
@@ -825,10 +863,9 @@ textarea {
 }
 
 .symbol-editor-body {
-  display: grid;
+  display: flex;
   flex: 1;
   min-height: 0;
-  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(260px, 320px);
   gap: 12px;
   padding: 12px;
 }
@@ -845,6 +882,43 @@ textarea {
   border-radius: 8px;
   background: #f9fafb;
   padding: 10px;
+}
+
+.symbol-editor-side {
+  width: 300px;
+  min-width: 220px;
+  max-width: min(520px, 45vw);
+  resize: horizontal;
+}
+
+.symbol-editor-preview-pane {
+  flex: 1;
+}
+
+.symbol-editor-inspector-pane {
+  width: 320px;
+  min-width: 240px;
+  max-width: min(560px, 45vw);
+  resize: horizontal;
+}
+
+.symbol-preview-surface {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  align-items: stretch;
+  justify-content: stretch;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.symbol-preview-surface svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
 }
 
 .symbol-workspace-section {
@@ -870,6 +944,17 @@ textarea {
   flex-direction: column;
   gap: 6px;
   overflow: auto;
+}
+
+.symbol-item-group-heading,
+.symbol-manager-title {
+  color: #303846;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.symbol-item-group-heading {
+  margin-top: 4px;
 }
 
 .symbol-svg-import-input {
@@ -987,6 +1072,31 @@ textarea {
   background: #eef4ff;
 }
 
+.symbol-manager-row,
+.symbol-manager-add-row {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #d7dde4;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 8px;
+}
+
+.symbol-manager-add-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.symbol-manager-summary {
+  overflow-wrap: anywhere;
+}
+
+.symbol-manager-checkbox,
+.symbol-simulation-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .symbol-part-create-controls {
   display: flex;
   gap: 8px;
@@ -1000,9 +1110,9 @@ textarea {
   display: flex;
   flex: 1;
   min-height: 0;
-  align-items: center;
-  justify-content: center;
-  overflow: auto;
+  align-items: stretch;
+  justify-content: stretch;
+  overflow: hidden;
   border-radius: 6px;
   background:
     linear-gradient(90deg, rgb(215 221 228 / 55%) 1px, transparent 1px),
@@ -1011,10 +1121,29 @@ textarea {
   background-size: 20px 20px;
 }
 
+.symbol-preview-surface[data-pan-mode="true"],
+.symbol-preview-surface[data-pan-mode="true"] svg,
+.symbol-preview-surface[data-panning="true"],
+.symbol-preview-surface[data-panning="true"] svg {
+  cursor: grab;
+}
+
+.symbol-preview-surface[data-panning="true"],
+.symbol-preview-surface[data-panning="true"] svg {
+  cursor: grabbing;
+}
+
+.symbol-preview-surface[data-dragging="true"],
+.symbol-preview-surface[data-dragging="true"] svg {
+  cursor: move;
+}
+
 .symbol-preview-surface svg {
   display: block;
-  max-width: 100%;
-  max-height: 100%;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
 }
 
 .symbol-workspace-row,

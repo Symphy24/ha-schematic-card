@@ -687,6 +687,7 @@ describe("schema validation", () => {
             {
               id: "running",
               description: 123,
+              valueType: "toggle",
               required: "yes"
             },
             {
@@ -701,6 +702,7 @@ describe("schema validation", () => {
 
     expect(result.valid).toBe(false);
     expect(result.errors).toContain("symbols[0].entitySlots[0].description must be a string");
+    expect(result.errors).toContain("symbols[0].entitySlots[0].valueType must be binary, percent, temperature, or text");
     expect(result.errors).toContain("symbols[0].entitySlots[0].required must be a boolean");
     expect(result.errors).toContain("symbols[0].entitySlots[1].id must be unique");
   });

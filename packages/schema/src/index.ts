@@ -179,6 +179,7 @@ export type SchematicSymbolEntitySlotDefinition = {
   id: string;
   label?: string;
   description?: string;
+  valueType?: "binary" | "percent" | "temperature" | "text";
   required?: boolean;
 };
 
@@ -416,6 +417,16 @@ function validateSymbolEntitySlots(value: unknown, path: string, errors: string[
     validateUniqueId(slot.id, slotIds, `${slotPath}.id`, errors);
     validateOptionalString(slot.label, `${slotPath}.label`, errors);
     validateOptionalString(slot.description, `${slotPath}.description`, errors);
+
+    if (
+      slot.valueType !== undefined
+      && slot.valueType !== "binary"
+      && slot.valueType !== "percent"
+      && slot.valueType !== "temperature"
+      && slot.valueType !== "text"
+    ) {
+      errors.push(`${slotPath}.valueType must be binary, percent, temperature, or text`);
+    }
 
     if (slot.required !== undefined && typeof slot.required !== "boolean") {
       errors.push(`${slotPath}.required must be a boolean`);
