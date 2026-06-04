@@ -54,6 +54,7 @@ type EditorElements = {
   previewSurface: HTMLElement;
   themeInput: HTMLTextAreaElement;
   themeStatus: HTMLElement;
+  themePreviewToggle: HTMLInputElement;
   transferPanel: HTMLElement;
   transferPanelTitle: HTMLElement;
   importSection: HTMLElement;
@@ -242,6 +243,28 @@ type AddItemType = "text" | "rect" | "circle" | "polyline";
 
 type EditorTabName = "items" | "inspector" | "json";
 type SymbolEditorTabName = "items" | "parts" | "slots";
+type FloatingPanelId = "toolbar" | "items" | "inspector" | "json";
+type TransferPanelMode = "import" | "svg" | "export" | "theme";
+
+type FloatingPanelDragState = {
+  panel: HTMLElement;
+  layer: HTMLElement;
+  startClientX: number;
+  startClientY: number;
+  startLeft: number;
+  startTop: number;
+};
+
+type FloatingPanelResizeState = {
+  panel: HTMLElement;
+  layer: HTMLElement;
+  startClientX: number;
+  startClientY: number;
+  startWidth: number;
+  startHeight: number;
+  startLeft: number;
+  startTop: number;
+};
 
 type StyleFieldName = keyof SchematicStyle;
 
@@ -328,6 +351,10 @@ const THEME_TOKEN_PRESETS: ThemeTokenPreset[] = [
   { label: "success", value: "var(--success-color)" },
   { label: "divider", value: "var(--divider-color)" }
 ];
+
+const FLOATING_PANEL_MIN_WIDTH = 260;
+const FLOATING_PANEL_MIN_HEIGHT = 160;
+const FLOATING_PANEL_DOCK_RESERVE = 56;
 
 const INSPECTOR_FIELD_LABELS: Record<"id" | "layer" | "x" | "y" | "text", string> = {
   id: "Item id",
@@ -424,7 +451,7 @@ export function encodeDemoPayload(payload: SchematicPayload = demoPayload): stri
 export function createEditorApp(documentRef: Document = document): HTMLElement {
   const shell = documentRef.createElement("section");
   shell.className = "editor-shell";
-  shell.dataset.sidebar = "expanded";
+  shell.dataset.sidebar = "collapsed";
   shell.tabIndex = -1;
 
   const rail = createEditorRail(documentRef);
@@ -435,7 +462,6 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   workspace.className = "editor-workspace";
   const editorMain = documentRef.createElement("div");
   editorMain.className = "editor-main";
-  const resizeHandle = createResizeHandle(documentRef, editorMain, shell);
   const transferPanel = createTransferPanel(documentRef);
   const symbolWorkspace = createSymbolEditorWorkspace(documentRef);
 
@@ -465,6 +491,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     previewSurface: getRequiredElement(previewPane, ".preview-surface", HTMLElement),
     themeInput: getRequiredElement(transferPanel, ".theme-input", HTMLTextAreaElement),
     themeStatus: getRequiredElement(transferPanel, ".theme-status", HTMLElement),
+    themePreviewToggle: getRequiredElement(transferPanel, ".theme-preview-toggle", HTMLInputElement),
     transferPanel: getRequiredElement(transferPanel, ".transfer-panel", HTMLElement),
     transferPanelTitle: getRequiredElement(transferPanel, ".transfer-panel-title", HTMLElement),
     importSection: getRequiredElement(transferPanel, ".import-section", HTMLElement),
@@ -574,6 +601,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.jsonInput.addEventListener("input", () => updateFromJson(elements, documentRef));
   elements.copyButton.addEventListener("click", async () => copyExportedPayload(elements));
   elements.applyThemeButton.addEventListener("click", () => applyThemePreview(elements));
+  elements.themePreviewToggle.addEventListener("change", () => updateThemePreviewMode(elements));
   elements.openImportButton.addEventListener("click", () => openTransferPanel(elements, "import"));
   elements.openSvgImportButton.addEventListener("click", () => openTransferPanel(elements, "svg"));
   elements.openExportButton.addEventListener("click", () => openTransferPanel(elements, "export"));
@@ -654,9 +682,17 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   const sidebarToggleButton = getRequiredElement(rail, ".sidebar-toggle-button", HTMLButtonElement);
   sidebarToggleButton.addEventListener("click", () => toggleEditorSidebar(shell, sidebarToggleButton));
 
-  editorMain.append(jsonPane, resizeHandle, previewPane);
-  workspace.append(toolbar, editorMain);
+  const floatingPanelLayer = createFloatingPanelLayer(documentRef, {
+    toolbar,
+    itemListSection: elements.itemListSection,
+    inspectorSection: elements.inspectorSection,
+    jsonSection: elements.jsonSection
+  });
+
+  editorMain.append(previewPane);
+  workspace.append(editorMain, floatingPanelLayer);
   shell.append(rail, workspace, transferPanel, symbolWorkspace);
+  setupFloatingPanels(elements, documentRef);
   updateFromJson(elements, documentRef);
 
   return shell;
@@ -807,10 +843,22 @@ function showEditorTab(elements: EditorElements, tab: EditorTabName): void {
   }
 
   elements.activeTab = tab;
+  openFloatingPanel(elements.editorRoot, getEditorTabPanelId(tab));
   updateEditorTabs(elements);
 
   if (tab === "json") {
     selectSelectedItemInJson(elements);
+  }
+}
+
+function getEditorTabPanelId(tab: EditorTabName): FloatingPanelId {
+  switch (tab) {
+    case "items":
+      return "items";
+    case "inspector":
+      return "inspector";
+    case "json":
+      return "json";
   }
 }
 
@@ -958,12 +1006,18 @@ function updateEditorTabs(elements: EditorElements): void {
     const docked = elements.dockedTab === tab;
     buttons[tab].setAttribute("aria-selected", String(active));
     buttons[tab].dataset.docked = String(docked);
-    sections[tab].hidden = !active && !docked;
+    const floatingPanel = sections[tab].closest(".floating-panel");
 
-    if (docked && sections[tab].parentElement !== elements.dockedPanel) {
+    if (floatingPanel) {
+      sections[tab].hidden = false;
+    } else if (docked && sections[tab].parentElement !== elements.dockedPanel) {
       elements.dockedPanel.append(sections[tab]);
     } else if (!docked && sections[tab].parentElement !== elements.primaryPanel) {
       elements.primaryPanel.append(sections[tab]);
+    }
+
+    if (!floatingPanel) {
+      sections[tab].hidden = !active && !docked;
     }
   }
 
@@ -7340,14 +7394,45 @@ function applyThemePreview(elements: EditorElements): void {
   }
 
   getEditorLocalStorage(elements)?.setItem(THEME_STORAGE_KEY, elements.themeInput.value);
-  elements.previewSurface.removeAttribute("style");
-
-  for (const [name, value] of Object.entries(result.variables)) {
-    elements.previewSurface.style.setProperty(name, value);
-  }
+  elements.themePreviewToggle.checked = true;
+  applyThemeVariablesToPreview(elements, result.variables);
 
   elements.themeStatus.textContent = `Applied ${Object.keys(result.variables).length} theme variables`;
   elements.themeStatus.dataset.state = "valid";
+}
+
+function updateThemePreviewMode(elements: EditorElements): void {
+  if (!elements.themePreviewToggle.checked) {
+    clearThemePreviewVariables(elements);
+    elements.themeStatus.textContent = "Using editor theme";
+    elements.themeStatus.dataset.state = "valid";
+    return;
+  }
+
+  const result = parseThemeVariables(elements.themeInput.value);
+
+  if (!result.ok) {
+    elements.themePreviewToggle.checked = false;
+    elements.themeStatus.textContent = result.message;
+    elements.themeStatus.dataset.state = "error";
+    return;
+  }
+
+  applyThemeVariablesToPreview(elements, result.variables);
+  elements.themeStatus.textContent = `Previewing ${Object.keys(result.variables).length} imported theme variables`;
+  elements.themeStatus.dataset.state = "valid";
+}
+
+function applyThemeVariablesToPreview(elements: EditorElements, variables: Record<string, string>): void {
+  clearThemePreviewVariables(elements);
+
+  for (const [name, value] of Object.entries(variables)) {
+    elements.previewSurface.style.setProperty(name, value);
+  }
+}
+
+function clearThemePreviewVariables(elements: EditorElements): void {
+  elements.previewSurface.removeAttribute("style");
 }
 
 function loadStoredThemePreview(elements: EditorElements): void {
@@ -7457,42 +7542,6 @@ function getTransferPanelTitle(mode: "import" | "svg" | "export" | "theme"): str
 function closeTransferPanel(elements: EditorElements): void {
   elements.transferPanel.hidden = true;
   delete elements.transferPanel.dataset.mode;
-}
-
-function createResizeHandle(documentRef: Document, resizeRoot: HTMLElement, styleRoot: HTMLElement): HTMLElement {
-  const handle = documentRef.createElement("div");
-  handle.className = "editor-resize-handle";
-  handle.setAttribute("role", "separator");
-  handle.setAttribute("aria-orientation", "vertical");
-
-  handle.addEventListener("mousedown", (event) => {
-    event.preventDefault();
-    startEditorResize(documentRef, resizeRoot, styleRoot);
-  });
-
-  return handle;
-}
-
-function startEditorResize(documentRef: Document, resizeRoot: HTMLElement, styleRoot: HTMLElement): void {
-  const onMove = (event: MouseEvent): void => {
-    const shellLeft = resizeRoot.getBoundingClientRect().left;
-    const availableWidth = getAvailableEditorWidth(documentRef, resizeRoot);
-    const maxWidth = Math.max(320, Math.min(760, availableWidth - 360));
-    const nextWidth = clamp(event.clientX - shellLeft, 300, maxWidth);
-    styleRoot.style.setProperty("--editor-left-width", `${Math.round(nextWidth)}px`);
-  };
-
-  const stopResize = (): void => {
-    documentRef.removeEventListener("mousemove", onMove);
-    documentRef.removeEventListener("mouseup", stopResize);
-  };
-
-  documentRef.addEventListener("mousemove", onMove);
-  documentRef.addEventListener("mouseup", stopResize);
-}
-
-function getAvailableEditorWidth(documentRef: Document, shell: HTMLElement): number {
-  return shell.clientWidth || documentRef.defaultView?.innerWidth || 1100;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -7614,7 +7663,7 @@ function createEditorRail(documentRef: Document): HTMLElement {
   toggleButton.type = "button";
   toggleButton.title = "Toggle sidebar";
   toggleButton.setAttribute("aria-label", "Toggle sidebar");
-  toggleButton.setAttribute("aria-expanded", "true");
+  toggleButton.setAttribute("aria-expanded", "false");
 
   for (let index = 0; index < 3; index += 1) {
     const line = documentRef.createElement("span");
@@ -7622,38 +7671,92 @@ function createEditorRail(documentRef: Document): HTMLElement {
     toggleButton.append(line);
   }
 
-  const brand = documentRef.createElement("div");
-  brand.className = "editor-rail-brand";
-  brand.textContent = "HSC";
-  brand.title = "ha-schematic-card";
+  topCluster.append(toggleButton);
 
-  topCluster.append(toggleButton, brand);
-
-  const navCluster = documentRef.createElement("div");
-  navCluster.className = "editor-rail-cluster";
-  navCluster.append(
-    createRailIndicator(documentRef, "Items", "I", true),
-    createRailIndicator(documentRef, "Canvas", "C", false),
-    createRailIndicator(documentRef, "Payload", "P", false)
+  const navList = documentRef.createElement("div");
+  navList.className = "editor-nav-sidebar";
+  navList.setAttribute("aria-label", "Panel launcher");
+  navList.append(
+    createNavSidebarPanelButton(documentRef, "Toolbar", "T", "Tool controls", "toolbar"),
+    createNavSidebarTabButton(documentRef, "Inspector", "N", "Selected item properties", "inspector"),
+    createNavSidebarTabButton(documentRef, "Item List", "I", "Objects and schematic items", "items"),
+    createNavSidebarTabButton(documentRef, "JSON Editor", "J", "Raw payload editing", "json"),
+    createNavSidebarTransferButton(documentRef, "Export / Payload", "E", "Encoded card payload", "export"),
+    createNavSidebarPanelButton(documentRef, "Simulation", "S", "Open item state workspace", "inspector"),
+    createNavSidebarTabButton(documentRef, "Layers / Object Tree", "L", "Layer order and object list", "items"),
+    createNavSidebarTransferButton(documentRef, "Theme / Preview", "Th", "Imported HA theme controls", "theme")
   );
 
-  rail.append(topCluster, navCluster);
+  rail.append(topCluster, navList);
   return rail;
 }
 
-function createRailIndicator(
+function createNavSidebarPanelButton(
   documentRef: Document,
   label: string,
-  glyph: string,
-  active: boolean
+  icon: string,
+  description: string,
+  panelId: FloatingPanelId
+): HTMLButtonElement {
+  const button = createNavSidebarButton(documentRef, label, icon, description);
+  button.dataset.openPanel = panelId;
+  return button;
+}
+
+function createNavSidebarTabButton(
+  documentRef: Document,
+  label: string,
+  icon: string,
+  description: string,
+  tab: EditorTabName
+): HTMLButtonElement {
+  const button = createNavSidebarButton(documentRef, label, icon, description);
+  button.dataset.openPanel = getEditorTabPanelId(tab);
+  button.dataset.editorTabShortcut = tab;
+  return button;
+}
+
+function createNavSidebarTransferButton(
+  documentRef: Document,
+  label: string,
+  icon: string,
+  description: string,
+  mode: TransferPanelMode
+): HTMLButtonElement {
+  const button = createNavSidebarButton(documentRef, label, icon, description);
+  button.dataset.transferMode = mode;
+  return button;
+}
+
+function createNavSidebarButton(
+  documentRef: Document,
+  label: string,
+  icon: string,
+  description: string
 ): HTMLButtonElement {
   const button = documentRef.createElement("button");
-  button.className = "editor-rail-button";
+  button.className = "editor-nav-entry";
   button.type = "button";
   button.title = label;
   button.setAttribute("aria-label", label);
-  button.setAttribute("aria-pressed", String(active));
-  button.textContent = glyph;
+
+  const iconElement = documentRef.createElement("span");
+  iconElement.className = "editor-nav-entry-icon";
+  iconElement.textContent = icon;
+
+  const textWrap = documentRef.createElement("span");
+  textWrap.className = "editor-nav-entry-text";
+
+  const labelElement = documentRef.createElement("span");
+  labelElement.className = "editor-nav-entry-label";
+  labelElement.textContent = label;
+
+  const descriptionElement = documentRef.createElement("span");
+  descriptionElement.className = "editor-nav-entry-description";
+  descriptionElement.textContent = description;
+
+  textWrap.append(labelElement, descriptionElement);
+  button.append(iconElement, textWrap);
   return button;
 }
 
@@ -7722,7 +7825,17 @@ function createGlobalToolbar(documentRef: Document): HTMLElement {
   const workspaceGroup = createToolbarGroup(documentRef, "Workspace");
   workspaceGroup.append(createToolbarButton(documentRef, "open-symbol-editor-button", "Symbol Editor"));
 
-  toolbar.append(toolGroup, addGroup, selectionGroup, historyGroup, payloadGroup, workspaceGroup);
+  const panelGroup = createToolbarGroup(documentRef, "Panels");
+  panelGroup.append(
+    createPanelToolbarButton(documentRef, "open-toolbar-panel-button", "Toolbar", "toolbar"),
+    createPanelToolbarButton(documentRef, "open-items-panel-button", "Items", "items"),
+    createPanelToolbarButton(documentRef, "open-inspector-panel-button", "Inspector", "inspector"),
+    createPanelToolbarButton(documentRef, "open-json-panel-button", "JSON", "json"),
+    createToolbarButton(documentRef, "minimize-all-panels-button", "Min All"),
+    createToolbarButton(documentRef, "close-all-panels-button", "Close All")
+  );
+
+  toolbar.append(toolGroup, addGroup, selectionGroup, historyGroup, payloadGroup, workspaceGroup, panelGroup);
   return toolbar;
 }
 
@@ -7745,6 +7858,397 @@ function createToolbarButton(documentRef: Document, className: string, label: st
   button.type = "button";
   button.textContent = label;
   return button;
+}
+
+function createPanelToolbarButton(
+  documentRef: Document,
+  className: string,
+  label: string,
+  panelId: FloatingPanelId
+): HTMLButtonElement {
+  const button = createToolbarButton(documentRef, className, label);
+  button.dataset.openPanel = panelId;
+  return button;
+}
+
+function createFloatingPanelLayer(
+  documentRef: Document,
+  content: {
+    toolbar: HTMLElement;
+    itemListSection: HTMLElement;
+    inspectorSection: HTMLElement;
+    jsonSection: HTMLElement;
+  }
+): HTMLElement {
+  const layer = documentRef.createElement("div");
+  layer.className = "floating-panel-layer";
+
+  const panels = documentRef.createElement("div");
+  panels.className = "floating-panels";
+  panels.append(
+    createFloatingPanel(documentRef, "toolbar", "Toolbar", "T", content.toolbar, { x: 24, y: 18 }),
+    createFloatingPanel(documentRef, "items", "Item List / Object Tree", "I", content.itemListSection, { x: 24, y: 132 }),
+    createFloatingPanel(documentRef, "inspector", "Inspector", "N", content.inspectorSection, { x: 720, y: 18 }),
+    createFloatingPanel(documentRef, "json", "JSON Editor", "J", content.jsonSection, { x: 720, y: 360 })
+  );
+
+  const dock = documentRef.createElement("div");
+  dock.className = "floating-panel-dock";
+  dock.setAttribute("aria-label", "Minimized panels");
+
+  layer.append(panels, dock);
+  return layer;
+}
+
+function createFloatingPanel(
+  documentRef: Document,
+  panelId: FloatingPanelId,
+  title: string,
+  badge: string,
+  content: HTMLElement,
+  position: { x: number; y: number }
+): HTMLElement {
+  const panel = documentRef.createElement("section");
+  panel.className = `floating-panel floating-panel-${panelId}`;
+  panel.dataset.panelId = panelId;
+  panel.dataset.panelState = "open";
+  panel.style.left = `${position.x}px`;
+  panel.style.top = `${position.y}px`;
+
+  const header = documentRef.createElement("div");
+  header.className = "floating-panel-header";
+  header.title = `Drag ${title}`;
+
+  const titleWrap = documentRef.createElement("div");
+  titleWrap.className = "floating-panel-title-wrap";
+
+  const badgeElement = documentRef.createElement("span");
+  badgeElement.className = "floating-panel-badge";
+  badgeElement.textContent = badge;
+
+  const titleElement = documentRef.createElement("h2");
+  titleElement.className = "floating-panel-title";
+  titleElement.textContent = title;
+
+  titleWrap.append(badgeElement, titleElement);
+
+  const controls = documentRef.createElement("div");
+  controls.className = "floating-panel-controls";
+
+  const minimizeButton = documentRef.createElement("button");
+  minimizeButton.className = "floating-panel-minimize";
+  minimizeButton.type = "button";
+  minimizeButton.title = `Minimize ${title}`;
+  minimizeButton.setAttribute("aria-label", `Minimize ${title}`);
+  minimizeButton.textContent = "_";
+
+  const closeButton = documentRef.createElement("button");
+  closeButton.className = "floating-panel-close";
+  closeButton.type = "button";
+  closeButton.title = `Close ${title}`;
+  closeButton.setAttribute("aria-label", `Close ${title}`);
+  closeButton.textContent = "X";
+
+  controls.append(minimizeButton, closeButton);
+  header.append(titleWrap, controls);
+
+  const body = documentRef.createElement("div");
+  body.className = "floating-panel-body";
+
+  const resizeHandle = documentRef.createElement("div");
+  resizeHandle.className = "floating-panel-resize-handle";
+  resizeHandle.setAttribute("role", "separator");
+  resizeHandle.setAttribute("aria-label", `Resize ${title}`);
+
+  content.hidden = false;
+  content.classList.add("floating-panel-content");
+  body.append(content);
+  panel.append(header, body, resizeHandle);
+  return panel;
+}
+
+function setupFloatingPanels(elements: EditorElements, documentRef: Document): void {
+  const root = elements.editorRoot;
+
+  for (const panel of Array.from(root.querySelectorAll<HTMLElement>(".floating-panel"))) {
+    const panelId = getFloatingPanelId(panel);
+    panel.addEventListener("mousedown", () => bringFloatingPanelToFront(root, panel));
+    panel.querySelector<HTMLElement>(".floating-panel-header")?.addEventListener("mousedown", (event) => {
+      if (event.target instanceof HTMLElement && event.target.closest("button")) {
+        return;
+      }
+
+      startFloatingPanelDrag(root, panel, event, documentRef);
+    });
+    panel.querySelector<HTMLElement>(".floating-panel-resize-handle")?.addEventListener("mousedown", (event) => {
+      startFloatingPanelResize(root, panel, event, documentRef);
+    });
+    panel.querySelector<HTMLButtonElement>(".floating-panel-minimize")?.addEventListener("click", () => {
+      minimizeFloatingPanel(root, panelId, documentRef);
+    });
+    panel.querySelector<HTMLButtonElement>(".floating-panel-close")?.addEventListener("click", () => {
+      closeFloatingPanel(root, panelId);
+    });
+  }
+
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>("[data-editor-tab-shortcut]"))) {
+    button.addEventListener("click", () => {
+      showEditorTab(elements, getEditorTabShortcut(button));
+    });
+  }
+
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>("[data-open-panel]"))) {
+    if (button.dataset.editorTabShortcut) {
+      continue;
+    }
+
+    button.addEventListener("click", () => {
+      toggleFloatingPanel(root, getFloatingPanelId(button), documentRef);
+    });
+  }
+
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>("[data-transfer-mode]"))) {
+    button.addEventListener("click", () => {
+      openTransferPanel(elements, getTransferMode(button));
+    });
+  }
+
+  root.querySelector<HTMLButtonElement>(".minimize-all-panels-button")?.addEventListener("click", () => {
+    minimizeAllFloatingPanels(root, documentRef);
+  });
+  root.querySelector<HTMLButtonElement>(".close-all-panels-button")?.addEventListener("click", () => {
+    closeAllFloatingPanels(root);
+  });
+
+  updateFloatingPanelRailState(root);
+}
+
+function getEditorTabShortcut(button: HTMLElement): EditorTabName {
+  const tab = button.dataset.editorTabShortcut;
+  if (tab === "inspector" || tab === "json") {
+    return tab;
+  }
+
+  return "items";
+}
+
+function getTransferMode(button: HTMLElement): TransferPanelMode {
+  const mode = button.dataset.transferMode;
+  if (mode === "svg" || mode === "export" || mode === "theme") {
+    return mode;
+  }
+
+  return "import";
+}
+
+function getFloatingPanelId(element: HTMLElement): FloatingPanelId {
+  const panelId = element.dataset.panelId ?? element.dataset.openPanel;
+  if (panelId === "toolbar" || panelId === "items" || panelId === "inspector" || panelId === "json") {
+    return panelId;
+  }
+
+  throw new Error(`Unknown floating panel: ${panelId ?? "missing"}`);
+}
+
+function getFloatingPanel(root: ParentNode, panelId: FloatingPanelId): HTMLElement {
+  return getRequiredElement(root, `[data-panel-id="${panelId}"]`, HTMLElement);
+}
+
+function openFloatingPanel(root: HTMLElement, panelId: FloatingPanelId): void {
+  const panel = getFloatingPanel(root, panelId);
+  panel.dataset.panelState = "open";
+  panel.hidden = false;
+  removeFloatingPanelDockChip(root, panelId);
+  bringFloatingPanelToFront(root, panel);
+  updateFloatingPanelRailState(root);
+}
+
+function toggleFloatingPanel(root: HTMLElement, panelId: FloatingPanelId, documentRef: Document): void {
+  const panel = getFloatingPanel(root, panelId);
+
+  if (panel.hidden || panel.dataset.panelState !== "open") {
+    openFloatingPanel(root, panelId);
+    return;
+  }
+
+  minimizeFloatingPanel(root, panelId, documentRef);
+}
+
+function minimizeFloatingPanel(root: HTMLElement, panelId: FloatingPanelId, documentRef: Document): void {
+  const panel = getFloatingPanel(root, panelId);
+  if (panel.hidden || panel.dataset.panelState === "closed") {
+    return;
+  }
+
+  panel.dataset.panelState = "minimized";
+  panel.hidden = true;
+  ensureFloatingPanelDockChip(root, panelId, documentRef);
+  updateFloatingPanelRailState(root);
+}
+
+function closeFloatingPanel(root: HTMLElement, panelId: FloatingPanelId): void {
+  const panel = getFloatingPanel(root, panelId);
+  panel.dataset.panelState = "closed";
+  panel.hidden = true;
+  removeFloatingPanelDockChip(root, panelId);
+  updateFloatingPanelRailState(root);
+}
+
+function minimizeAllFloatingPanels(root: HTMLElement, documentRef: Document): void {
+  for (const panel of Array.from(root.querySelectorAll<HTMLElement>(".floating-panel"))) {
+    if (panel.dataset.panelState === "open") {
+      minimizeFloatingPanel(root, getFloatingPanelId(panel), documentRef);
+    }
+  }
+}
+
+function closeAllFloatingPanels(root: HTMLElement): void {
+  for (const panel of Array.from(root.querySelectorAll<HTMLElement>(".floating-panel"))) {
+    closeFloatingPanel(root, getFloatingPanelId(panel));
+  }
+}
+
+function ensureFloatingPanelDockChip(root: HTMLElement, panelId: FloatingPanelId, documentRef: Document): void {
+  const dock = getRequiredElement(root, ".floating-panel-dock", HTMLElement);
+  if (dock.querySelector(`[data-dock-panel="${panelId}"]`)) {
+    return;
+  }
+
+  const panel = getFloatingPanel(root, panelId);
+  const panelTitle = panel.querySelector<HTMLElement>(".floating-panel-title")?.textContent ?? panelId;
+  const chip = documentRef.createElement("button");
+  chip.className = "floating-panel-dock-chip";
+  chip.type = "button";
+  chip.dataset.dockPanel = panelId;
+  chip.textContent = panelTitle;
+  chip.title = `Restore ${panelTitle}`;
+  chip.addEventListener("click", () => openFloatingPanel(root, panelId));
+  dock.append(chip);
+}
+
+function removeFloatingPanelDockChip(root: ParentNode, panelId: FloatingPanelId): void {
+  root.querySelector<HTMLElement>(`[data-dock-panel="${panelId}"]`)?.remove();
+}
+
+function bringFloatingPanelToFront(root: HTMLElement, panel: HTMLElement): void {
+  const nextZ = Number(root.dataset.floatingPanelZ ?? "10") + 1;
+  root.dataset.floatingPanelZ = String(nextZ);
+  panel.style.zIndex = String(nextZ);
+}
+
+function startFloatingPanelDrag(
+  root: HTMLElement,
+  panel: HTMLElement,
+  event: MouseEvent,
+  documentRef: Document
+): void {
+  event.preventDefault();
+  bringFloatingPanelToFront(root, panel);
+
+  const layer = getRequiredElement(root, ".floating-panel-layer", HTMLElement);
+  const panelRect = panel.getBoundingClientRect();
+  const layerRect = layer.getBoundingClientRect();
+  const state: FloatingPanelDragState = {
+    panel,
+    layer,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    startLeft: panelRect.left - layerRect.left,
+    startTop: panelRect.top - layerRect.top
+  };
+
+  const onMove = (moveEvent: MouseEvent): void => dragFloatingPanel(state, moveEvent);
+  const stopDrag = (): void => {
+    panel.dataset.dragging = "false";
+    documentRef.removeEventListener("mousemove", onMove);
+    documentRef.removeEventListener("mouseup", stopDrag);
+  };
+
+  panel.dataset.dragging = "true";
+  documentRef.addEventListener("mousemove", onMove);
+  documentRef.addEventListener("mouseup", stopDrag);
+}
+
+function dragFloatingPanel(state: FloatingPanelDragState, event: MouseEvent): void {
+  const layerWidth = state.layer.clientWidth || state.layer.getBoundingClientRect().width || 1;
+  const layerHeight = state.layer.clientHeight || state.layer.getBoundingClientRect().height || 1;
+  const maxLeft = Math.max(0, layerWidth - state.panel.offsetWidth);
+  const maxTop = Math.max(0, layerHeight - state.panel.offsetHeight - FLOATING_PANEL_DOCK_RESERVE);
+  const nextLeft = clamp(state.startLeft + event.clientX - state.startClientX, 0, maxLeft);
+  const nextTop = clamp(state.startTop + event.clientY - state.startClientY, 0, maxTop);
+
+  state.panel.style.left = `${Math.round(nextLeft)}px`;
+  state.panel.style.top = `${Math.round(nextTop)}px`;
+  state.panel.style.right = "auto";
+  state.panel.style.bottom = "auto";
+}
+
+function startFloatingPanelResize(
+  root: HTMLElement,
+  panel: HTMLElement,
+  event: MouseEvent,
+  documentRef: Document
+): void {
+  event.preventDefault();
+  event.stopPropagation();
+  bringFloatingPanelToFront(root, panel);
+
+  const layer = getRequiredElement(root, ".floating-panel-layer", HTMLElement);
+  const panelRect = panel.getBoundingClientRect();
+  const layerRect = layer.getBoundingClientRect();
+  const state: FloatingPanelResizeState = {
+    panel,
+    layer,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    startWidth: panelRect.width || panel.offsetWidth,
+    startHeight: panelRect.height || panel.offsetHeight,
+    startLeft: panelRect.left - layerRect.left,
+    startTop: panelRect.top - layerRect.top
+  };
+
+  const onMove = (moveEvent: MouseEvent): void => resizeFloatingPanel(state, moveEvent);
+  const stopResize = (): void => {
+    panel.dataset.resizing = "false";
+    documentRef.removeEventListener("mousemove", onMove);
+    documentRef.removeEventListener("mouseup", stopResize);
+  };
+
+  panel.dataset.resizing = "true";
+  documentRef.addEventListener("mousemove", onMove);
+  documentRef.addEventListener("mouseup", stopResize);
+}
+
+function resizeFloatingPanel(state: FloatingPanelResizeState, event: MouseEvent): void {
+  const layerWidth = state.layer.clientWidth || state.layer.getBoundingClientRect().width || 1;
+  const layerHeight = state.layer.clientHeight || state.layer.getBoundingClientRect().height || 1;
+  const maxWidth = Math.max(FLOATING_PANEL_MIN_WIDTH, layerWidth - state.startLeft);
+  const maxHeight = Math.max(
+    FLOATING_PANEL_MIN_HEIGHT,
+    layerHeight - state.startTop - FLOATING_PANEL_DOCK_RESERVE
+  );
+  const nextWidth = clamp(
+    state.startWidth + event.clientX - state.startClientX,
+    FLOATING_PANEL_MIN_WIDTH,
+    maxWidth
+  );
+  const nextHeight = clamp(
+    state.startHeight + event.clientY - state.startClientY,
+    FLOATING_PANEL_MIN_HEIGHT,
+    maxHeight
+  );
+
+  state.panel.style.width = `${Math.round(nextWidth)}px`;
+  state.panel.style.height = `${Math.round(nextHeight)}px`;
+  state.panel.style.maxHeight = "none";
+}
+
+function updateFloatingPanelRailState(root: HTMLElement): void {
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>("[data-open-panel]"))) {
+    const panelId = getFloatingPanelId(button);
+    const panel = getFloatingPanel(root, panelId);
+    button.setAttribute("aria-pressed", String(!panel.hidden && panel.dataset.panelState === "open"));
+  }
 }
 
 function createPreviewPane(documentRef: Document): HTMLElement {
@@ -7955,11 +8459,23 @@ function createTransferPanel(documentRef: Document): HTMLElement {
   applyThemeButton.type = "button";
   applyThemeButton.textContent = "Apply Theme";
 
+  const themePreviewLabel = documentRef.createElement("label");
+  themePreviewLabel.className = "theme-preview-toggle-field";
+
+  const themePreviewToggle = documentRef.createElement("input");
+  themePreviewToggle.className = "theme-preview-toggle";
+  themePreviewToggle.type = "checkbox";
+
+  const themePreviewText = documentRef.createElement("span");
+  themePreviewText.textContent = "Use Imported Theme";
+
+  themePreviewLabel.append(themePreviewToggle, themePreviewText);
+
   const themeStatus = documentRef.createElement("span");
   themeStatus.className = "theme-status";
   themeStatus.textContent = "Optional theme preview";
 
-  themeControls.append(applyThemeButton, themeStatus);
+  themeControls.append(applyThemeButton, themePreviewLabel, themeStatus);
   themeSection.append(themeLabel, themeInput, themeControls);
 
   const exportSection = documentRef.createElement("section");
