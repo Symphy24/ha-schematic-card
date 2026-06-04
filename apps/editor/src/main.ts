@@ -424,12 +424,18 @@ export function encodeDemoPayload(payload: SchematicPayload = demoPayload): stri
 export function createEditorApp(documentRef: Document = document): HTMLElement {
   const shell = documentRef.createElement("section");
   shell.className = "editor-shell";
+  shell.dataset.sidebar = "expanded";
   shell.tabIndex = -1;
 
+  const rail = createEditorRail(documentRef);
   const toolbar = createGlobalToolbar(documentRef);
   const jsonPane = createJsonPane(documentRef);
   const previewPane = createPreviewPane(documentRef);
-  const resizeHandle = createResizeHandle(documentRef, shell);
+  const workspace = documentRef.createElement("div");
+  workspace.className = "editor-workspace";
+  const editorMain = documentRef.createElement("div");
+  editorMain.className = "editor-main";
+  const resizeHandle = createResizeHandle(documentRef, editorMain, shell);
   const transferPanel = createTransferPanel(documentRef);
   const symbolWorkspace = createSymbolEditorWorkspace(documentRef);
 
@@ -645,7 +651,12 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   setupSymbolEditorTabDocking(elements);
   shell.addEventListener("keydown", (event) => handleEditorKeyDown(elements, event, documentRef));
 
-  shell.append(toolbar, jsonPane, resizeHandle, previewPane, transferPanel, symbolWorkspace);
+  const sidebarToggleButton = getRequiredElement(rail, ".sidebar-toggle-button", HTMLButtonElement);
+  sidebarToggleButton.addEventListener("click", () => toggleEditorSidebar(shell, sidebarToggleButton));
+
+  editorMain.append(jsonPane, resizeHandle, previewPane);
+  workspace.append(toolbar, editorMain);
+  shell.append(rail, workspace, transferPanel, symbolWorkspace);
   updateFromJson(elements, documentRef);
 
   return shell;
@@ -7448,7 +7459,7 @@ function closeTransferPanel(elements: EditorElements): void {
   delete elements.transferPanel.dataset.mode;
 }
 
-function createResizeHandle(documentRef: Document, shell: HTMLElement): HTMLElement {
+function createResizeHandle(documentRef: Document, resizeRoot: HTMLElement, styleRoot: HTMLElement): HTMLElement {
   const handle = documentRef.createElement("div");
   handle.className = "editor-resize-handle";
   handle.setAttribute("role", "separator");
@@ -7456,19 +7467,19 @@ function createResizeHandle(documentRef: Document, shell: HTMLElement): HTMLElem
 
   handle.addEventListener("mousedown", (event) => {
     event.preventDefault();
-    startEditorResize(documentRef, shell);
+    startEditorResize(documentRef, resizeRoot, styleRoot);
   });
 
   return handle;
 }
 
-function startEditorResize(documentRef: Document, shell: HTMLElement): void {
+function startEditorResize(documentRef: Document, resizeRoot: HTMLElement, styleRoot: HTMLElement): void {
   const onMove = (event: MouseEvent): void => {
-    const shellLeft = shell.getBoundingClientRect().left;
-    const availableWidth = getAvailableEditorWidth(documentRef, shell);
+    const shellLeft = resizeRoot.getBoundingClientRect().left;
+    const availableWidth = getAvailableEditorWidth(documentRef, resizeRoot);
     const maxWidth = Math.max(320, Math.min(760, availableWidth - 360));
     const nextWidth = clamp(event.clientX - shellLeft, 300, maxWidth);
-    shell.style.setProperty("--editor-left-width", `${Math.round(nextWidth)}px`);
+    styleRoot.style.setProperty("--editor-left-width", `${Math.round(nextWidth)}px`);
   };
 
   const stopResize = (): void => {
@@ -7490,6 +7501,7 @@ function clamp(value: number, min: number, max: number): number {
 
 function createJsonPane(documentRef: Document): HTMLElement {
   const pane = createPane(documentRef, "Editor");
+  pane.classList.add("editor-sidebar");
 
   const jsonInput = documentRef.createElement("textarea");
   jsonInput.className = "json-input";
@@ -7587,6 +7599,68 @@ function createJsonPane(documentRef: Document): HTMLElement {
   itemTools.append(tabList, primaryPanel, tabDropZone, dockedPanel);
   pane.append(itemTools);
   return pane;
+}
+
+function createEditorRail(documentRef: Document): HTMLElement {
+  const rail = documentRef.createElement("nav");
+  rail.className = "editor-rail";
+  rail.setAttribute("aria-label", "Editor navigation");
+
+  const topCluster = documentRef.createElement("div");
+  topCluster.className = "editor-rail-cluster";
+
+  const toggleButton = documentRef.createElement("button");
+  toggleButton.className = "sidebar-toggle-button editor-rail-button";
+  toggleButton.type = "button";
+  toggleButton.title = "Toggle sidebar";
+  toggleButton.setAttribute("aria-label", "Toggle sidebar");
+  toggleButton.setAttribute("aria-expanded", "true");
+
+  for (let index = 0; index < 3; index += 1) {
+    const line = documentRef.createElement("span");
+    line.className = "sidebar-toggle-line";
+    toggleButton.append(line);
+  }
+
+  const brand = documentRef.createElement("div");
+  brand.className = "editor-rail-brand";
+  brand.textContent = "HSC";
+  brand.title = "ha-schematic-card";
+
+  topCluster.append(toggleButton, brand);
+
+  const navCluster = documentRef.createElement("div");
+  navCluster.className = "editor-rail-cluster";
+  navCluster.append(
+    createRailIndicator(documentRef, "Items", "I", true),
+    createRailIndicator(documentRef, "Canvas", "C", false),
+    createRailIndicator(documentRef, "Payload", "P", false)
+  );
+
+  rail.append(topCluster, navCluster);
+  return rail;
+}
+
+function createRailIndicator(
+  documentRef: Document,
+  label: string,
+  glyph: string,
+  active: boolean
+): HTMLButtonElement {
+  const button = documentRef.createElement("button");
+  button.className = "editor-rail-button";
+  button.type = "button";
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.setAttribute("aria-pressed", String(active));
+  button.textContent = glyph;
+  return button;
+}
+
+function toggleEditorSidebar(shell: HTMLElement, button: HTMLButtonElement): void {
+  const isExpanded = shell.dataset.sidebar !== "collapsed";
+  shell.dataset.sidebar = isExpanded ? "collapsed" : "expanded";
+  button.setAttribute("aria-expanded", String(!isExpanded));
 }
 
 function createGlobalToolbar(documentRef: Document): HTMLElement {

@@ -22,6 +22,8 @@ describe("editor app", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
 
+    expect(app.dataset.sidebar).toBe("expanded");
+    expect(app.querySelector(".editor-rail")).not.toBeNull();
     expect(app.querySelector(".editor-topbar")).not.toBeNull();
     expect(getButton(app, ".select-tool-button").getAttribute("aria-pressed")).toBe("true");
     expect(app.querySelector<HTMLTextAreaElement>(".json-input")?.value).toBe(formatPayloadJson());
@@ -29,6 +31,23 @@ describe("editor app", () => {
     expect(app.querySelector('[data-editor-grid="true"]')).not.toBeNull();
     expect(app.querySelector<HTMLTextAreaElement>(".payload-output")?.value.startsWith("hsc1.")).toBe(true);
     expect(app.querySelector<HTMLElement>(".status")?.textContent).toBe("Valid payload");
+  });
+
+  it("collapses and expands the editor sidebar from the rail", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const toggleButton = getButton(app, ".sidebar-toggle-button");
+
+    expect(toggleButton.getAttribute("aria-expanded")).toBe("true");
+
+    toggleButton.click();
+    expect(app.dataset.sidebar).toBe("collapsed");
+    expect(toggleButton.getAttribute("aria-expanded")).toBe("false");
+    expect(app.querySelector("svg")).not.toBeNull();
+
+    toggleButton.click();
+    expect(app.dataset.sidebar).toBe("expanded");
+    expect(toggleButton.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("switches between item and inspector tabs", () => {
