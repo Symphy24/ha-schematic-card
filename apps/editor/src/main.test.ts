@@ -22,9 +22,17 @@ describe("editor app", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
 
-    expect(app.dataset.sidebar).toBe("expanded");
+    expect(app.dataset.sidebar).toBe("collapsed");
     expect(app.querySelector(".editor-rail")).not.toBeNull();
+    expect(app.querySelector(".editor-sidebar")).toBeNull();
+    expect(app.querySelector(".editor-rail-brand")).toBeNull();
+    expect(app.querySelector(".editor-rail-compact")).toBeNull();
+    expect(app.querySelector(".editor-resize-handle")).toBeNull();
     expect(app.querySelector(".editor-topbar")).not.toBeNull();
+    expect(getFloatingPanel(app, "toolbar").contains(getButton(app, ".format-button"))).toBe(true);
+    expect(getFloatingPanel(app, "items").querySelector(".item-list-section")).not.toBeNull();
+    expect(getFloatingPanel(app, "inspector").querySelector(".inspector-section")).not.toBeNull();
+    expect(getFloatingPanel(app, "json").querySelector(".json-editor-section")).not.toBeNull();
     expect(getButton(app, ".select-tool-button").getAttribute("aria-pressed")).toBe("true");
     expect(app.querySelector<HTMLTextAreaElement>(".json-input")?.value).toBe(formatPayloadJson());
     expect(app.querySelector("svg")).not.toBeNull();
@@ -33,28 +41,148 @@ describe("editor app", () => {
     expect(app.querySelector<HTMLElement>(".status")?.textContent).toBe("Valid payload");
   });
 
-  it("collapses and expands the editor sidebar from the rail", () => {
+  it("collapses and expands the Odysseus navigation sidebar from the rail", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
     const toggleButton = getButton(app, ".sidebar-toggle-button");
 
-    expect(toggleButton.getAttribute("aria-expanded")).toBe("true");
-
-    toggleButton.click();
-    expect(app.dataset.sidebar).toBe("collapsed");
     expect(toggleButton.getAttribute("aria-expanded")).toBe("false");
-    expect(app.querySelector("svg")).not.toBeNull();
+    expect(app.querySelector(".editor-nav-sidebar")).not.toBeNull();
+    expect(app.querySelector(".editor-sidebar")).toBeNull();
+    const rail = app.querySelector<HTMLElement>(".editor-rail");
+    const navButtons = Array.from(app.querySelectorAll<HTMLButtonElement>(".editor-nav-entry"));
+
+    if (!rail) {
+      throw new Error("rail missing");
+    }
+
+    expect(rail.children[0]).toBe(toggleButton.parentElement);
+    expect(rail.children[1]).toBe(app.querySelector(".editor-nav-sidebar"));
+    expect(navButtons.map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Toolbar",
+      "Inspector",
+      "Item List",
+      "JSON Editor",
+      "Export / Payload",
+      "Simulation",
+      "Layers / Object Tree",
+      "Theme / Preview"
+    ]);
 
     toggleButton.click();
     expect(app.dataset.sidebar).toBe("expanded");
     expect(toggleButton.getAttribute("aria-expanded")).toBe("true");
+    expect(getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="items"]').textContent).toContain("Item List");
+    expect(getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="json"]').textContent).toContain("JSON Editor");
+    expect(getButton(app, '.editor-nav-entry[data-transfer-mode="export"]').textContent).toContain("Export");
+    expect(getButton(app, '.editor-nav-entry[data-transfer-mode="theme"]').textContent).toContain("Theme");
+    expect(app.querySelector("svg")).not.toBeNull();
+
+    toggleButton.click();
+    expect(app.dataset.sidebar).toBe("collapsed");
+    expect(toggleButton.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("switches between item and inspector tabs", () => {
+  it("minimizes and restores floating panels from the bottom dock", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
-    const itemsTab = getButton(app, '[data-editor-tab="items"]');
-    const inspectorTab = getButton(app, '[data-editor-tab="inspector"]');
+    const inspectorPanel = getFloatingPanel(app, "inspector");
+
+    expect(app.querySelectorAll(".floating-panel").length).toBe(4);
+    expect(inspectorPanel.dataset.panelState).toBe("open");
+
+    getButton(inspectorPanel, ".floating-panel-minimize").click();
+    expect(inspectorPanel.dataset.panelState).toBe("minimized");
+    expect(inspectorPanel.hidden).toBe(true);
+
+    const dockChip = getButton(app, '[data-dock-panel="inspector"]');
+    expect(dockChip.textContent).toBe("Inspector");
+
+    dockChip.click();
+    expect(inspectorPanel.dataset.panelState).toBe("open");
+    expect(inspectorPanel.hidden).toBe(false);
+    expect(app.querySelector('[data-dock-panel="inspector"]')).toBeNull();
+  });
+
+  it("closes floating panels and reopens them from the toolbar", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const itemsPanel = getFloatingPanel(app, "items");
+
+    getButton(itemsPanel, ".floating-panel-close").click();
+    expect(itemsPanel.dataset.panelState).toBe("closed");
+    expect(itemsPanel.hidden).toBe(true);
+
+    getButton(app, ".open-items-panel-button").click();
+    expect(itemsPanel.dataset.panelState).toBe("open");
+    expect(itemsPanel.hidden).toBe(false);
+  });
+
+  it("minimizes all floating panels and restores one docked panel", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".minimize-all-panels-button").click();
+
+    expect(app.querySelectorAll(".floating-panel-dock-chip").length).toBe(4);
+    for (const panel of Array.from(app.querySelectorAll<HTMLElement>(".floating-panel"))) {
+      expect(panel.dataset.panelState).toBe("minimized");
+      expect(panel.hidden).toBe(true);
+    }
+
+    getButton(app, '[data-dock-panel="json"]').click();
+    expect(getFloatingPanel(app, "json").dataset.panelState).toBe("open");
+    expect(app.querySelectorAll(".floating-panel-dock-chip").length).toBe(3);
+  });
+
+  it("opens existing export behavior from the floating toolbar panel", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const transferPanel = app.querySelector<HTMLElement>(".transfer-panel");
+
+    if (!transferPanel) {
+      throw new Error("transfer panel missing");
+    }
+
+    expect(transferPanel.hidden).toBe(true);
+    expect(getFloatingPanel(app, "toolbar").contains(getButton(app, ".open-export-button"))).toBe(true);
+    getButton(app, ".open-export-button").click();
+    expect(transferPanel.hidden).toBe(false);
+    expect(transferPanel.dataset.mode).toBe("export");
+    expect(app.querySelector<HTMLTextAreaElement>(".payload-output")?.value.startsWith("hsc1.")).toBe(true);
+  });
+
+  it("drags floating panels by their headers", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const panel = getFloatingPanel(app, "inspector");
+    const header = panel.querySelector<HTMLElement>(".floating-panel-header");
+    const layer = app.querySelector<HTMLElement>(".floating-panel-layer");
+
+    if (!header || !layer) {
+      throw new Error("floating panel drag elements missing");
+    }
+
+    setElementBounds(layer, { left: 0, top: 0, width: 1200, height: 800 });
+    setElementBounds(panel, { left: 720, top: 18, width: 380, height: 320 });
+    Object.defineProperty(layer, "clientWidth", { configurable: true, value: 1200 });
+    Object.defineProperty(layer, "clientHeight", { configurable: true, value: 800 });
+    Object.defineProperty(panel, "offsetWidth", { configurable: true, value: 380 });
+    Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 320 });
+
+    header.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: 740, clientY: 38 }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 800, clientY: 90 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(panel.style.left).toBe("780px");
+    expect(panel.style.top).toBe("70px");
+  });
+
+  it("opens item and inspector panels from the navigation launchers", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const itemsLauncher = getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="items"]');
+    const inspectorLauncher = getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="inspector"]');
     const itemListSection = app.querySelector<HTMLElement>(".item-list-section");
     const inspectorSection = app.querySelector<HTMLElement>(".inspector-section");
 
@@ -62,16 +190,22 @@ describe("editor app", () => {
       throw new Error("tab sections missing");
     }
 
-    expect(itemsTab.getAttribute("aria-selected")).toBe("true");
     expect(itemListSection.hidden).toBe(false);
-    expect(inspectorSection.hidden).toBe(true);
-
-    inspectorTab.click();
-
-    expect(itemsTab.getAttribute("aria-selected")).toBe("false");
-    expect(inspectorTab.getAttribute("aria-selected")).toBe("true");
-    expect(itemListSection.hidden).toBe(true);
     expect(inspectorSection.hidden).toBe(false);
+
+    getButton(getFloatingPanel(app, "inspector"), ".floating-panel-close").click();
+    expect(getFloatingPanel(app, "inspector").hidden).toBe(true);
+    inspectorLauncher.click();
+
+    expect(itemListSection.hidden).toBe(false);
+    expect(inspectorSection.hidden).toBe(false);
+    expect(getFloatingPanel(app, "inspector").hidden).toBe(false);
+    expect(inspectorLauncher.getAttribute("aria-pressed")).toBe("true");
+
+    getButton(getFloatingPanel(app, "items"), ".floating-panel-close").click();
+    expect(getFloatingPanel(app, "items").hidden).toBe(true);
+    itemsLauncher.click();
+    expect(getFloatingPanel(app, "items").hidden).toBe(false);
   });
 
   it("updates preview and export when JSON changes", () => {
@@ -499,48 +633,33 @@ describe("editor app", () => {
     expect(app.querySelector<HTMLElement>(".symbol-workspace-status")?.textContent).toContain("SVG import error:");
   });
 
-  it("docks a tab into a split panel and undocks it back to the tab row", () => {
+  it("opens floating editor panels from the navigation launchers without moving their content", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
-    const itemsTab = getButton(app, '[data-editor-tab="items"]');
-    const inspectorTab = getButton(app, '[data-editor-tab="inspector"]');
-    const tabRow = app.querySelector<HTMLElement>(".editor-tabs");
-    const dropZone = app.querySelector<HTMLElement>(".editor-tab-drop-zone");
-    const dockedPanel = app.querySelector<HTMLElement>(".editor-docked-panel");
-    const dockedPanelTab = app.querySelector<HTMLButtonElement>(".editor-docked-tab");
+    const inspectorLauncher = getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="inspector"]');
+    const jsonLauncher = getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="json"]');
+    const itemListSection = app.querySelector<HTMLElement>(".item-list-section");
     const inspectorSection = app.querySelector<HTMLElement>(".inspector-section");
+    const jsonSection = app.querySelector<HTMLElement>(".json-editor-section");
 
-    if (!tabRow || !dropZone || !dockedPanel || !dockedPanelTab || !inspectorSection) {
-      throw new Error("dockable tab elements missing");
+    if (!itemListSection || !inspectorSection || !jsonSection) {
+      throw new Error("floating tab sections missing");
     }
 
-    inspectorTab.dispatchEvent(new Event("dragstart", { bubbles: true }));
-    dropZone.dispatchEvent(new Event("dragover", { bubbles: true, cancelable: true }));
+    expect(itemListSection.closest('[data-panel-id="items"]')).toBe(getFloatingPanel(app, "items"));
+    expect(inspectorSection.closest('[data-panel-id="inspector"]')).toBe(getFloatingPanel(app, "inspector"));
+    expect(jsonSection.closest('[data-panel-id="json"]')).toBe(getFloatingPanel(app, "json"));
 
-    expect(dropZone.dataset.dropTarget).toBe("true");
+    getButton(getFloatingPanel(app, "json"), ".floating-panel-minimize").click();
+    expect(getFloatingPanel(app, "json").hidden).toBe(true);
 
-    dropZone.dispatchEvent(new Event("drop", { bubbles: true, cancelable: true }));
+    inspectorLauncher.click();
+    expect(inspectorLauncher.getAttribute("aria-pressed")).toBe("true");
+    jsonLauncher.click();
 
-    expect(dockedPanel.hidden).toBe(false);
-    expect(inspectorSection.parentElement).toBe(dockedPanel);
-    expect(inspectorSection.hidden).toBe(false);
-    expect(inspectorTab.dataset.docked).toBe("true");
-    expect(dockedPanelTab.hidden).toBe(false);
-    expect(dockedPanelTab.textContent).toBe("Inspector");
-    expect(itemsTab.getAttribute("aria-selected")).toBe("true");
-
-    dockedPanelTab.dispatchEvent(new Event("dragstart", { bubbles: true }));
-    tabRow.dispatchEvent(new Event("dragover", { bubbles: true, cancelable: true }));
-
-    expect(tabRow.dataset.dropTarget).toBe("true");
-
-    tabRow.dispatchEvent(new Event("drop", { bubbles: true, cancelable: true }));
-
-    expect(dockedPanel.hidden).toBe(true);
-    expect(dockedPanelTab.hidden).toBe(true);
-    expect(inspectorSection.parentElement?.classList.contains("editor-primary-panel")).toBe(true);
-    expect(inspectorTab.dataset.docked).toBe("false");
-    expect(inspectorTab.getAttribute("aria-selected")).toBe("true");
+    expect(jsonLauncher.getAttribute("aria-pressed")).toBe("true");
+    expect(getFloatingPanel(app, "json").hidden).toBe(false);
+    expect(jsonSection.closest('[data-panel-id="json"]')).toBe(getFloatingPanel(app, "json"));
   });
 
   it("selects a top-level item when clicking it in the preview", () => {
@@ -555,7 +674,7 @@ describe("editor app", () => {
     previewItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
     expect(getButton(app, '[data-item-id="demo-component-a"]').getAttribute("aria-pressed")).toBe("true");
-    expect(getButton(app, '[data-editor-tab="items"]').getAttribute("aria-selected")).toBe("true");
+    expect(getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="items"]').getAttribute("aria-pressed")).toBe("true");
     expect(app.querySelector<HTMLElement>(".inspector-status")?.textContent).toBe("Selected demo-component-a");
     expect(app.querySelector('[data-id="demo-component-a"]')?.getAttribute("data-editor-selected")).toBe("true");
   });
@@ -564,21 +683,21 @@ describe("editor app", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
     const jsonInput = getTextarea(app, ".json-input");
-    const jsonTab = getButton(app, '[data-editor-tab="json"]');
+    const jsonLauncher = getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="json"]');
     const jsonSection = app.querySelector<HTMLElement>(".json-editor-section");
     const alarmLabelButton = getButton(app, '[data-item-id="demo-alarm-label"]');
 
-    expect(jsonSection?.hidden).toBe(true);
+    expect(jsonSection?.hidden).toBe(false);
 
     alarmLabelButton.click();
 
-    expect(getButton(app, '[data-editor-tab="inspector"]').getAttribute("aria-selected")).toBe("true");
-    expect(jsonSection?.hidden).toBe(true);
+    expect(getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="inspector"]').getAttribute("aria-pressed")).toBe("true");
+    expect(jsonSection?.hidden).toBe(false);
 
-    jsonTab.click();
+    jsonLauncher.click();
 
     expect(jsonSection?.hidden).toBe(false);
-    expect(jsonTab.getAttribute("aria-selected")).toBe("true");
+    expect(jsonLauncher.getAttribute("aria-pressed")).toBe("true");
     const selectedJson = jsonInput.value.slice(jsonInput.selectionStart, jsonInput.selectionEnd);
 
     expect(selectedJson).toContain("\"id\": \"demo-alarm-label\"");
@@ -592,8 +711,7 @@ describe("editor app", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
     const jsonInput = getTextarea(app, ".json-input");
-    const jsonTab = getButton(app, '[data-editor-tab="json"]');
-    const inspectorTab = getButton(app, '[data-editor-tab="inspector"]');
+    const jsonLauncher = getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="json"]');
     const jsonSection = app.querySelector<HTMLElement>(".json-editor-section");
     const previewItem = app.querySelector('[data-id="demo-component-b"]');
 
@@ -603,10 +721,9 @@ describe("editor app", () => {
 
     previewItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
-    expect(inspectorTab.getAttribute("aria-selected")).toBe("false");
-    expect(jsonSection?.hidden).toBe(true);
+    expect(jsonSection?.hidden).toBe(false);
 
-    jsonTab.click();
+    jsonLauncher.click();
 
     const selectedJson = jsonInput.value.slice(jsonInput.selectionStart, jsonInput.selectionEnd);
 
@@ -620,20 +737,20 @@ describe("editor app", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
     const jsonInput = getTextarea(app, ".json-input");
-    const jsonTab = getButton(app, '[data-editor-tab="json"]');
+    const jsonLauncher = getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="json"]');
     const previewItem = app.querySelector('[data-id="demo-component-b"]');
 
     if (!previewItem) {
       throw new Error("preview item missing");
     }
 
-    jsonTab.click();
+    jsonLauncher.click();
     jsonInput.setSelectionRange(0, 0);
     previewItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
     const selectedJson = jsonInput.value.slice(jsonInput.selectionStart, jsonInput.selectionEnd);
 
-    expect(jsonTab.getAttribute("aria-selected")).toBe("true");
+    expect(jsonLauncher.getAttribute("aria-pressed")).toBe("true");
     expect(selectedJson).toContain("\"id\": \"demo-component-b\"");
     expect(selectedJson).toContain("\"type\": \"symbol\"");
     expect(selectedJson.trim().startsWith("{")).toBe(true);
@@ -1810,20 +1927,35 @@ describe("editor app", () => {
     expect(panel.hidden).toBe(true);
   });
 
-  it("resizes the left editor panel with the resize handle", () => {
+  it("resizes floating panels with the bottom-right handle", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
-    const handle = app.querySelector<HTMLElement>(".editor-resize-handle");
+    const panel = getFloatingPanel(app, "json");
+    const handle = panel.querySelector<HTMLElement>(".floating-panel-resize-handle");
+    const layer = app.querySelector<HTMLElement>(".floating-panel-layer");
 
-    if (!handle) {
-      throw new Error("resize handle missing");
+    if (!handle || !layer) {
+      throw new Error("floating resize elements missing");
     }
 
-    handle.dispatchEvent(new MouseEvent("mousedown", { clientX: 420, bubbles: true }));
-    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 560 }));
+    setElementBounds(layer, { left: 0, top: 0, width: 1200, height: 800 });
+    setElementBounds(panel, { left: 720, top: 360, width: 420, height: 260 });
+    Object.defineProperty(layer, "clientWidth", { configurable: true, value: 1200 });
+    Object.defineProperty(layer, "clientHeight", { configurable: true, value: 800 });
+
+    handle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: 1140, clientY: 620 }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 1188, clientY: 700 }));
     documentRef.dispatchEvent(new MouseEvent("mouseup"));
 
-    expect(app.style.getPropertyValue("--editor-left-width")).toBe("560px");
+    expect(panel.style.width).toBe("468px");
+    expect(panel.style.height).toBe("340px");
+
+    handle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: 1188, clientY: 700 }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 800, clientY: 300 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(panel.style.width).toBe("260px");
+    expect(panel.style.height).toBe("160px");
   });
 
   it("keeps the copy button with the export payload field", () => {
@@ -2127,6 +2259,7 @@ describe("editor app", () => {
     const app = createEditorApp(documentRef);
     const themeInput = getTextarea(app, ".theme-input");
     const applyThemeButton = getButton(app, ".apply-theme-button");
+    const themePreviewToggle = getInput(app, ".theme-preview-toggle");
     const previewSurface = app.querySelector<HTMLElement>(".preview-surface");
 
     if (!previewSurface) {
@@ -2148,7 +2281,42 @@ describe("editor app", () => {
     expect(previewSurface.style.getPropertyValue("--primary-text-color")).toBe("rgb(10, 20, 30)");
     expect(previewSurface.style.getPropertyValue("--accent-color")).toBe("rgb(40, 50, 60)");
     expect(previewSurface.style.getPropertyValue("--ha-card-background")).toBe("rgb(5, 6, 7)");
+    expect(themePreviewToggle.checked).toBe(true);
     expect(app.querySelector<HTMLElement>(".theme-status")?.textContent).toBe("Applied 3 theme variables");
+  });
+
+  it("toggles imported theme variables on and off for the preview surface", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const themeInput = getTextarea(app, ".theme-input");
+    const applyThemeButton = getButton(app, ".apply-theme-button");
+    const themePreviewToggle = getInput(app, ".theme-preview-toggle");
+    const previewSurface = app.querySelector<HTMLElement>(".preview-surface");
+
+    if (!previewSurface) {
+      throw new Error("preview surface missing");
+    }
+
+    themeInput.value = JSON.stringify({
+      type: "ha-schematic-card-theme-variables",
+      version: 1,
+      capturedAt: "2026-05-30T00:00:00.000Z",
+      variables: {
+        "--ha-card-background": "rgb(15, 16, 17)"
+      }
+    });
+    applyThemeButton.click();
+    expect(previewSurface.style.getPropertyValue("--ha-card-background")).toBe("rgb(15, 16, 17)");
+
+    themePreviewToggle.checked = false;
+    themePreviewToggle.dispatchEvent(new Event("change"));
+    expect(previewSurface.style.getPropertyValue("--ha-card-background")).toBe("");
+    expect(app.querySelector<HTMLElement>(".theme-status")?.textContent).toBe("Using editor theme");
+
+    themePreviewToggle.checked = true;
+    themePreviewToggle.dispatchEvent(new Event("change"));
+    expect(previewSurface.style.getPropertyValue("--ha-card-background")).toBe("rgb(15, 16, 17)");
+    expect(app.querySelector<HTMLElement>(".theme-status")?.textContent).toBe("Previewing 1 imported theme variables");
   });
 
   it("loads stored theme variables on startup", () => {
@@ -2207,6 +2375,16 @@ function getButton(root: ParentNode, selector: string): HTMLButtonElement {
 
   if (!(element instanceof HTMLButtonElement)) {
     throw new Error(`button missing: ${selector}`);
+  }
+
+  return element;
+}
+
+function getFloatingPanel(root: ParentNode, panelId: string): HTMLElement {
+  const element = root.querySelector(`[data-panel-id="${panelId}"]`);
+
+  if (!(element instanceof HTMLElement)) {
+    throw new Error(`floating panel missing: ${panelId}`);
   }
 
   return element;
