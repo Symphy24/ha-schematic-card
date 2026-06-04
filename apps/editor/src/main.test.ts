@@ -2282,7 +2282,49 @@ describe("editor app", () => {
     expect(previewSurface.style.getPropertyValue("--accent-color")).toBe("rgb(40, 50, 60)");
     expect(previewSurface.style.getPropertyValue("--ha-card-background")).toBe("rgb(5, 6, 7)");
     expect(themePreviewToggle.checked).toBe(true);
+    expect(app.querySelector<HTMLElement>(".theme-preview-toggle-text")?.textContent).toBe("Preview HA theme");
     expect(app.querySelector<HTMLElement>(".theme-status")?.textContent).toBe("Applied 3 theme variables");
+  });
+
+  it("applies fixed editor theme presets and persists the selected theme", () => {
+    const windowRef = new Window();
+    const documentRef = windowRef.document as unknown as Document;
+    const app = createEditorApp(documentRef);
+    const themeSelect = getSelect(app, ".editor-theme-select");
+
+    expect(Array.from(themeSelect.options).map((option) => option.textContent)).toEqual([
+      "Default Dark / Odysseus",
+      "Light",
+      "Midnight",
+      "Paper",
+      "Cyberpunk",
+      "Ocean",
+      "Terminal",
+      "GPT",
+      "Claude"
+    ]);
+    expect(app.dataset.editorTheme).toBe("odysseus");
+
+    themeSelect.value = "cyberpunk";
+    themeSelect.dispatchEvent(new Event("change"));
+
+    expect(app.dataset.editorTheme).toBe("cyberpunk");
+    expect(app.style.getPropertyValue("--editor-bg")).toBe("#17051f");
+    expect(app.style.getPropertyValue("--accent-color")).toBe("#3cf6ff");
+    expect(windowRef.localStorage.getItem("ha-schematic-card-editor-theme")).toBe("cyberpunk");
+  });
+
+  it("loads the stored editor theme on startup", () => {
+    const windowRef = new Window();
+    const documentRef = windowRef.document as unknown as Document;
+
+    windowRef.localStorage.setItem("ha-schematic-card-editor-theme", "ocean");
+
+    const app = createEditorApp(documentRef);
+
+    expect(getSelect(app, ".editor-theme-select").value).toBe("ocean");
+    expect(app.dataset.editorTheme).toBe("ocean");
+    expect(app.style.getPropertyValue("--editor-bg")).toBe("#09212a");
   });
 
   it("toggles imported theme variables on and off for the preview surface", () => {
@@ -2311,11 +2353,13 @@ describe("editor app", () => {
     themePreviewToggle.checked = false;
     themePreviewToggle.dispatchEvent(new Event("change"));
     expect(previewSurface.style.getPropertyValue("--ha-card-background")).toBe("");
-    expect(app.querySelector<HTMLElement>(".theme-status")?.textContent).toBe("Using editor theme");
+    expect(app.querySelector<HTMLElement>(".theme-preview-toggle-text")?.textContent).toBe("Preview editor theme");
+    expect(app.querySelector<HTMLElement>(".theme-status")?.textContent).toBe("Previewing editor theme: Default Dark / Odysseus");
 
     themePreviewToggle.checked = true;
     themePreviewToggle.dispatchEvent(new Event("change"));
     expect(previewSurface.style.getPropertyValue("--ha-card-background")).toBe("rgb(15, 16, 17)");
+    expect(app.querySelector<HTMLElement>(".theme-preview-toggle-text")?.textContent).toBe("Preview HA theme");
     expect(app.querySelector<HTMLElement>(".theme-status")?.textContent).toBe("Previewing 1 imported theme variables");
   });
 
@@ -2395,6 +2439,16 @@ function getInput(root: ParentNode, selector: string): HTMLInputElement {
 
   if (!(element instanceof HTMLInputElement)) {
     throw new Error(`input missing: ${selector}`);
+  }
+
+  return element;
+}
+
+function getSelect(root: ParentNode, selector: string): HTMLSelectElement {
+  const element = root.querySelector(selector);
+
+  if (!(element instanceof HTMLSelectElement)) {
+    throw new Error(`select missing: ${selector}`);
   }
 
   return element;

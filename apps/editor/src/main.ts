@@ -16,6 +16,7 @@ const demoPayload = demoPayloadJson as SchematicPayload;
 const DEFAULT_EDITOR_GRID_SIZE = 10;
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const THEME_STORAGE_KEY = "ha-schematic-card-editor-theme-preview";
+const EDITOR_THEME_STORAGE_KEY = "ha-schematic-card-editor-theme";
 
 const demoEntityStates = {
   "input_boolean.schematic_demo_alarm": "on",
@@ -55,6 +56,8 @@ type EditorElements = {
   themeInput: HTMLTextAreaElement;
   themeStatus: HTMLElement;
   themePreviewToggle: HTMLInputElement;
+  themePreviewToggleText: HTMLElement;
+  editorThemeSelect: HTMLSelectElement;
   transferPanel: HTMLElement;
   transferPanelTitle: HTMLElement;
   importSection: HTMLElement;
@@ -245,6 +248,16 @@ type EditorTabName = "items" | "inspector" | "json";
 type SymbolEditorTabName = "items" | "parts" | "slots";
 type FloatingPanelId = "toolbar" | "items" | "inspector" | "json";
 type TransferPanelMode = "import" | "svg" | "export" | "theme";
+type EditorThemeId =
+  | "odysseus"
+  | "light"
+  | "midnight"
+  | "paper"
+  | "cyberpunk"
+  | "ocean"
+  | "terminal"
+  | "gpt"
+  | "claude";
 
 type FloatingPanelDragState = {
   panel: HTMLElement;
@@ -278,6 +291,12 @@ type StyleFieldConfig = {
 type ThemeTokenPreset = {
   label: string;
   value: string;
+};
+
+type EditorThemePreset = {
+  id: EditorThemeId;
+  label: string;
+  variables: Record<string, string>;
 };
 
 type SvgImportResult =
@@ -350,6 +369,288 @@ const THEME_TOKEN_PRESETS: ThemeTokenPreset[] = [
   { label: "warning", value: "var(--warning-color)" },
   { label: "success", value: "var(--success-color)" },
   { label: "divider", value: "var(--divider-color)" }
+];
+
+const EDITOR_THEME_PRESETS: EditorThemePreset[] = [
+  {
+    id: "odysseus",
+    label: "Default Dark / Odysseus",
+    variables: {
+      "--editor-bg": "#171b22",
+      "--editor-bg-deep": "#0d1015",
+      "--editor-panel": "#11161d",
+      "--editor-panel-raised": "#171d26",
+      "--editor-panel-soft": "#1d2530",
+      "--editor-border": "#355a66",
+      "--editor-border-soft": "rgb(156 222 242 / 14%)",
+      "--editor-text": "#9cdef2",
+      "--editor-text-strong": "#d6f7ff",
+      "--editor-text-muted": "#6b8a94",
+      "--editor-cyan": "#56b6c2",
+      "--editor-teal": "#50fae4",
+      "--editor-coral": "#e06c75",
+      "--editor-green": "#50fa7b",
+      "--editor-warning": "#e5c07b",
+      "--editor-workspace-dot": "rgb(156 222 242 / 10%)",
+      "--editor-workspace-grid": "rgb(156 222 242 / 5%)",
+      "--editor-rail-glow": "rgb(80 250 228 / 8%)",
+      "--primary-text-color": "#9cdef2",
+      "--secondary-text-color": "#6b8a94",
+      "--divider-color": "#355a66",
+      "--accent-color": "#56b6c2",
+      "--error-color": "#e06c75",
+      "--success-color": "#50fa7b",
+      "--ha-card-background": "#11161d"
+    }
+  },
+  {
+    id: "light",
+    label: "Light",
+    variables: {
+      "--editor-bg": "#edf3f7",
+      "--editor-bg-deep": "#dce8ef",
+      "--editor-panel": "#f8fbfd",
+      "--editor-panel-raised": "#ffffff",
+      "--editor-panel-soft": "#e5eef4",
+      "--editor-border": "#9ab1bd",
+      "--editor-border-soft": "rgb(37 71 88 / 18%)",
+      "--editor-text": "#254758",
+      "--editor-text-strong": "#102532",
+      "--editor-text-muted": "#607987",
+      "--editor-cyan": "#177e93",
+      "--editor-teal": "#169f95",
+      "--editor-coral": "#cf5f62",
+      "--editor-green": "#1f8a4d",
+      "--editor-warning": "#a36b1e",
+      "--editor-workspace-dot": "rgb(37 71 88 / 12%)",
+      "--editor-workspace-grid": "rgb(37 71 88 / 6%)",
+      "--editor-rail-glow": "rgb(23 126 147 / 10%)",
+      "--primary-text-color": "#254758",
+      "--secondary-text-color": "#607987",
+      "--divider-color": "#9ab1bd",
+      "--accent-color": "#177e93",
+      "--error-color": "#cf5f62",
+      "--success-color": "#1f8a4d",
+      "--ha-card-background": "#ffffff"
+    }
+  },
+  {
+    id: "midnight",
+    label: "Midnight",
+    variables: {
+      "--editor-bg": "#080b12",
+      "--editor-bg-deep": "#03050a",
+      "--editor-panel": "#0d1320",
+      "--editor-panel-raised": "#121a2b",
+      "--editor-panel-soft": "#18233a",
+      "--editor-border": "#2d4266",
+      "--editor-border-soft": "rgb(126 166 220 / 14%)",
+      "--editor-text": "#a8c7f6",
+      "--editor-text-strong": "#e1edff",
+      "--editor-text-muted": "#728ab0",
+      "--editor-cyan": "#65b7ff",
+      "--editor-teal": "#66e6d0",
+      "--editor-coral": "#ff7f8a",
+      "--editor-green": "#6be28b",
+      "--editor-warning": "#ffd078",
+      "--editor-workspace-dot": "rgb(101 183 255 / 10%)",
+      "--editor-workspace-grid": "rgb(101 183 255 / 5%)",
+      "--editor-rail-glow": "rgb(101 183 255 / 9%)",
+      "--primary-text-color": "#a8c7f6",
+      "--secondary-text-color": "#728ab0",
+      "--divider-color": "#2d4266",
+      "--accent-color": "#65b7ff",
+      "--error-color": "#ff7f8a",
+      "--success-color": "#6be28b",
+      "--ha-card-background": "#0d1320"
+    }
+  },
+  {
+    id: "paper",
+    label: "Paper",
+    variables: {
+      "--editor-bg": "#f5f1e8",
+      "--editor-bg-deep": "#e6decf",
+      "--editor-panel": "#fffaf1",
+      "--editor-panel-raised": "#fffdf7",
+      "--editor-panel-soft": "#ebe0ce",
+      "--editor-border": "#c6b79d",
+      "--editor-border-soft": "rgb(91 72 44 / 18%)",
+      "--editor-text": "#4c3e2e",
+      "--editor-text-strong": "#261c12",
+      "--editor-text-muted": "#7d6c58",
+      "--editor-cyan": "#357f86",
+      "--editor-teal": "#3b9182",
+      "--editor-coral": "#b85f55",
+      "--editor-green": "#587f3c",
+      "--editor-warning": "#a9762c",
+      "--editor-workspace-dot": "rgb(91 72 44 / 10%)",
+      "--editor-workspace-grid": "rgb(91 72 44 / 5%)",
+      "--editor-rail-glow": "rgb(53 127 134 / 10%)",
+      "--primary-text-color": "#4c3e2e",
+      "--secondary-text-color": "#7d6c58",
+      "--divider-color": "#c6b79d",
+      "--accent-color": "#357f86",
+      "--error-color": "#b85f55",
+      "--success-color": "#587f3c",
+      "--ha-card-background": "#fffaf1"
+    }
+  },
+  {
+    id: "cyberpunk",
+    label: "Cyberpunk",
+    variables: {
+      "--editor-bg": "#17051f",
+      "--editor-bg-deep": "#09020f",
+      "--editor-panel": "#1b0a25",
+      "--editor-panel-raised": "#281036",
+      "--editor-panel-soft": "#351345",
+      "--editor-border": "#7a2a85",
+      "--editor-border-soft": "rgb(255 72 196 / 18%)",
+      "--editor-text": "#f1c7ff",
+      "--editor-text-strong": "#fff0ff",
+      "--editor-text-muted": "#aa7ab5",
+      "--editor-cyan": "#3cf6ff",
+      "--editor-teal": "#5cffd1",
+      "--editor-coral": "#ff4bb8",
+      "--editor-green": "#c6ff45",
+      "--editor-warning": "#ffd84a",
+      "--editor-workspace-dot": "rgb(60 246 255 / 12%)",
+      "--editor-workspace-grid": "rgb(255 75 184 / 5%)",
+      "--editor-rail-glow": "rgb(255 75 184 / 10%)",
+      "--primary-text-color": "#f1c7ff",
+      "--secondary-text-color": "#aa7ab5",
+      "--divider-color": "#7a2a85",
+      "--accent-color": "#3cf6ff",
+      "--error-color": "#ff4bb8",
+      "--success-color": "#c6ff45",
+      "--ha-card-background": "#1b0a25"
+    }
+  },
+  {
+    id: "ocean",
+    label: "Ocean",
+    variables: {
+      "--editor-bg": "#09212a",
+      "--editor-bg-deep": "#041319",
+      "--editor-panel": "#0d2d37",
+      "--editor-panel-raised": "#123c49",
+      "--editor-panel-soft": "#164b57",
+      "--editor-border": "#2d7180",
+      "--editor-border-soft": "rgb(124 211 222 / 16%)",
+      "--editor-text": "#afe8ee",
+      "--editor-text-strong": "#e8fdff",
+      "--editor-text-muted": "#79aeb7",
+      "--editor-cyan": "#69d9e7",
+      "--editor-teal": "#61f0c8",
+      "--editor-coral": "#ff8a7a",
+      "--editor-green": "#8fe38a",
+      "--editor-warning": "#ffd07a",
+      "--editor-workspace-dot": "rgb(105 217 231 / 11%)",
+      "--editor-workspace-grid": "rgb(105 217 231 / 5%)",
+      "--editor-rail-glow": "rgb(97 240 200 / 9%)",
+      "--primary-text-color": "#afe8ee",
+      "--secondary-text-color": "#79aeb7",
+      "--divider-color": "#2d7180",
+      "--accent-color": "#69d9e7",
+      "--error-color": "#ff8a7a",
+      "--success-color": "#8fe38a",
+      "--ha-card-background": "#0d2d37"
+    }
+  },
+  {
+    id: "terminal",
+    label: "Terminal",
+    variables: {
+      "--editor-bg": "#061006",
+      "--editor-bg-deep": "#010601",
+      "--editor-panel": "#081509",
+      "--editor-panel-raised": "#0d1f0f",
+      "--editor-panel-soft": "#132a15",
+      "--editor-border": "#2f6f37",
+      "--editor-border-soft": "rgb(107 255 126 / 16%)",
+      "--editor-text": "#8cff9a",
+      "--editor-text-strong": "#d7ffdc",
+      "--editor-text-muted": "#5c9d64",
+      "--editor-cyan": "#78ffa6",
+      "--editor-teal": "#46ff8a",
+      "--editor-coral": "#ff7070",
+      "--editor-green": "#7dff70",
+      "--editor-warning": "#d6ff70",
+      "--editor-workspace-dot": "rgb(140 255 154 / 11%)",
+      "--editor-workspace-grid": "rgb(140 255 154 / 5%)",
+      "--editor-rail-glow": "rgb(70 255 138 / 9%)",
+      "--primary-text-color": "#8cff9a",
+      "--secondary-text-color": "#5c9d64",
+      "--divider-color": "#2f6f37",
+      "--accent-color": "#78ffa6",
+      "--error-color": "#ff7070",
+      "--success-color": "#7dff70",
+      "--ha-card-background": "#081509"
+    }
+  },
+  {
+    id: "gpt",
+    label: "GPT",
+    variables: {
+      "--editor-bg": "#10231f",
+      "--editor-bg-deep": "#081410",
+      "--editor-panel": "#132a25",
+      "--editor-panel-raised": "#1a3731",
+      "--editor-panel-soft": "#21473f",
+      "--editor-border": "#3d7469",
+      "--editor-border-soft": "rgb(153 220 203 / 16%)",
+      "--editor-text": "#c8eee5",
+      "--editor-text-strong": "#effffb",
+      "--editor-text-muted": "#8fb9ae",
+      "--editor-cyan": "#7fd8c4",
+      "--editor-teal": "#74e0b1",
+      "--editor-coral": "#f08375",
+      "--editor-green": "#88d27a",
+      "--editor-warning": "#e6c269",
+      "--editor-workspace-dot": "rgb(127 216 196 / 10%)",
+      "--editor-workspace-grid": "rgb(127 216 196 / 5%)",
+      "--editor-rail-glow": "rgb(116 224 177 / 9%)",
+      "--primary-text-color": "#c8eee5",
+      "--secondary-text-color": "#8fb9ae",
+      "--divider-color": "#3d7469",
+      "--accent-color": "#7fd8c4",
+      "--error-color": "#f08375",
+      "--success-color": "#88d27a",
+      "--ha-card-background": "#132a25"
+    }
+  },
+  {
+    id: "claude",
+    label: "Claude",
+    variables: {
+      "--editor-bg": "#211b17",
+      "--editor-bg-deep": "#120d0a",
+      "--editor-panel": "#2a221c",
+      "--editor-panel-raised": "#382d25",
+      "--editor-panel-soft": "#493a2f",
+      "--editor-border": "#7d6551",
+      "--editor-border-soft": "rgb(234 190 151 / 16%)",
+      "--editor-text": "#efd2b8",
+      "--editor-text-strong": "#fff3e7",
+      "--editor-text-muted": "#b59378",
+      "--editor-cyan": "#93c5c2",
+      "--editor-teal": "#a8d5bd",
+      "--editor-coral": "#d88769",
+      "--editor-green": "#a9c97f",
+      "--editor-warning": "#e2b76d",
+      "--editor-workspace-dot": "rgb(234 190 151 / 10%)",
+      "--editor-workspace-grid": "rgb(234 190 151 / 5%)",
+      "--editor-rail-glow": "rgb(216 135 105 / 9%)",
+      "--primary-text-color": "#efd2b8",
+      "--secondary-text-color": "#b59378",
+      "--divider-color": "#7d6551",
+      "--accent-color": "#93c5c2",
+      "--error-color": "#d88769",
+      "--success-color": "#a9c97f",
+      "--ha-card-background": "#2a221c"
+    }
+  }
 ];
 
 const FLOATING_PANEL_MIN_WIDTH = 260;
@@ -492,6 +793,8 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     themeInput: getRequiredElement(transferPanel, ".theme-input", HTMLTextAreaElement),
     themeStatus: getRequiredElement(transferPanel, ".theme-status", HTMLElement),
     themePreviewToggle: getRequiredElement(transferPanel, ".theme-preview-toggle", HTMLInputElement),
+    themePreviewToggleText: getRequiredElement(transferPanel, ".theme-preview-toggle-text", HTMLElement),
+    editorThemeSelect: getRequiredElement(transferPanel, ".editor-theme-select", HTMLSelectElement),
     transferPanel: getRequiredElement(transferPanel, ".transfer-panel", HTMLElement),
     transferPanelTitle: getRequiredElement(transferPanel, ".transfer-panel-title", HTMLElement),
     importSection: getRequiredElement(transferPanel, ".import-section", HTMLElement),
@@ -597,11 +900,13 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   };
 
   elements.jsonInput.value = formatPayloadJson();
+  loadStoredEditorTheme(elements);
   loadStoredThemePreview(elements);
   elements.jsonInput.addEventListener("input", () => updateFromJson(elements, documentRef));
   elements.copyButton.addEventListener("click", async () => copyExportedPayload(elements));
   elements.applyThemeButton.addEventListener("click", () => applyThemePreview(elements));
   elements.themePreviewToggle.addEventListener("change", () => updateThemePreviewMode(elements));
+  elements.editorThemeSelect.addEventListener("change", () => updateEditorTheme(elements));
   elements.openImportButton.addEventListener("click", () => openTransferPanel(elements, "import"));
   elements.openSvgImportButton.addEventListener("click", () => openTransferPanel(elements, "svg"));
   elements.openExportButton.addEventListener("click", () => openTransferPanel(elements, "export"));
@@ -7384,6 +7689,41 @@ function removeUndefinedProperties<T extends Record<string, unknown>>(value: T):
   return value;
 }
 
+function loadStoredEditorTheme(elements: EditorElements): void {
+  const storedTheme = getEditorLocalStorage(elements)?.getItem(EDITOR_THEME_STORAGE_KEY);
+  const themeId = isEditorThemeId(storedTheme) ? storedTheme : "odysseus";
+  elements.editorThemeSelect.value = themeId;
+  applyEditorTheme(elements, themeId);
+}
+
+function updateEditorTheme(elements: EditorElements): void {
+  const themeId = isEditorThemeId(elements.editorThemeSelect.value) ? elements.editorThemeSelect.value : "odysseus";
+  elements.editorThemeSelect.value = themeId;
+  applyEditorTheme(elements, themeId);
+  getEditorLocalStorage(elements)?.setItem(EDITOR_THEME_STORAGE_KEY, themeId);
+
+  if (!elements.themePreviewToggle.checked) {
+    updateThemePreviewMode(elements);
+  }
+}
+
+function applyEditorTheme(elements: EditorElements, themeId: EditorThemeId): void {
+  const preset = getEditorThemePreset(themeId);
+  elements.editorRoot.dataset.editorTheme = preset.id;
+
+  for (const [name, value] of Object.entries(preset.variables)) {
+    elements.editorRoot.style.setProperty(name, value);
+  }
+}
+
+function getEditorThemePreset(themeId: EditorThemeId): EditorThemePreset {
+  return EDITOR_THEME_PRESETS.find((preset) => preset.id === themeId) ?? EDITOR_THEME_PRESETS[0];
+}
+
+function isEditorThemeId(value: unknown): value is EditorThemeId {
+  return typeof value === "string" && EDITOR_THEME_PRESETS.some((preset) => preset.id === value);
+}
+
 function applyThemePreview(elements: EditorElements): void {
   const result = parseThemeVariables(elements.themeInput.value);
 
@@ -7395,6 +7735,7 @@ function applyThemePreview(elements: EditorElements): void {
 
   getEditorLocalStorage(elements)?.setItem(THEME_STORAGE_KEY, elements.themeInput.value);
   elements.themePreviewToggle.checked = true;
+  updateThemePreviewToggleText(elements);
   applyThemeVariablesToPreview(elements, result.variables);
 
   elements.themeStatus.textContent = `Applied ${Object.keys(result.variables).length} theme variables`;
@@ -7402,9 +7743,11 @@ function applyThemePreview(elements: EditorElements): void {
 }
 
 function updateThemePreviewMode(elements: EditorElements): void {
+  updateThemePreviewToggleText(elements);
+
   if (!elements.themePreviewToggle.checked) {
     clearThemePreviewVariables(elements);
-    elements.themeStatus.textContent = "Using editor theme";
+    elements.themeStatus.textContent = `Previewing editor theme: ${getEditorThemePreset(getCurrentEditorThemeId(elements)).label}`;
     elements.themeStatus.dataset.state = "valid";
     return;
   }
@@ -7433,6 +7776,16 @@ function applyThemeVariablesToPreview(elements: EditorElements, variables: Recor
 
 function clearThemePreviewVariables(elements: EditorElements): void {
   elements.previewSurface.removeAttribute("style");
+}
+
+function updateThemePreviewToggleText(elements: EditorElements): void {
+  elements.themePreviewToggleText.textContent = elements.themePreviewToggle.checked
+    ? "Preview HA theme"
+    : "Preview editor theme";
+}
+
+function getCurrentEditorThemeId(elements: EditorElements): EditorThemeId {
+  return isEditorThemeId(elements.editorThemeSelect.value) ? elements.editorThemeSelect.value : "odysseus";
 }
 
 function loadStoredThemePreview(elements: EditorElements): void {
@@ -8441,6 +8794,20 @@ function createTransferPanel(documentRef: Document): HTMLElement {
   themeSection.className = "theme-section";
   themeSection.hidden = true;
 
+  const editorThemeLabel = documentRef.createElement("label");
+  editorThemeLabel.className = "field-label";
+  editorThemeLabel.textContent = "Editor theme";
+
+  const editorThemeSelect = documentRef.createElement("select");
+  editorThemeSelect.className = "editor-theme-select";
+
+  for (const preset of EDITOR_THEME_PRESETS) {
+    const option = documentRef.createElement("option");
+    option.value = preset.id;
+    option.textContent = preset.label;
+    editorThemeSelect.append(option);
+  }
+
   const themeLabel = documentRef.createElement("label");
   themeLabel.className = "field-label";
   themeLabel.textContent = "Theme preview JSON";
@@ -8467,7 +8834,8 @@ function createTransferPanel(documentRef: Document): HTMLElement {
   themePreviewToggle.type = "checkbox";
 
   const themePreviewText = documentRef.createElement("span");
-  themePreviewText.textContent = "Use Imported Theme";
+  themePreviewText.className = "theme-preview-toggle-text";
+  themePreviewText.textContent = "Preview editor theme";
 
   themePreviewLabel.append(themePreviewToggle, themePreviewText);
 
@@ -8476,7 +8844,7 @@ function createTransferPanel(documentRef: Document): HTMLElement {
   themeStatus.textContent = "Optional theme preview";
 
   themeControls.append(applyThemeButton, themePreviewLabel, themeStatus);
-  themeSection.append(themeLabel, themeInput, themeControls);
+  themeSection.append(editorThemeLabel, editorThemeSelect, themeLabel, themeInput, themeControls);
 
   const exportSection = documentRef.createElement("section");
   exportSection.className = "export-section";

@@ -19,6 +19,9 @@
   --editor-coral: #e06c75;
   --editor-green: #50fa7b;
   --editor-warning: #e5c07b;
+  --editor-workspace-dot: rgb(156 222 242 / 10%);
+  --editor-workspace-grid: rgb(156 222 242 / 5%);
+  --editor-rail-glow: rgb(80 250 228 / 8%);
   --editor-shadow: 0 18px 54px rgb(0 0 0 / 34%);
   --primary-text-color: var(--editor-text);
   --secondary-text-color: var(--editor-text-muted);
@@ -37,8 +40,8 @@ body {
   min-width: 0;
   color: var(--editor-text);
   background:
-    radial-gradient(rgb(156 222 242 / 10%) 1px, transparent 1px),
-    linear-gradient(135deg, rgb(80 250 228 / 6%), transparent 34%),
+    radial-gradient(var(--editor-workspace-dot) 1px, transparent 1px),
+    linear-gradient(135deg, var(--editor-rail-glow), transparent 34%),
     var(--editor-bg);
   background-size: 22px 22px, 100% 100%, auto;
 }
@@ -55,6 +58,8 @@ textarea {
   height: 100vh;
   min-height: 0;
   overflow: hidden;
+  color: var(--editor-text);
+  background: var(--editor-bg);
   transition: grid-template-columns 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
@@ -70,8 +75,8 @@ textarea {
   gap: 10px;
   border-right: 1px solid var(--editor-border);
   background:
-    radial-gradient(rgb(80 250 228 / 10%) 1px, transparent 1px),
-    linear-gradient(180deg, rgb(80 250 228 / 7%), transparent 34%),
+    radial-gradient(var(--editor-workspace-dot) 1px, transparent 1px),
+    linear-gradient(180deg, var(--editor-rail-glow), transparent 34%),
     var(--editor-bg-deep);
   background-size: 18px 18px, auto, auto;
   box-shadow: inset -1px 0 0 rgb(255 255 255 / 3%);
@@ -231,6 +236,12 @@ textarea {
   gap: 12px;
   padding: 12px;
   overflow: hidden;
+  background:
+    radial-gradient(var(--editor-workspace-dot) 1px, transparent 1px),
+    linear-gradient(90deg, var(--editor-workspace-grid) 1px, transparent 1px),
+    linear-gradient(0deg, var(--editor-workspace-grid) 1px, transparent 1px),
+    var(--editor-bg);
+  background-size: 22px 22px, 44px 44px, 44px 44px, auto;
 }
 
 .editor-main {
@@ -265,7 +276,7 @@ textarea {
   border: 1px solid var(--editor-border);
   border-radius: 8px;
   background:
-    linear-gradient(180deg, rgb(156 222 242 / 7%), transparent 80px),
+    linear-gradient(180deg, var(--editor-rail-glow), transparent 80px),
     color-mix(in srgb, var(--editor-panel) 92%, transparent);
   box-shadow: 0 18px 54px rgb(0 0 0 / 42%);
   backdrop-filter: blur(14px);
@@ -615,6 +626,15 @@ textarea {
   caret-color: var(--editor-teal);
 }
 
+.editor-theme-select {
+  width: 100%;
+  border: 1px solid var(--editor-border);
+  border-radius: 6px;
+  background: var(--editor-bg-deep);
+  color: var(--editor-text);
+  padding: 8px 10px;
+}
+
 .json-input,
 .payload-output {
   flex: 1;
@@ -654,9 +674,9 @@ textarea {
   padding: 12px;
   color: var(--primary-text-color, #17202a);
   background:
-    radial-gradient(rgb(156 222 242 / 12%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(156 222 242 / 5%) 1px, transparent 1px),
-    linear-gradient(0deg, rgb(156 222 242 / 5%) 1px, transparent 1px),
+    radial-gradient(var(--editor-workspace-dot) 1px, transparent 1px),
+    linear-gradient(90deg, var(--editor-workspace-grid) 1px, transparent 1px),
+    linear-gradient(0deg, var(--editor-workspace-grid) 1px, transparent 1px),
     var(
       --ha-card-background,
       var(
@@ -751,11 +771,11 @@ textarea {
 }
 
 .preview-surface [data-editor-selected="true"] {
-  filter: drop-shadow(0 0 4px #2f6fed);
+  filter: drop-shadow(0 0 4px var(--accent-color, #2f6fed));
 }
 
 .symbol-preview-surface [data-symbol-editor-selected="true"] {
-  filter: drop-shadow(0 0 5px #2f6fed);
+  filter: drop-shadow(0 0 5px var(--accent-color, #2f6fed));
 }
 
 .preview-controls,
