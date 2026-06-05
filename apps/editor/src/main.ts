@@ -30,6 +30,9 @@ const demoEntityStates = {
 
 type EditorElements = {
   editorRoot: HTMLElement;
+  activeWorkspace: WorkspaceMode;
+  cardWorkspace: HTMLElement;
+  workspacePanelLayouts: WorkspacePanelLayouts;
   jsonInput: HTMLTextAreaElement;
   itemList: HTMLElement;
   symbolSummary: HTMLElement;
@@ -243,8 +246,35 @@ type AddItemType = "text" | "rect" | "circle" | "polyline";
 
 type EditorTabName = "items" | "inspector" | "json";
 type SymbolEditorTabName = "items" | "parts" | "slots";
-type FloatingPanelId = "toolbar" | "items" | "inspector" | "json";
+type WorkspaceMode = "card" | "symbol";
+type FloatingPanelId = "toolbar" | "items" | "inspector" | "json" | "transfer";
+type FloatingPanelDockZone = "left" | "right" | "bottom";
+type FloatingPanelSnapZone = "fullscreen" | "left" | "right" | "bottom";
+type FloatingPanelResizeMode = "floating" | "dock-zone";
 type TransferPanelMode = "import" | "svg" | "export" | "theme";
+
+type FloatingPanelStyleSnapshot = {
+  left: string;
+  top: string;
+  right: string;
+  bottom: string;
+  width: string;
+  height: string;
+  maxHeight: string;
+  zIndex: string;
+};
+
+type FloatingPanelLayoutSnapshot = {
+  dockRatio?: number;
+  dockSize?: number;
+  dockZone?: FloatingPanelDockZone;
+  hidden: boolean;
+  order: number;
+  panelState: string;
+  style: FloatingPanelStyleSnapshot;
+};
+
+type WorkspacePanelLayouts = Record<WorkspaceMode, Partial<Record<FloatingPanelId, FloatingPanelLayoutSnapshot>>>;
 
 type FloatingPanelDragState = {
   panel: HTMLElement;
@@ -253,17 +283,47 @@ type FloatingPanelDragState = {
   startClientY: number;
   startLeft: number;
   startTop: number;
+  moved: boolean;
+  pointerOffsetX: number;
+  pointerOffsetY: number;
+  wasDocked: boolean;
 };
 
 type FloatingPanelResizeState = {
   panel: HTMLElement;
   layer: HTMLElement;
+  mode: FloatingPanelResizeMode;
+  edges: FloatingPanelResizeEdges;
   startClientX: number;
   startClientY: number;
   startWidth: number;
   startHeight: number;
   startLeft: number;
   startTop: number;
+  dockZone?: FloatingPanelDockZone;
+  dockTarget?: HTMLElement;
+};
+
+type FloatingPanelResizeEdges = {
+  left: boolean;
+  right: boolean;
+  top: boolean;
+  bottom: boolean;
+};
+
+type FloatingPanelSnapTarget = {
+  accepted: boolean;
+  index?: number;
+  rect: { left: number; top: number; width: number; height: number };
+  zone: FloatingPanelSnapZone;
+};
+
+type SideDockDividerResizeState = {
+  target: HTMLElement;
+  dividerIndex: number;
+  startClientY: number;
+  startRatios: number[];
+  dockHeight: number;
 };
 
 type StyleFieldName = keyof SchematicStyle;
@@ -355,6 +415,15 @@ const THEME_TOKEN_PRESETS: ThemeTokenPreset[] = [
 const FLOATING_PANEL_MIN_WIDTH = 260;
 const FLOATING_PANEL_MIN_HEIGHT = 160;
 const FLOATING_PANEL_DOCK_RESERVE = 56;
+const FLOATING_PANEL_RESIZE_EDGE_PX = 7;
+const FLOATING_PANEL_UNDOCK_PX = 24;
+const FLOATING_PANEL_SIDE_STACK_LIMIT = 3;
+const FLOATING_PANEL_SIDE_MIN_RATIO = 0.18;
+const ODYSSEUS_FULLSCREEN_SNAP_PX = 8;
+const ODYSSEUS_EDGE_SNAP_PX = 60;
+const ODYSSEUS_BOTTOM_SNAP_PX = 24;
+const SNAP_TOUR_HINT_STORAGE_KEY = "hsc-odysseus-hint-drag-to-snap-seen";
+const FLOATING_PANEL_IDS: FloatingPanelId[] = ["toolbar", "items", "inspector", "json", "transfer"];
 
 const INSPECTOR_FIELD_LABELS: Record<"id" | "layer" | "x" | "y" | "text", string> = {
   id: "Item id",
@@ -452,21 +521,27 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   const shell = documentRef.createElement("section");
   shell.className = "editor-shell";
   shell.dataset.sidebar = "collapsed";
+  shell.dataset.workspace = "card";
   shell.tabIndex = -1;
 
   const rail = createEditorRail(documentRef);
   const toolbar = createGlobalToolbar(documentRef);
   const jsonPane = createJsonPane(documentRef);
   const previewPane = createPreviewPane(documentRef);
+  previewPane.classList.add("card-editor-workspace");
   const workspace = documentRef.createElement("div");
   workspace.className = "editor-workspace";
   const editorMain = documentRef.createElement("div");
   editorMain.className = "editor-main";
   const transferPanel = createTransferPanel(documentRef);
   const symbolWorkspace = createSymbolEditorWorkspace(documentRef);
+  symbolWorkspace.hidden = true;
 
   const elements: EditorElements = {
     editorRoot: shell,
+    activeWorkspace: "card",
+    cardWorkspace: previewPane,
+    workspacePanelLayouts: { card: {}, symbol: {} },
     jsonInput: getRequiredElement(jsonPane, ".json-input", HTMLTextAreaElement),
     itemList: getRequiredElement(jsonPane, ".item-list", HTMLElement),
     symbolSummary: getRequiredElement(jsonPane, ".symbol-summary", HTMLElement),
@@ -507,7 +582,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     openSvgImportButton: getRequiredElement(toolbar, ".open-svg-import-button", HTMLButtonElement),
     openExportButton: getRequiredElement(toolbar, ".open-export-button", HTMLButtonElement),
     openThemeButton: getRequiredElement(toolbar, ".open-theme-button", HTMLButtonElement),
-    openSymbolEditorButton: getRequiredElement(toolbar, ".open-symbol-editor-button", HTMLButtonElement),
+    openSymbolEditorButton: getRequiredElement(rail, ".open-symbol-editor-button", HTMLButtonElement),
     symbolWorkspace,
     symbolStartDialog: getRequiredElement(symbolWorkspace, ".symbol-start-dialog", HTMLElement),
     symbolStartImportButton: getRequiredElement(symbolWorkspace, ".symbol-start-import-button", HTMLButtonElement),
@@ -606,7 +681,6 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.openSvgImportButton.addEventListener("click", () => openTransferPanel(elements, "svg"));
   elements.openExportButton.addEventListener("click", () => openTransferPanel(elements, "export"));
   elements.openThemeButton.addEventListener("click", () => openTransferPanel(elements, "theme"));
-  elements.openSymbolEditorButton.addEventListener("click", () => openSymbolWorkspace(elements, documentRef));
   elements.closeSymbolWorkspaceButton.addEventListener("click", () => closeSymbolWorkspace(elements));
   elements.symbolStartImportButton.addEventListener("click", () => startSymbolWorkspaceWithImport(elements, documentRef));
   elements.symbolStartEditButton.addEventListener("click", () => startSymbolWorkspaceWithExistingSymbol(elements, documentRef));
@@ -677,6 +751,9 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.symbolPartsTabButton.addEventListener("click", () => showSymbolEditorTab(elements, "parts"));
   elements.symbolSlotsTabButton.addEventListener("click", () => showSymbolEditorTab(elements, "slots"));
   setupSymbolEditorTabDocking(elements);
+  for (const button of Array.from(symbolWorkspace.querySelectorAll<HTMLButtonElement>("[data-symbol-panel-shortcut]"))) {
+    button.addEventListener("click", () => showSymbolEditorTab(elements, getSymbolPanelShortcut(button)));
+  }
   shell.addEventListener("keydown", (event) => handleEditorKeyDown(elements, event, documentRef));
 
   const sidebarToggleButton = getRequiredElement(rail, ".sidebar-toggle-button", HTMLButtonElement);
@@ -686,14 +763,18 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     toolbar,
     itemListSection: elements.itemListSection,
     inspectorSection: elements.inspectorSection,
-    jsonSection: elements.jsonSection
+    jsonSection: elements.jsonSection,
+    transferPanel: elements.transferPanel
   });
 
-  editorMain.append(previewPane);
+  editorMain.append(previewPane, symbolWorkspace);
   workspace.append(editorMain, floatingPanelLayer);
-  shell.append(rail, workspace, transferPanel, symbolWorkspace);
+  shell.append(rail, workspace);
   setupFloatingPanels(elements, documentRef);
   updateFromJson(elements, documentRef);
+  elements.workspacePanelLayouts.card = captureFloatingPanelLayout(shell);
+  elements.workspacePanelLayouts.symbol = createClosedFloatingPanelLayout(shell);
+  updateWorkspaceNavigationState(elements);
 
   return shell;
 }
@@ -844,6 +925,7 @@ function showEditorTab(elements: EditorElements, tab: EditorTabName): void {
 
   elements.activeTab = tab;
   openFloatingPanel(elements.editorRoot, getEditorTabPanelId(tab));
+  queueSnapTourHint(elements.editorRoot, getFloatingPanel(elements.editorRoot, getEditorTabPanelId(tab)), elements.editorRoot.ownerDocument);
   updateEditorTabs(elements);
 
   if (tab === "json") {
@@ -4040,6 +4122,10 @@ function updateSelectedSymbolSlotBinding(
 }
 
 function openSymbolWorkspace(elements: EditorElements, documentRef: Document): void {
+  switchEditorWorkspace(elements, "symbol", documentRef);
+}
+
+function ensureSymbolWorkspaceOpen(elements: EditorElements, documentRef: Document): void {
   elements.symbolWorkspace.hidden = false;
   if (!elements.symbolWorkspaceStarted) {
     renderSymbolWorkspaceStart(elements, documentRef);
@@ -4050,7 +4136,7 @@ function openSymbolWorkspace(elements: EditorElements, documentRef: Document): v
 }
 
 function closeSymbolWorkspace(elements: EditorElements): void {
-  elements.symbolWorkspace.hidden = true;
+  switchEditorWorkspace(elements, "card", elements.editorRoot.ownerDocument);
 }
 
 function renderSymbolWorkspaceStart(elements: EditorElements, documentRef: Document): void {
@@ -7517,6 +7603,7 @@ async function copyExportedPayload(elements: EditorElements): Promise<void> {
 }
 
 function openTransferPanel(elements: EditorElements, mode: "import" | "svg" | "export" | "theme"): void {
+  openFloatingPanel(elements.editorRoot, "transfer");
   elements.transferPanel.hidden = false;
   elements.transferPanel.dataset.mode = mode;
   elements.transferPanelTitle.textContent = getTransferPanelTitle(mode);
@@ -7542,6 +7629,7 @@ function getTransferPanelTitle(mode: "import" | "svg" | "export" | "theme"): str
 function closeTransferPanel(elements: EditorElements): void {
   elements.transferPanel.hidden = true;
   delete elements.transferPanel.dataset.mode;
+  closeFloatingPanel(elements.editorRoot, "transfer");
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -7652,14 +7740,12 @@ function createJsonPane(documentRef: Document): HTMLElement {
 
 function createEditorRail(documentRef: Document): HTMLElement {
   const rail = documentRef.createElement("nav");
-  rail.className = "editor-rail";
+  rail.className = "editor-rail odysseus-shell-nav sidebar";
+  rail.id = "sidebar";
   rail.setAttribute("aria-label", "Editor navigation");
 
-  const topCluster = documentRef.createElement("div");
-  topCluster.className = "editor-rail-cluster";
-
   const toggleButton = documentRef.createElement("button");
-  toggleButton.className = "sidebar-toggle-button editor-rail-button";
+  toggleButton.className = "sidebar-toggle-button hamburger-btn";
   toggleButton.type = "button";
   toggleButton.title = "Toggle sidebar";
   toggleButton.setAttribute("aria-label", "Toggle sidebar");
@@ -7671,24 +7757,68 @@ function createEditorRail(documentRef: Document): HTMLElement {
     toggleButton.append(line);
   }
 
-  topCluster.append(toggleButton);
+  const header = documentRef.createElement("div");
+  header.className = "sidebar-header";
+  const brand = documentRef.createElement("div");
+  brand.className = "sidebar-brand";
+  const brandTitle = documentRef.createElement("span");
+  brandTitle.className = "sidebar-brand-title";
+  brandTitle.textContent = "HSC";
+  brand.append(brandTitle);
+  header.append(brand);
 
-  const navList = documentRef.createElement("div");
-  navList.className = "editor-nav-sidebar";
-  navList.setAttribute("aria-label", "Panel launcher");
-  navList.append(
-    createNavSidebarPanelButton(documentRef, "Toolbar", "T", "Tool controls", "toolbar"),
-    createNavSidebarTabButton(documentRef, "Inspector", "N", "Selected item properties", "inspector"),
-    createNavSidebarTabButton(documentRef, "Item List", "I", "Objects and schematic items", "items"),
-    createNavSidebarTabButton(documentRef, "JSON Editor", "J", "Raw payload editing", "json"),
-    createNavSidebarTransferButton(documentRef, "Export / Payload", "E", "Encoded card payload", "export"),
-    createNavSidebarPanelButton(documentRef, "Simulation", "S", "Open item state workspace", "inspector"),
-    createNavSidebarTabButton(documentRef, "Layers / Object Tree", "L", "Layer order and object list", "items"),
-    createNavSidebarTransferButton(documentRef, "Theme / Preview", "Th", "Imported HA theme controls", "theme")
+  const inner = documentRef.createElement("div");
+  inner.className = "sidebar-inner";
+  inner.append(
+    createSidebarSection(documentRef, "editor-mode-card", "Card editor", "Card editor", [
+      createWorkspaceSidebarButton(documentRef, "Card editor", "▣", "Main schematic workspace", "card", "list-item"),
+      createWorkspaceSidebarButton(documentRef, "Symbol editor", "◇", "Symbol workspace", "symbol", "list-item open-symbol-editor-button")
+    ]),
+    createSidebarSection(documentRef, "tools-section", "Tools", "Tools", [
+      createNavSidebarPanelButton(documentRef, "Toolbar", "⌘", "Tool controls", "toolbar", undefined, "list-item card-tool"),
+      createNavSidebarTabButton(documentRef, "Inspector", "⌁", "Selected item properties", "inspector", "list-item card-tool"),
+      createNavSidebarTabButton(documentRef, "Item List", "☷", "Objects and schematic items", "items", "list-item card-tool"),
+      createNavSidebarTabButton(documentRef, "JSON Editor", "{}", "Raw payload editing", "json", "list-item card-tool"),
+      createNavSidebarTransferButton(documentRef, "Export / Payload", "⇄", "Encoded card payload", "export", "list-item card-tool"),
+      createNavSidebarPanelButton(documentRef, "Simulation", "∿", "Open item state workspace", "inspector", undefined, "list-item card-tool"),
+      createNavSidebarTabButton(documentRef, "Layers / Object Tree", "▤", "Layer order and object list", "items", "list-item card-tool"),
+      createNavSidebarTransferButton(documentRef, "Theme / Preview", "◐", "Imported HA theme controls", "theme", "list-item card-tool")
+    ]),
+    createSidebarSection(documentRef, "editor-mode-symbol", "Symbol editor", "Symbol editor", [
+      createSymbolSidebarButton(documentRef, "Symbol Items", "☷", "Internal symbol objects", "items"),
+      createSymbolSidebarButton(documentRef, "Symbol Parts", "▧", "Part definitions", "parts"),
+      createSymbolSidebarButton(documentRef, "Symbol Slots", "◌", "Slot simulation states", "slots")
+    ])
   );
 
-  rail.append(topCluster, navList);
+  rail.append(toggleButton, header, inner);
   return rail;
+}
+
+function createWorkspaceSidebarButton(
+  documentRef: Document,
+  label: string,
+  icon: string,
+  description: string,
+  workspace: WorkspaceMode,
+  variantClassName?: string
+): HTMLButtonElement {
+  const button = createNavSidebarButton(documentRef, label, icon, description, variantClassName);
+  button.dataset.workspaceMode = workspace;
+  return button;
+}
+
+function createSymbolSidebarButton(
+  documentRef: Document,
+  label: string,
+  icon: string,
+  description: string,
+  tab: SymbolEditorTabName
+): HTMLButtonElement {
+  const button = createNavSidebarButton(documentRef, label, icon, description, "list-item symbol-tool");
+  button.dataset.workspaceMode = "symbol";
+  button.dataset.symbolPanelShortcut = tab;
+  return button;
 }
 
 function createNavSidebarPanelButton(
@@ -7696,9 +7826,14 @@ function createNavSidebarPanelButton(
   label: string,
   icon: string,
   description: string,
-  panelId: FloatingPanelId
+  panelId: FloatingPanelId,
+  extraClassName?: string,
+  variantClassName?: string
 ): HTMLButtonElement {
-  const button = createNavSidebarButton(documentRef, label, icon, description);
+  const button = createNavSidebarButton(documentRef, label, icon, description, variantClassName);
+  if (extraClassName) {
+    button.classList.add(extraClassName);
+  }
   button.dataset.openPanel = panelId;
   return button;
 }
@@ -7708,9 +7843,10 @@ function createNavSidebarTabButton(
   label: string,
   icon: string,
   description: string,
-  tab: EditorTabName
+  tab: EditorTabName,
+  variantClassName?: string
 ): HTMLButtonElement {
-  const button = createNavSidebarButton(documentRef, label, icon, description);
+  const button = createNavSidebarButton(documentRef, label, icon, description, variantClassName);
   button.dataset.openPanel = getEditorTabPanelId(tab);
   button.dataset.editorTabShortcut = tab;
   return button;
@@ -7721,9 +7857,10 @@ function createNavSidebarTransferButton(
   label: string,
   icon: string,
   description: string,
-  mode: TransferPanelMode
+  mode: TransferPanelMode,
+  variantClassName?: string
 ): HTMLButtonElement {
-  const button = createNavSidebarButton(documentRef, label, icon, description);
+  const button = createNavSidebarButton(documentRef, label, icon, description, variantClassName);
   button.dataset.transferMode = mode;
   return button;
 }
@@ -7732,10 +7869,11 @@ function createNavSidebarButton(
   documentRef: Document,
   label: string,
   icon: string,
-  description: string
+  description: string,
+  variantClassName?: string
 ): HTMLButtonElement {
   const button = documentRef.createElement("button");
-  button.className = "editor-nav-entry";
+  button.className = `editor-nav-entry ${variantClassName ?? ""}`.trim();
   button.type = "button";
   button.title = label;
   button.setAttribute("aria-label", label);
@@ -7758,6 +7896,33 @@ function createNavSidebarButton(
   textWrap.append(labelElement, descriptionElement);
   button.append(iconElement, textWrap);
   return button;
+}
+
+function createSidebarSection(
+  documentRef: Document,
+  id: string,
+  title: string,
+  iconLabel: string,
+  buttons: HTMLButtonElement[]
+): HTMLElement {
+  const section = documentRef.createElement("section");
+  section.className = "section";
+  section.id = id;
+
+  const header = documentRef.createElement("div");
+  header.className = "section-header-flex";
+
+  const icon = documentRef.createElement("span");
+  icon.className = "section-icon";
+  icon.textContent = iconLabel.slice(0, 2);
+
+  const heading = documentRef.createElement("h4");
+  heading.className = "section-title";
+  heading.textContent = title;
+
+  header.append(icon, heading);
+  section.append(header, ...buttons);
+  return section;
 }
 
 function toggleEditorSidebar(shell: HTMLElement, button: HTMLButtonElement): void {
@@ -7822,9 +7987,6 @@ function createGlobalToolbar(documentRef: Document): HTMLElement {
     createToolbarButton(documentRef, "open-theme-button", "Theme")
   );
 
-  const workspaceGroup = createToolbarGroup(documentRef, "Workspace");
-  workspaceGroup.append(createToolbarButton(documentRef, "open-symbol-editor-button", "Symbol Editor"));
-
   const panelGroup = createToolbarGroup(documentRef, "Panels");
   panelGroup.append(
     createPanelToolbarButton(documentRef, "open-toolbar-panel-button", "Toolbar", "toolbar"),
@@ -7835,7 +7997,7 @@ function createGlobalToolbar(documentRef: Document): HTMLElement {
     createToolbarButton(documentRef, "close-all-panels-button", "Close All")
   );
 
-  toolbar.append(toolGroup, addGroup, selectionGroup, historyGroup, payloadGroup, workspaceGroup, panelGroup);
+  toolbar.append(toolGroup, addGroup, selectionGroup, historyGroup, payloadGroup, panelGroup);
   return toolbar;
 }
 
@@ -7878,26 +8040,49 @@ function createFloatingPanelLayer(
     itemListSection: HTMLElement;
     inspectorSection: HTMLElement;
     jsonSection: HTMLElement;
+    transferPanel: HTMLElement;
   }
 ): HTMLElement {
   const layer = documentRef.createElement("div");
   layer.className = "floating-panel-layer";
 
+  const dockZones = documentRef.createElement("div");
+  dockZones.className = "floating-panel-dock-zones";
+  dockZones.append(
+    createFloatingPanelDockZone(documentRef, "left"),
+    createFloatingPanelDockZone(documentRef, "right"),
+    createFloatingPanelDockZone(documentRef, "bottom")
+  );
+
+  const tileGhost = documentRef.createElement("div");
+  tileGhost.id = "tile-ghost";
+  tileGhost.className = "floating-panel-tile-ghost";
+
   const panels = documentRef.createElement("div");
   panels.className = "floating-panels";
   panels.append(
-    createFloatingPanel(documentRef, "toolbar", "Toolbar", "T", content.toolbar, { x: 24, y: 18 }),
-    createFloatingPanel(documentRef, "items", "Item List / Object Tree", "I", content.itemListSection, { x: 24, y: 132 }),
-    createFloatingPanel(documentRef, "inspector", "Inspector", "N", content.inspectorSection, { x: 720, y: 18 }),
-    createFloatingPanel(documentRef, "json", "JSON Editor", "J", content.jsonSection, { x: 720, y: 360 })
+    createFloatingPanel(documentRef, "toolbar", "Toolbar", "⌘", content.toolbar, { x: 24, y: 18 }, "closed"),
+    createFloatingPanel(documentRef, "items", "Item List / Object Tree", "☷", content.itemListSection, { x: 24, y: 132 }, "closed"),
+    createFloatingPanel(documentRef, "inspector", "Inspector", "⌁", content.inspectorSection, { x: 720, y: 18 }, "closed"),
+    createFloatingPanel(documentRef, "json", "JSON Editor", "{}", content.jsonSection, { x: 720, y: 360 }, "closed"),
+    createFloatingPanel(documentRef, "transfer", "Export / Payload", "⇄", content.transferPanel, { x: 180, y: 96 }, "closed")
   );
 
   const dock = documentRef.createElement("div");
   dock.className = "floating-panel-dock";
+  dock.id = "minimized-dock";
   dock.setAttribute("aria-label", "Minimized panels");
 
-  layer.append(panels, dock);
+  layer.append(dockZones, tileGhost, panels, dock);
   return layer;
+}
+
+function createFloatingPanelDockZone(documentRef: Document, zone: FloatingPanelDockZone): HTMLElement {
+  const target = documentRef.createElement("div");
+  target.className = `floating-panel-dock-zone floating-panel-dock-zone-${zone}`;
+  target.dataset.dockZone = zone;
+  target.setAttribute("aria-label", `${zone} dock zone`);
+  return target;
 }
 
 function createFloatingPanel(
@@ -7906,17 +8091,19 @@ function createFloatingPanel(
   title: string,
   badge: string,
   content: HTMLElement,
-  position: { x: number; y: number }
+  position: { x: number; y: number },
+  initialState: "open" | "closed" | "maximized" = "open"
 ): HTMLElement {
   const panel = documentRef.createElement("section");
-  panel.className = `floating-panel floating-panel-${panelId}`;
+  panel.className = `floating-panel modal modal-content floating-panel-${panelId}`;
   panel.dataset.panelId = panelId;
-  panel.dataset.panelState = "open";
+  panel.dataset.panelState = initialState;
   panel.style.left = `${position.x}px`;
   panel.style.top = `${position.y}px`;
+  panel.hidden = initialState === "closed";
 
   const header = documentRef.createElement("div");
-  header.className = "floating-panel-header";
+  header.className = "floating-panel-header modal-header";
   header.title = `Drag ${title}`;
 
   const titleWrap = documentRef.createElement("div");
@@ -7936,14 +8123,14 @@ function createFloatingPanel(
   controls.className = "floating-panel-controls";
 
   const minimizeButton = documentRef.createElement("button");
-  minimizeButton.className = "floating-panel-minimize";
+  minimizeButton.className = "floating-panel-minimize modal-minimize-btn";
   minimizeButton.type = "button";
   minimizeButton.title = `Minimize ${title}`;
   minimizeButton.setAttribute("aria-label", `Minimize ${title}`);
   minimizeButton.textContent = "_";
 
   const closeButton = documentRef.createElement("button");
-  closeButton.className = "floating-panel-close";
+  closeButton.className = "floating-panel-close modal-close";
   closeButton.type = "button";
   closeButton.title = `Close ${title}`;
   closeButton.setAttribute("aria-label", `Close ${title}`);
@@ -7960,7 +8147,9 @@ function createFloatingPanel(
   resizeHandle.setAttribute("role", "separator");
   resizeHandle.setAttribute("aria-label", `Resize ${title}`);
 
-  content.hidden = false;
+  if (!content.classList.contains("transfer-panel")) {
+    content.hidden = false;
+  }
   content.classList.add("floating-panel-content");
   body.append(content);
   panel.append(header, body, resizeHandle);
@@ -7973,6 +8162,20 @@ function setupFloatingPanels(elements: EditorElements, documentRef: Document): v
   for (const panel of Array.from(root.querySelectorAll<HTMLElement>(".floating-panel"))) {
     const panelId = getFloatingPanelId(panel);
     panel.addEventListener("mousedown", () => bringFloatingPanelToFront(root, panel));
+    panel.addEventListener("mousemove", (event) => updateFloatingPanelResizeCursor(panel, event));
+    panel.addEventListener("mouseleave", () => clearFloatingPanelResizeCursor(panel));
+    panel.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+
+      const resizeInfo = getFloatingPanelResizeInfo(root, panel, event);
+      if (!resizeInfo) {
+        return;
+      }
+
+      startFloatingPanelResize(root, panel, event, documentRef, resizeInfo);
+    }, true);
     panel.querySelector<HTMLElement>(".floating-panel-header")?.addEventListener("mousedown", (event) => {
       if (event.target instanceof HTMLElement && event.target.closest("button")) {
         return;
@@ -7981,7 +8184,10 @@ function setupFloatingPanels(elements: EditorElements, documentRef: Document): v
       startFloatingPanelDrag(root, panel, event, documentRef);
     });
     panel.querySelector<HTMLElement>(".floating-panel-resize-handle")?.addEventListener("mousedown", (event) => {
-      startFloatingPanelResize(root, panel, event, documentRef);
+      startFloatingPanelResize(root, panel, event, documentRef, {
+        mode: "floating",
+        edges: { left: false, right: true, top: false, bottom: true }
+      });
     });
     panel.querySelector<HTMLButtonElement>(".floating-panel-minimize")?.addEventListener("click", () => {
       minimizeFloatingPanel(root, panelId, documentRef);
@@ -7994,6 +8200,16 @@ function setupFloatingPanels(elements: EditorElements, documentRef: Document): v
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>("[data-editor-tab-shortcut]"))) {
     button.addEventListener("click", () => {
       showEditorTab(elements, getEditorTabShortcut(button));
+    });
+  }
+
+  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>("[data-workspace-mode]"))) {
+    button.addEventListener("click", () => {
+      const workspace = getWorkspaceMode(button);
+      switchEditorWorkspace(elements, workspace, documentRef);
+      if (button.dataset.symbolPanelShortcut) {
+        showSymbolEditorTab(elements, getSymbolPanelShortcut(button));
+      }
     });
   }
 
@@ -8032,6 +8248,19 @@ function getEditorTabShortcut(button: HTMLElement): EditorTabName {
   return "items";
 }
 
+function getWorkspaceMode(button: HTMLElement): WorkspaceMode {
+  return button.dataset.workspaceMode === "symbol" ? "symbol" : "card";
+}
+
+function getSymbolPanelShortcut(button: HTMLElement): SymbolEditorTabName {
+  const tab = button.dataset.symbolPanelShortcut;
+  if (tab === "parts" || tab === "slots") {
+    return tab;
+  }
+
+  return "items";
+}
+
 function getTransferMode(button: HTMLElement): TransferPanelMode {
   const mode = button.dataset.transferMode;
   if (mode === "svg" || mode === "export" || mode === "theme") {
@@ -8043,7 +8272,13 @@ function getTransferMode(button: HTMLElement): TransferPanelMode {
 
 function getFloatingPanelId(element: HTMLElement): FloatingPanelId {
   const panelId = element.dataset.panelId ?? element.dataset.openPanel;
-  if (panelId === "toolbar" || panelId === "items" || panelId === "inspector" || panelId === "json") {
+  if (
+    panelId === "toolbar"
+    || panelId === "items"
+    || panelId === "inspector"
+    || panelId === "json"
+    || panelId === "transfer"
+  ) {
     return panelId;
   }
 
@@ -8056,17 +8291,29 @@ function getFloatingPanel(root: ParentNode, panelId: FloatingPanelId): HTMLEleme
 
 function openFloatingPanel(root: HTMLElement, panelId: FloatingPanelId): void {
   const panel = getFloatingPanel(root, panelId);
+  if (panel.dataset.panelState === "docked") {
+    panel.hidden = false;
+    removeFloatingPanelDockChip(root, panelId);
+    updateDockedWorkspaceInsets(root);
+    updateFloatingPanelRailState(root);
+    queueSnapTourHint(root, panel, root.ownerDocument);
+    return;
+  }
+
+  undockFloatingPanel(root, panelId);
   panel.dataset.panelState = "open";
   panel.hidden = false;
   removeFloatingPanelDockChip(root, panelId);
   bringFloatingPanelToFront(root, panel);
+  updateDockedWorkspaceInsets(root);
   updateFloatingPanelRailState(root);
+  queueSnapTourHint(root, panel, root.ownerDocument);
 }
 
 function toggleFloatingPanel(root: HTMLElement, panelId: FloatingPanelId, documentRef: Document): void {
   const panel = getFloatingPanel(root, panelId);
 
-  if (panel.hidden || panel.dataset.panelState !== "open") {
+  if (panel.hidden || (panel.dataset.panelState !== "open" && panel.dataset.panelState !== "maximized" && panel.dataset.panelState !== "docked")) {
     openFloatingPanel(root, panelId);
     return;
   }
@@ -8083,6 +8330,8 @@ function minimizeFloatingPanel(root: HTMLElement, panelId: FloatingPanelId, docu
   panel.dataset.panelState = "minimized";
   panel.hidden = true;
   ensureFloatingPanelDockChip(root, panelId, documentRef);
+  updateDockedWorkspaceInsets(root);
+  refreshAllDockZoneStacks(root);
   updateFloatingPanelRailState(root);
 }
 
@@ -8091,12 +8340,14 @@ function closeFloatingPanel(root: HTMLElement, panelId: FloatingPanelId): void {
   panel.dataset.panelState = "closed";
   panel.hidden = true;
   removeFloatingPanelDockChip(root, panelId);
+  updateDockedWorkspaceInsets(root);
+  refreshAllDockZoneStacks(root);
   updateFloatingPanelRailState(root);
 }
 
 function minimizeAllFloatingPanels(root: HTMLElement, documentRef: Document): void {
   for (const panel of Array.from(root.querySelectorAll<HTMLElement>(".floating-panel"))) {
-    if (panel.dataset.panelState === "open") {
+    if (!panel.hidden && panel.dataset.panelState !== "closed") {
       minimizeFloatingPanel(root, getFloatingPanelId(panel), documentRef);
     }
   }
@@ -8131,6 +8382,10 @@ function removeFloatingPanelDockChip(root: ParentNode, panelId: FloatingPanelId)
 }
 
 function bringFloatingPanelToFront(root: HTMLElement, panel: HTMLElement): void {
+  if (panel.dataset.panelState === "docked") {
+    return;
+  }
+
   const nextZ = Number(root.dataset.floatingPanelZ ?? "10") + 1;
   root.dataset.floatingPanelZ = String(nextZ);
   panel.style.zIndex = String(nextZ);
@@ -8146,6 +8401,10 @@ function startFloatingPanelDrag(
   bringFloatingPanelToFront(root, panel);
 
   const layer = getRequiredElement(root, ".floating-panel-layer", HTMLElement);
+  const docked = panel.dataset.panelState === "docked";
+  if (panel.dataset.panelState === "maximized") {
+    restoreMaximizedPanelForDrag(root, panel, event);
+  }
   const panelRect = panel.getBoundingClientRect();
   const layerRect = layer.getBoundingClientRect();
   const state: FloatingPanelDragState = {
@@ -8154,28 +8413,68 @@ function startFloatingPanelDrag(
     startClientX: event.clientX,
     startClientY: event.clientY,
     startLeft: panelRect.left - layerRect.left,
-    startTop: panelRect.top - layerRect.top
+    startTop: panelRect.top - layerRect.top,
+    moved: false,
+    pointerOffsetX: event.clientX - panelRect.left,
+    pointerOffsetY: event.clientY - panelRect.top,
+    wasDocked: docked
   };
 
-  const onMove = (moveEvent: MouseEvent): void => dragFloatingPanel(state, moveEvent);
-  const stopDrag = (): void => {
+  const onMove = (moveEvent: MouseEvent): void => dragFloatingPanel(root, state, moveEvent);
+  const stopDrag = (upEvent: MouseEvent): void => {
     panel.dataset.dragging = "false";
+    const snapTarget = getFloatingPanelSnapTarget(root, state.layer, panel, upEvent);
+    clearFloatingPanelDockTarget(root);
+    hideFloatingPanelTileGhost(root);
+
+    if (snapTarget?.zone === "fullscreen") {
+      maximizeFloatingPanel(root, panel);
+    } else if (snapTarget?.accepted && (snapTarget.zone === "left" || snapTarget.zone === "right" || snapTarget.zone === "bottom")) {
+      dockFloatingPanel(root, panel, snapTarget.zone, upEvent);
+    } else if (snapTarget && !snapTarget.accepted && (snapTarget.zone === "left" || snapTarget.zone === "right")) {
+      panel.dataset.snapRejected = snapTarget.zone;
+      updateFloatingPanelRailState(root);
+    } else if (state.wasDocked && state.moved) {
+      undockFloatingPanel(root, getFloatingPanelId(panel), upEvent);
+    } else {
+      updateDockedWorkspaceInsets(root);
+    }
+
+    delete panel.dataset.undockPreview;
     documentRef.removeEventListener("mousemove", onMove);
     documentRef.removeEventListener("mouseup", stopDrag);
   };
 
   panel.dataset.dragging = "true";
+  delete panel.dataset.snapRejected;
+  if (docked) {
+    panel.dataset.undockPreview = "true";
+  }
   documentRef.addEventListener("mousemove", onMove);
   documentRef.addEventListener("mouseup", stopDrag);
 }
 
-function dragFloatingPanel(state: FloatingPanelDragState, event: MouseEvent): void {
-  const layerWidth = state.layer.clientWidth || state.layer.getBoundingClientRect().width || 1;
-  const layerHeight = state.layer.clientHeight || state.layer.getBoundingClientRect().height || 1;
-  const maxLeft = Math.max(0, layerWidth - state.panel.offsetWidth);
-  const maxTop = Math.max(0, layerHeight - state.panel.offsetHeight - FLOATING_PANEL_DOCK_RESERVE);
-  const nextLeft = clamp(state.startLeft + event.clientX - state.startClientX, 0, maxLeft);
-  const nextTop = clamp(state.startTop + event.clientY - state.startClientY, 0, maxTop);
+function dragFloatingPanel(root: HTMLElement, state: FloatingPanelDragState, event: MouseEvent): void {
+  state.moved = true;
+  const snapTarget = getFloatingPanelSnapTarget(root, state.layer, state.panel, event);
+  showFloatingPanelTileGhost(root, snapTarget);
+
+  if (state.panel.dataset.panelState === "docked") {
+    if (!shouldDetachDockedPanel(state.panel, event)) {
+      return;
+    }
+
+    detachDockedPanelForDrag(root, state, event);
+    delete state.panel.dataset.undockPreview;
+    updateDockedWorkspaceInsets(root);
+  }
+
+  if (state.panel.dataset.panelState === "docked") {
+    return;
+  }
+
+  const nextLeft = state.startLeft + event.clientX - state.startClientX;
+  const nextTop = state.startTop + event.clientY - state.startClientY;
 
   state.panel.style.left = `${Math.round(nextLeft)}px`;
   state.panel.style.top = `${Math.round(nextTop)}px`;
@@ -8183,11 +8482,531 @@ function dragFloatingPanel(state: FloatingPanelDragState, event: MouseEvent): vo
   state.panel.style.bottom = "auto";
 }
 
+function shouldDetachDockedPanel(panel: HTMLElement, event: MouseEvent): boolean {
+  const zone = getFloatingPanelDockZone(panel);
+  if (!zone) {
+    return false;
+  }
+
+  const target = panel.parentElement;
+  if (!target) {
+    return false;
+  }
+
+  const rect = target.getBoundingClientRect();
+  switch (zone) {
+    case "left":
+      return event.clientX > rect.right + FLOATING_PANEL_UNDOCK_PX;
+    case "right":
+      return event.clientX < rect.left - FLOATING_PANEL_UNDOCK_PX;
+    case "bottom":
+      return event.clientY < rect.top - FLOATING_PANEL_UNDOCK_PX;
+  }
+}
+
+function detachDockedPanelForDrag(root: HTMLElement, state: FloatingPanelDragState, event: MouseEvent): void {
+  const panel = state.panel;
+  const panels = getRequiredElement(root, ".floating-panels", HTMLElement);
+  const layerRect = state.layer.getBoundingClientRect();
+  const snapshot = getFloatingPanelPreDockSnapshot(panel);
+  const renderedRect = panel.getBoundingClientRect();
+  const width = snapshot ? getPanelPixelSize(panel, "width", snapshot.width) : renderedRect.width;
+  const height = snapshot ? getPanelPixelSize(panel, "height", snapshot.height) : renderedRect.height;
+  const nextWidth = Math.max(FLOATING_PANEL_MIN_WIDTH, Math.round(width || renderedRect.width || 420));
+  const nextHeight = Math.max(FLOATING_PANEL_MIN_HEIGHT, Math.round(height || renderedRect.height || 320));
+  const nextLeft = event.clientX - layerRect.left - Math.min(state.pointerOffsetX, nextWidth - 24);
+  const nextTop = event.clientY - layerRect.top - Math.min(state.pointerOffsetY, 36);
+
+  panels.append(panel);
+  delete panel.dataset.dockZone;
+  panel.dataset.panelState = "open";
+  panel.dataset.detaching = "true";
+  panel.hidden = false;
+  panel.style.left = `${Math.round(nextLeft)}px`;
+  panel.style.top = `${Math.round(nextTop)}px`;
+  panel.style.right = "auto";
+  panel.style.bottom = "auto";
+  panel.style.width = `${nextWidth}px`;
+  panel.style.height = `${nextHeight}px`;
+  panel.style.maxHeight = "none";
+  state.startClientX = event.clientX;
+  state.startClientY = event.clientY;
+  state.startLeft = nextLeft;
+  state.startTop = nextTop;
+  state.wasDocked = false;
+  bringFloatingPanelToFront(root, panel);
+  updateDockedWorkspaceInsets(root);
+  refreshAllDockZoneStacks(root);
+  panel.ownerDocument.defaultView?.setTimeout(() => {
+    delete panel.dataset.detaching;
+  }, 180);
+}
+
+function getFloatingPanelSnapZoneFromPoint(layer: HTMLElement, event: MouseEvent): FloatingPanelSnapZone | undefined {
+  const rect = layer.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const y = event.clientY - rect.top;
+  const width = layer.clientWidth || rect.width || 1;
+  const height = layer.clientHeight || rect.height || 1;
+
+  if (y <= ODYSSEUS_FULLSCREEN_SNAP_PX) {
+    return "fullscreen";
+  }
+  if (x <= ODYSSEUS_EDGE_SNAP_PX) {
+    return "left";
+  }
+  if (x >= width - ODYSSEUS_EDGE_SNAP_PX) {
+    return "right";
+  }
+  if (y >= height - ODYSSEUS_BOTTOM_SNAP_PX) {
+    return "bottom";
+  }
+
+  return undefined;
+}
+
+function getFloatingPanelSnapTarget(
+  root: HTMLElement,
+  layer: HTMLElement,
+  panel: HTMLElement,
+  event: MouseEvent
+): FloatingPanelSnapTarget | undefined {
+  const zone = getFloatingPanelSnapZoneFromPoint(layer, event);
+  if (!zone) {
+    return undefined;
+  }
+
+  const { width, height } = getFloatingPanelLayerSize(layer);
+  if (zone === "fullscreen") {
+    return { accepted: true, rect: { left: 0, top: 0, width, height }, zone };
+  }
+
+  if (zone === "bottom") {
+    const bottomHeight = getDefaultDockZoneSize(layer, "bottom");
+    return {
+      accepted: true,
+      rect: { left: 0, top: height - bottomHeight, width, height: bottomHeight },
+      zone
+    };
+  }
+
+  const target = getRequiredElement(root, `[data-dock-zone="${zone}"]`, HTMLElement);
+  const dockWidth = getDockZoneSize(target, zone);
+  const existingPanels = getSideDockPanels(target).filter((candidate) => candidate !== panel);
+  const isSameSideReorder = panel.parentElement === target && panel.dataset.panelState === "docked";
+  const accepted = existingPanels.length < FLOATING_PANEL_SIDE_STACK_LIMIT || isSameSideReorder;
+  const index = getSideDockInsertionIndex(target, panel, event, existingPanels.length);
+  const slots = Math.max(1, Math.min(FLOATING_PANEL_SIDE_STACK_LIMIT, existingPanels.length + 1));
+  const slotHeight = height / slots;
+  const left = zone === "left" ? 0 : width - dockWidth;
+
+  return {
+    accepted,
+    index,
+    rect: {
+      left,
+      top: Math.round(slotHeight * Math.min(index, slots - 1)),
+      width: dockWidth,
+      height: Math.round(slotHeight)
+    },
+    zone
+  };
+}
+
+function showFloatingPanelTileGhost(root: HTMLElement, target: FloatingPanelSnapTarget | undefined): void {
+  const ghost = root.querySelector<HTMLElement>("#tile-ghost");
+  if (!ghost || !target) {
+    hideFloatingPanelTileGhost(root);
+    return;
+  }
+
+  ghost.style.left = `${target.rect.left}px`;
+  ghost.style.top = `${target.rect.top}px`;
+  ghost.style.width = `${target.rect.width}px`;
+  ghost.style.height = `${target.rect.height}px`;
+  ghost.classList.toggle("blocked", !target.accepted);
+  ghost.classList.add("visible");
+}
+
+function hideFloatingPanelTileGhost(root: HTMLElement): void {
+  const ghost = root.querySelector<HTMLElement>("#tile-ghost");
+  ghost?.classList.remove("visible", "blocked");
+}
+
+function setFloatingPanelDockTarget(root: HTMLElement, zone: FloatingPanelDockZone | undefined): void {
+  for (const target of Array.from(root.querySelectorAll<HTMLElement>("[data-dock-zone]"))) {
+    target.dataset.dropTarget = String(target.dataset.dockZone === zone);
+  }
+}
+
+function clearFloatingPanelDockTarget(root: HTMLElement): void {
+  setFloatingPanelDockTarget(root, undefined);
+}
+
+function getFloatingPanelLayerSize(layer: HTMLElement): { width: number; height: number } {
+  const rect = layer.getBoundingClientRect();
+  return {
+    width: layer.clientWidth || rect.width || 1,
+    height: layer.clientHeight || rect.height || 1
+  };
+}
+
+function getSideDockPanels(target: HTMLElement): HTMLElement[] {
+  return Array.from(target.querySelectorAll<HTMLElement>(".floating-panel"))
+    .filter((panel) => !panel.hidden && panel.dataset.panelState === "docked");
+}
+
+function getSideDockInsertionIndex(
+  target: HTMLElement,
+  panel: HTMLElement,
+  event: MouseEvent,
+  existingCount = getSideDockPanels(target).filter((candidate) => candidate !== panel).length
+): number {
+  const panels = getSideDockPanels(target).filter((candidate) => candidate !== panel);
+  for (let index = 0; index < panels.length; index += 1) {
+    const rect = panels[index].getBoundingClientRect();
+    if (rect.height > 0 && event.clientY < rect.top + rect.height / 2) {
+      return index;
+    }
+  }
+
+  const rect = target.getBoundingClientRect();
+  const zoneHeight = rect.height || target.closest<HTMLElement>(".floating-panel-layer")?.getBoundingClientRect().height || 1;
+  const relativeY = clamp(event.clientY - rect.top, 0, zoneHeight);
+  const slots = Math.max(1, existingCount + 1);
+  return clamp(Math.floor(relativeY / Math.max(1, zoneHeight / slots)), 0, slots - 1);
+}
+
+function refreshAllDockZoneStacks(root: HTMLElement): void {
+  for (const zone of ["left", "right"] satisfies FloatingPanelDockZone[]) {
+    const target = getRequiredElement(root, `[data-dock-zone="${zone}"]`, HTMLElement);
+    applySideDockRatios(target);
+    renderSideDockDividers(root, target);
+  }
+}
+
+function applySideDockRatios(target: HTMLElement): void {
+  const panels = getSideDockPanels(target);
+  if (panels.length === 0) {
+    return;
+  }
+
+  const ratios = normalizeSideDockRatios(panels.map(getPanelDockRatio));
+  panels.forEach((panel, index) => {
+    const ratio = ratios[index] ?? 1 / panels.length;
+    panel.dataset.dockRatio = ratio.toFixed(4);
+    panel.style.flex = `${Math.max(0.01, ratio)} 1 0`;
+  });
+}
+
+function normalizeSideDockRatios(ratios: number[]): number[] {
+  if (ratios.length === 0) {
+    return [];
+  }
+
+  const fallback = 1 / ratios.length;
+  const cleaned = ratios.map((ratio) => Number.isFinite(ratio) && ratio > 0 ? ratio : fallback);
+  const total = cleaned.reduce((sum, ratio) => sum + ratio, 0) || 1;
+  return cleaned.map((ratio) => ratio / total);
+}
+
+function getPanelDockRatio(panel: HTMLElement): number {
+  const parsed = Number.parseFloat(panel.dataset.dockRatio ?? "");
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : Number.NaN;
+}
+
+function renderSideDockDividers(root: HTMLElement, target: HTMLElement): void {
+  target.querySelectorAll<HTMLElement>(".floating-panel-split-divider").forEach((divider) => divider.remove());
+  const panels = getSideDockPanels(target);
+  if (panels.length < 2) {
+    return;
+  }
+
+  panels.slice(0, -1).forEach((panel, index) => {
+    const divider = root.ownerDocument.createElement("div");
+    divider.className = "floating-panel-split-divider";
+    divider.dataset.dividerIndex = String(index);
+    divider.dataset.dockZone = target.dataset.dockZone ?? "";
+    divider.setAttribute("role", "separator");
+    divider.setAttribute("aria-orientation", "horizontal");
+    divider.setAttribute("aria-label", "Resize docked panels");
+    divider.addEventListener("mousedown", (event) => {
+      startSideDockDividerResize(root, target, index, event, root.ownerDocument);
+    });
+    panel.after(divider);
+  });
+}
+
+function canDockPanelToSide(target: HTMLElement, panel: HTMLElement): boolean {
+  const panels = getSideDockPanels(target).filter((candidate) => candidate !== panel);
+  return panels.length < FLOATING_PANEL_SIDE_STACK_LIMIT;
+}
+
+function distributeSideDockRatiosAfterInsert(target: HTMLElement, insertedPanel: HTMLElement): void {
+  const panels = getSideDockPanels(target);
+  if (panels.length === 0) {
+    return;
+  }
+
+  if (panels.length === 1) {
+    insertedPanel.dataset.dockRatio = "1";
+    applySideDockRatios(target);
+    return;
+  }
+
+  const existingPanels = panels.filter((panel) => panel !== insertedPanel);
+  const existingRatios = normalizeSideDockRatios(existingPanels.map(getPanelDockRatio));
+  const insertedRatio = 1 / panels.length;
+  const remainingRatio = 1 - insertedRatio;
+  existingPanels.forEach((panel, index) => {
+    panel.dataset.dockRatio = ((existingRatios[index] ?? 1 / existingPanels.length) * remainingRatio).toFixed(4);
+  });
+  insertedPanel.dataset.dockRatio = insertedRatio.toFixed(4);
+  applySideDockRatios(target);
+}
+
+function startSideDockDividerResize(
+  root: HTMLElement,
+  target: HTMLElement,
+  dividerIndex: number,
+  event: MouseEvent,
+  documentRef: Document
+): void {
+  event.preventDefault();
+  event.stopPropagation();
+
+  const panels = getSideDockPanels(target);
+  const rect = target.getBoundingClientRect();
+  const state: SideDockDividerResizeState = {
+    target,
+    dividerIndex,
+    startClientY: event.clientY,
+    startRatios: normalizeSideDockRatios(panels.map(getPanelDockRatio)),
+    dockHeight: rect.height || target.closest<HTMLElement>(".floating-panel-layer")?.getBoundingClientRect().height || 1
+  };
+  const onMove = (moveEvent: MouseEvent): void => resizeSideDockDivider(root, state, moveEvent);
+  const stopResize = (): void => {
+    target.dataset.resizingSplit = "false";
+    documentRef.body.classList.remove("window-resizing-active");
+    documentRef.body.style.cursor = "";
+    documentRef.removeEventListener("mousemove", onMove);
+    documentRef.removeEventListener("mouseup", stopResize);
+  };
+
+  target.dataset.resizingSplit = "true";
+  documentRef.body.classList.add("window-resizing-active");
+  documentRef.body.style.cursor = "ns-resize";
+  documentRef.addEventListener("mousemove", onMove);
+  documentRef.addEventListener("mouseup", stopResize);
+}
+
+function resizeSideDockDivider(root: HTMLElement, state: SideDockDividerResizeState, event: MouseEvent): void {
+  const panels = getSideDockPanels(state.target);
+  if (panels.length < 2 || state.dividerIndex >= panels.length - 1) {
+    return;
+  }
+
+  const nextRatios = [...state.startRatios];
+  const pairTotal = (state.startRatios[state.dividerIndex] ?? 0) + (state.startRatios[state.dividerIndex + 1] ?? 0);
+  const minRatio = Math.min(FLOATING_PANEL_SIDE_MIN_RATIO, pairTotal / 2);
+  const delta = (event.clientY - state.startClientY) / Math.max(1, state.dockHeight);
+  const first = clamp((state.startRatios[state.dividerIndex] ?? pairTotal / 2) + delta, minRatio, pairTotal - minRatio);
+  nextRatios[state.dividerIndex] = first;
+  nextRatios[state.dividerIndex + 1] = pairTotal - first;
+
+  panels.forEach((panel, index) => {
+    const ratio = nextRatios[index] ?? 1 / panels.length;
+    panel.dataset.dockRatio = ratio.toFixed(4);
+  });
+  applySideDockRatios(state.target);
+  renderSideDockDividers(root, state.target);
+}
+
+type FloatingPanelPreDockSnapshot = {
+  width: string;
+  height: string;
+};
+
+function captureFloatingPanelPreDockSnapshot(panel: HTMLElement): void {
+  if (panel.dataset.preDockSnapshot) {
+    return;
+  }
+
+  const rect = panel.getBoundingClientRect();
+  panel.dataset.preDockSnapshot = JSON.stringify({
+    width: panel.style.width || `${Math.round(rect.width || panel.offsetWidth || 420)}px`,
+    height: panel.style.height || `${Math.round(rect.height || panel.offsetHeight || 320)}px`
+  } satisfies FloatingPanelPreDockSnapshot);
+}
+
+function getFloatingPanelPreDockSnapshot(panel: HTMLElement): FloatingPanelPreDockSnapshot | undefined {
+  const snapshot = panel.dataset.preDockSnapshot;
+  if (!snapshot) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(snapshot) as Partial<FloatingPanelPreDockSnapshot>;
+    if (typeof parsed.width === "string" && typeof parsed.height === "string") {
+      return { width: parsed.width, height: parsed.height };
+    }
+  } catch {
+    // Ignore malformed snapshots from older local state.
+  }
+
+  return undefined;
+}
+
+function getPanelPixelSize(panel: HTMLElement, dimension: "width" | "height", fallback?: string): number {
+  const raw = fallback ?? panel.style[dimension];
+  const parsed = raw ? Number.parseFloat(raw) : Number.NaN;
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  const rect = panel.getBoundingClientRect();
+  return dimension === "width" ? rect.width || panel.offsetWidth : rect.height || panel.offsetHeight;
+}
+
+function dockFloatingPanel(root: HTMLElement, panel: HTMLElement, zone: FloatingPanelDockZone, event: MouseEvent): void {
+  const target = getRequiredElement(root, `[data-dock-zone="${zone}"]`, HTMLElement);
+  const panelId = getFloatingPanelId(panel);
+  if ((zone === "left" || zone === "right") && !canDockPanelToSide(target, panel)) {
+    panel.dataset.snapRejected = zone;
+    updateFloatingPanelRailState(root);
+    return;
+  }
+
+  captureFloatingPanelPreDockSnapshot(panel);
+  if (zone === "left" || zone === "right") {
+    target.querySelectorAll<HTMLElement>(".floating-panel-split-divider").forEach((divider) => divider.remove());
+  }
+  panel.dataset.panelState = "docked";
+  panel.dataset.dockZone = zone;
+  delete panel.dataset.snapRejected;
+  panel.hidden = false;
+  panel.style.removeProperty("left");
+  panel.style.removeProperty("top");
+  panel.style.removeProperty("right");
+  panel.style.removeProperty("bottom");
+  panel.style.removeProperty("width");
+  panel.style.removeProperty("height");
+  panel.style.removeProperty("max-height");
+  panel.style.removeProperty("z-index");
+  removeFloatingPanelDockChip(root, panelId);
+
+  const insertionBefore = getDockInsertionTarget(target, panel, zone, event);
+  target.insertBefore(panel, insertionBefore);
+  ensureDockZoneSize(root, zone);
+  if (zone === "left" || zone === "right") {
+    distributeSideDockRatiosAfterInsert(target, panel);
+    renderSideDockDividers(root, target);
+  }
+  updateDockedWorkspaceInsets(root);
+  updateFloatingPanelRailState(root);
+}
+
+function maximizeFloatingPanel(root: HTMLElement, panel: HTMLElement): void {
+  const panelId = getFloatingPanelId(panel);
+  const panels = getRequiredElement(root, ".floating-panels", HTMLElement);
+  if (panel.parentElement !== panels) {
+    panels.append(panel);
+  }
+
+  delete panel.dataset.dockZone;
+  delete panel.dataset.preDockSnapshot;
+  panel.dataset.panelState = "maximized";
+  panel.hidden = false;
+  panel.style.removeProperty("left");
+  panel.style.removeProperty("top");
+  panel.style.removeProperty("right");
+  panel.style.removeProperty("bottom");
+  panel.style.removeProperty("width");
+  panel.style.removeProperty("height");
+  panel.style.removeProperty("max-height");
+  removeFloatingPanelDockChip(root, panelId);
+  bringFloatingPanelToFront(root, panel);
+  updateDockedWorkspaceInsets(root);
+  refreshAllDockZoneStacks(root);
+  updateFloatingPanelRailState(root);
+}
+
+function restoreMaximizedPanelForDrag(root: HTMLElement, panel: HTMLElement, event: MouseEvent): void {
+  const layer = getRequiredElement(root, ".floating-panel-layer", HTMLElement);
+  const layerWidth = layer.clientWidth || layer.getBoundingClientRect().width || 1;
+  const layerHeight = layer.clientHeight || layer.getBoundingClientRect().height || 1;
+  const width = Math.min(860, Math.max(420, Math.round(layerWidth * 0.58)));
+  const height = Math.min(640, Math.max(320, Math.round(layerHeight * 0.62)));
+  panel.dataset.panelState = "open";
+  panel.style.width = `${width}px`;
+  panel.style.height = `${height}px`;
+  panel.style.maxHeight = "none";
+  panel.style.left = `${clamp(event.clientX - width / 2, 0, Math.max(0, layerWidth - width))}px`;
+  panel.style.top = `${clamp(event.clientY - 22, 0, Math.max(0, layerHeight - height - FLOATING_PANEL_DOCK_RESERVE))}px`;
+  bringFloatingPanelToFront(root, panel);
+}
+
+function getDockInsertionTarget(
+  target: HTMLElement,
+  panel: HTMLElement,
+  zone: FloatingPanelDockZone,
+  event: MouseEvent
+): HTMLElement | null {
+  const panels = Array.from(target.querySelectorAll<HTMLElement>(".floating-panel"))
+    .filter((candidate) => candidate !== panel);
+  const coordinate = zone === "bottom" ? event.clientX : event.clientY;
+
+  for (const candidate of panels) {
+    const rect = candidate.getBoundingClientRect();
+    const midpoint = zone === "bottom"
+      ? rect.left + rect.width / 2
+      : rect.top + rect.height / 2;
+
+    if (coordinate < midpoint) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function undockFloatingPanel(root: HTMLElement, panelId: FloatingPanelId, event?: MouseEvent): void {
+  const panel = getFloatingPanel(root, panelId);
+  const panels = getRequiredElement(root, ".floating-panels", HTMLElement);
+  const snapshot = getFloatingPanelPreDockSnapshot(panel);
+  if (panel.parentElement !== panels) {
+    panels.append(panel);
+  }
+
+  delete panel.dataset.dockZone;
+  delete panel.dataset.preDockSnapshot;
+  if (panel.dataset.panelState === "docked" || panel.dataset.panelState === "maximized") {
+    panel.dataset.panelState = "open";
+  }
+  panel.hidden = false;
+  if (snapshot) {
+    panel.style.width = snapshot.width;
+    panel.style.height = snapshot.height;
+    panel.style.maxHeight = "none";
+  }
+  const width = getPanelPixelSize(panel, "width", snapshot?.width);
+  const height = getPanelPixelSize(panel, "height", snapshot?.height);
+  panel.style.left = `${Math.max(12, Math.round((event?.clientX ?? 220) - Math.min(width / 2, 160)))}px`;
+  panel.style.top = `${Math.max(12, Math.round((event?.clientY ?? 140) - 24))}px`;
+  panel.style.right = "auto";
+  panel.style.bottom = "auto";
+  bringFloatingPanelToFront(root, panel);
+  updateDockedWorkspaceInsets(root);
+  refreshAllDockZoneStacks(root);
+  updateFloatingPanelRailState(root);
+}
+
 function startFloatingPanelResize(
   root: HTMLElement,
   panel: HTMLElement,
   event: MouseEvent,
-  documentRef: Document
+  documentRef: Document,
+  resizeInfo: { mode: FloatingPanelResizeMode; edges: FloatingPanelResizeEdges; dockZone?: FloatingPanelDockZone; dockTarget?: HTMLElement }
 ): void {
   event.preventDefault();
   event.stopPropagation();
@@ -8199,60 +9018,667 @@ function startFloatingPanelResize(
   const state: FloatingPanelResizeState = {
     panel,
     layer,
+    mode: resizeInfo.mode,
+    edges: resizeInfo.edges,
     startClientX: event.clientX,
     startClientY: event.clientY,
-    startWidth: panelRect.width || panel.offsetWidth,
-    startHeight: panelRect.height || panel.offsetHeight,
+    startWidth: resizeInfo.dockTarget
+      ? getDockZoneSize(resizeInfo.dockTarget, resizeInfo.dockZone ?? "left")
+      : panelRect.width || panel.offsetWidth,
+    startHeight: resizeInfo.dockTarget
+      ? getDockZoneSize(resizeInfo.dockTarget, resizeInfo.dockZone ?? "bottom")
+      : panelRect.height || panel.offsetHeight,
     startLeft: panelRect.left - layerRect.left,
-    startTop: panelRect.top - layerRect.top
+    startTop: panelRect.top - layerRect.top,
+    dockZone: resizeInfo.dockZone,
+    dockTarget: resizeInfo.dockTarget
   };
 
-  const onMove = (moveEvent: MouseEvent): void => resizeFloatingPanel(state, moveEvent);
+  if (state.mode === "floating") {
+    panel.style.animation = "none";
+    panel.style.left = `${Math.round(state.startLeft)}px`;
+    panel.style.top = `${Math.round(state.startTop)}px`;
+    panel.style.width = `${Math.round(state.startWidth)}px`;
+    panel.style.height = `${Math.round(state.startHeight)}px`;
+    panel.style.maxHeight = "none";
+  }
+
+  const onMove = (moveEvent: MouseEvent): void => resizeFloatingPanel(root, state, moveEvent);
   const stopResize = (): void => {
     panel.dataset.resizing = "false";
+    documentRef.body.classList.remove("window-resizing-active");
+    documentRef.body.style.cursor = "";
+    clearFloatingPanelResizeCursor(panel);
     documentRef.removeEventListener("mousemove", onMove);
     documentRef.removeEventListener("mouseup", stopResize);
   };
 
   panel.dataset.resizing = "true";
+  documentRef.body.classList.add("window-resizing-active");
+  documentRef.body.style.cursor = getFloatingPanelResizeCursor(resizeInfo.edges);
   documentRef.addEventListener("mousemove", onMove);
   documentRef.addEventListener("mouseup", stopResize);
 }
 
-function resizeFloatingPanel(state: FloatingPanelResizeState, event: MouseEvent): void {
+function resizeFloatingPanel(root: HTMLElement, state: FloatingPanelResizeState, event: MouseEvent): void {
+  if (state.mode === "dock-zone" && state.dockTarget && state.dockZone) {
+    resizeDockZone(root, state, event);
+    return;
+  }
+
   const layerWidth = state.layer.clientWidth || state.layer.getBoundingClientRect().width || 1;
   const layerHeight = state.layer.clientHeight || state.layer.getBoundingClientRect().height || 1;
-  const maxWidth = Math.max(FLOATING_PANEL_MIN_WIDTH, layerWidth - state.startLeft);
-  const maxHeight = Math.max(
-    FLOATING_PANEL_MIN_HEIGHT,
-    layerHeight - state.startTop - FLOATING_PANEL_DOCK_RESERVE
-  );
-  const nextWidth = clamp(
-    state.startWidth + event.clientX - state.startClientX,
-    FLOATING_PANEL_MIN_WIDTH,
-    maxWidth
-  );
-  const nextHeight = clamp(
-    state.startHeight + event.clientY - state.startClientY,
-    FLOATING_PANEL_MIN_HEIGHT,
-    maxHeight
-  );
+  const dx = event.clientX - state.startClientX;
+  const dy = event.clientY - state.startClientY;
+  let nextLeft = state.startLeft;
+  let nextTop = state.startTop;
+  let nextWidth = state.startWidth;
+  let nextHeight = state.startHeight;
 
+  if (state.edges.right) {
+    nextWidth = state.startWidth + dx;
+  }
+  if (state.edges.bottom) {
+    nextHeight = state.startHeight + dy;
+  }
+  if (state.edges.left) {
+    nextWidth = state.startWidth - dx;
+    nextLeft = state.startLeft + dx;
+  }
+  if (state.edges.top) {
+    nextHeight = state.startHeight - dy;
+    nextTop = state.startTop + dy;
+  }
+
+  if (nextWidth < FLOATING_PANEL_MIN_WIDTH) {
+    if (state.edges.left) {
+      nextLeft = state.startLeft + (state.startWidth - FLOATING_PANEL_MIN_WIDTH);
+    }
+    nextWidth = FLOATING_PANEL_MIN_WIDTH;
+  }
+  if (nextHeight < FLOATING_PANEL_MIN_HEIGHT) {
+    if (state.edges.top) {
+      nextTop = state.startTop + (state.startHeight - FLOATING_PANEL_MIN_HEIGHT);
+    }
+    nextHeight = FLOATING_PANEL_MIN_HEIGHT;
+  }
+
+  if (nextLeft < 0) {
+    nextWidth += nextLeft;
+    nextLeft = 0;
+  }
+  if (nextTop < 0) {
+    nextHeight += nextTop;
+    nextTop = 0;
+  }
+  if (nextLeft + nextWidth > layerWidth) {
+    nextWidth = Math.max(FLOATING_PANEL_MIN_WIDTH, layerWidth - nextLeft);
+  }
+  if (nextTop + nextHeight > layerHeight - FLOATING_PANEL_DOCK_RESERVE) {
+    nextHeight = Math.max(FLOATING_PANEL_MIN_HEIGHT, layerHeight - FLOATING_PANEL_DOCK_RESERVE - nextTop);
+  }
+
+  state.panel.style.left = `${Math.round(nextLeft)}px`;
+  state.panel.style.top = `${Math.round(nextTop)}px`;
   state.panel.style.width = `${Math.round(nextWidth)}px`;
   state.panel.style.height = `${Math.round(nextHeight)}px`;
   state.panel.style.maxHeight = "none";
+}
+
+function resizeDockZone(root: HTMLElement, state: FloatingPanelResizeState, event: MouseEvent): void {
+  if (!state.dockTarget || !state.dockZone) {
+    return;
+  }
+
+  const layerWidth = state.layer.clientWidth || state.layer.getBoundingClientRect().width || 1;
+  const layerHeight = state.layer.clientHeight || state.layer.getBoundingClientRect().height || 1;
+  if (state.dockZone === "left") {
+    const width = clamp(state.startWidth + event.clientX - state.startClientX, FLOATING_PANEL_MIN_WIDTH, Math.max(FLOATING_PANEL_MIN_WIDTH, layerWidth * 0.72));
+    setDockZoneSize(root, "left", width);
+    return;
+  }
+
+  if (state.dockZone === "right") {
+    const width = clamp(state.startWidth - (event.clientX - state.startClientX), FLOATING_PANEL_MIN_WIDTH, Math.max(FLOATING_PANEL_MIN_WIDTH, layerWidth * 0.72));
+    setDockZoneSize(root, "right", width);
+    return;
+  }
+
+  const height = clamp(state.startHeight - (event.clientY - state.startClientY), FLOATING_PANEL_MIN_HEIGHT, Math.max(FLOATING_PANEL_MIN_HEIGHT, layerHeight * 0.72));
+  setDockZoneSize(root, "bottom", height);
+}
+
+function getFloatingPanelResizeInfo(
+  root: HTMLElement,
+  panel: HTMLElement,
+  event: MouseEvent
+): { mode: FloatingPanelResizeMode; edges: FloatingPanelResizeEdges; dockZone?: FloatingPanelDockZone; dockTarget?: HTMLElement } | undefined {
+  // Edge/corner proximity model adapted from Odysseus static/js/windowResize.js (MIT).
+  if (event.target instanceof HTMLElement && event.target.closest("button, input, select, textarea, a, [contenteditable=\"true\"]")) {
+    return undefined;
+  }
+
+  const dockZone = getFloatingPanelDockZone(panel);
+  if (panel.dataset.panelState === "docked" && dockZone && panel.parentElement) {
+    const rect = panel.getBoundingClientRect();
+    if (dockZone === "left" && Math.abs(event.clientX - rect.right) <= FLOATING_PANEL_RESIZE_EDGE_PX) {
+      return { mode: "dock-zone", dockZone, dockTarget: panel.parentElement, edges: { left: false, right: true, top: false, bottom: false } };
+    }
+    if (dockZone === "right" && Math.abs(event.clientX - rect.left) <= FLOATING_PANEL_RESIZE_EDGE_PX) {
+      return { mode: "dock-zone", dockZone, dockTarget: panel.parentElement, edges: { left: true, right: false, top: false, bottom: false } };
+    }
+    if (dockZone === "bottom" && Math.abs(event.clientY - rect.top) <= FLOATING_PANEL_RESIZE_EDGE_PX) {
+      return { mode: "dock-zone", dockZone, dockTarget: panel.parentElement, edges: { left: false, right: false, top: true, bottom: false } };
+    }
+
+    return undefined;
+  }
+
+  if (panel.dataset.panelState === "closed" || panel.dataset.panelState === "minimized" || panel.hidden) {
+    return undefined;
+  }
+
+  const rect = panel.getBoundingClientRect();
+  const within = event.clientX >= rect.left - FLOATING_PANEL_RESIZE_EDGE_PX
+    && event.clientX <= rect.right + FLOATING_PANEL_RESIZE_EDGE_PX
+    && event.clientY >= rect.top - FLOATING_PANEL_RESIZE_EDGE_PX
+    && event.clientY <= rect.bottom + FLOATING_PANEL_RESIZE_EDGE_PX;
+  if (!within) {
+    return undefined;
+  }
+
+  const edges = {
+    left: Math.abs(event.clientX - rect.left) <= FLOATING_PANEL_RESIZE_EDGE_PX,
+    right: Math.abs(event.clientX - rect.right) <= FLOATING_PANEL_RESIZE_EDGE_PX,
+    top: Math.abs(event.clientY - rect.top) <= FLOATING_PANEL_RESIZE_EDGE_PX,
+    bottom: Math.abs(event.clientY - rect.bottom) <= FLOATING_PANEL_RESIZE_EDGE_PX
+  };
+
+  if (!edges.left && !edges.right && !edges.top && !edges.bottom) {
+    return undefined;
+  }
+
+  return { mode: "floating", edges };
+}
+
+function updateFloatingPanelResizeCursor(panel: HTMLElement, event: MouseEvent): void {
+  if (panel.dataset.resizing === "true" || panel.dataset.dragging === "true") {
+    return;
+  }
+
+  const root = panel.closest<HTMLElement>(".editor-shell");
+  if (!root) {
+    return;
+  }
+
+  const info = getFloatingPanelResizeInfo(root, panel, event);
+  if (!info) {
+    clearFloatingPanelResizeCursor(panel);
+    return;
+  }
+
+  panel.style.cursor = getFloatingPanelResizeCursor(info.edges);
+}
+
+function clearFloatingPanelResizeCursor(panel: HTMLElement): void {
+  panel.style.cursor = "";
+}
+
+function getFloatingPanelResizeCursor(edges: FloatingPanelResizeEdges): string {
+  if ((edges.left && edges.top) || (edges.right && edges.bottom)) {
+    return "nwse-resize";
+  }
+  if ((edges.right && edges.top) || (edges.left && edges.bottom)) {
+    return "nesw-resize";
+  }
+  if (edges.left || edges.right) {
+    return "ew-resize";
+  }
+  if (edges.top || edges.bottom) {
+    return "ns-resize";
+  }
+
+  return "";
+}
+
+function ensureDockZoneSize(root: HTMLElement, zone: FloatingPanelDockZone): void {
+  const target = getRequiredElement(root, `[data-dock-zone="${zone}"]`, HTMLElement);
+  if ((zone === "left" || zone === "right") && !target.style.width) {
+    setDockZoneSize(root, zone, getDefaultDockZoneSize(target, zone));
+  }
+  if (zone === "bottom" && !target.style.height) {
+    setDockZoneSize(root, zone, getDefaultDockZoneSize(target, zone));
+  }
+}
+
+function getDefaultDockZoneSize(element: HTMLElement, zone: FloatingPanelDockZone): number {
+  const rect = element.closest<HTMLElement>(".floating-panel-layer")?.getBoundingClientRect() ?? element.getBoundingClientRect();
+  const width = element.closest<HTMLElement>(".floating-panel-layer")?.clientWidth || rect.width || 1;
+  const height = element.closest<HTMLElement>(".floating-panel-layer")?.clientHeight || rect.height || 1;
+  if (zone === "bottom") {
+    return Math.max(180, Math.min(320, Math.round(height * 0.28)));
+  }
+
+  return Math.max(340, Math.min(620, Math.round(width * 0.38)));
+}
+
+function getDockZoneSize(target: HTMLElement, zone: FloatingPanelDockZone): number {
+  const propertyValue = zone === "bottom" ? target.style.height : target.style.width;
+  const parsed = Number.parseFloat(propertyValue);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  const rect = target.getBoundingClientRect();
+  const measured = zone === "bottom" ? rect.height : rect.width;
+  return measured || getDefaultDockZoneSize(target, zone);
+}
+
+function setDockZoneSize(root: HTMLElement, zone: FloatingPanelDockZone, size: number): void {
+  const target = getRequiredElement(root, `[data-dock-zone="${zone}"]`, HTMLElement);
+  if (zone === "bottom") {
+    target.style.height = `${Math.round(size)}px`;
+  } else {
+    target.style.width = `${Math.round(size)}px`;
+  }
+  updateDockedWorkspaceInsets(root);
+}
+
+function updateDockedWorkspaceInsets(root: HTMLElement): void {
+  const left = getActiveDockZoneInset(root, "left");
+  const right = getActiveDockZoneInset(root, "right");
+  const bottom = getActiveDockZoneInset(root, "bottom");
+
+  setWorkspaceInset(root, "left", left);
+  setWorkspaceInset(root, "right", right);
+  setWorkspaceInset(root, "bottom", bottom);
+}
+
+function getActiveDockZoneInset(root: HTMLElement, zone: FloatingPanelDockZone): number {
+  const target = root.querySelector<HTMLElement>(`[data-dock-zone="${zone}"]`);
+  if (!target) {
+    return 0;
+  }
+
+  const hasActivePanel = Array.from(target.querySelectorAll<HTMLElement>(".floating-panel")).some((panel) => (
+    !panel.hidden && panel.dataset.panelState === "docked"
+  ));
+  if (!hasActivePanel) {
+    return 0;
+  }
+
+  return getDockZoneSize(target, zone);
+}
+
+function setWorkspaceInset(root: HTMLElement, side: "left" | "right" | "bottom", value: number): void {
+  const property = `--workspace-${side}-dock-${side === "bottom" ? "h" : "w"}`;
+  if (value > 0) {
+    root.style.setProperty(property, `${Math.round(value)}px`);
+    return;
+  }
+
+  root.style.removeProperty(property);
 }
 
 function updateFloatingPanelRailState(root: HTMLElement): void {
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>("[data-open-panel]"))) {
     const panelId = getFloatingPanelId(button);
     const panel = getFloatingPanel(root, panelId);
-    button.setAttribute("aria-pressed", String(!panel.hidden && panel.dataset.panelState === "open"));
+    button.setAttribute("aria-pressed", String(!panel.hidden && panel.dataset.panelState !== "closed"));
   }
 }
 
+function switchEditorWorkspace(elements: EditorElements, workspace: WorkspaceMode, documentRef: Document): void {
+  const previousWorkspace = elements.activeWorkspace;
+  if (previousWorkspace !== workspace) {
+    elements.workspacePanelLayouts[previousWorkspace] = captureFloatingPanelLayout(elements.editorRoot);
+  }
+
+  elements.activeWorkspace = workspace;
+  elements.editorRoot.dataset.workspace = workspace;
+  elements.cardWorkspace.hidden = workspace !== "card";
+
+  if (workspace === "symbol") {
+    ensureSymbolWorkspaceOpen(elements, documentRef);
+  } else {
+    elements.symbolWorkspace.hidden = true;
+    closeSymbolImportDialog(elements);
+  }
+
+  if (previousWorkspace !== workspace) {
+    restoreFloatingPanelLayout(
+      elements.editorRoot,
+      elements.workspacePanelLayouts[workspace],
+      documentRef
+    );
+  }
+
+  updateWorkspaceNavigationState(elements);
+}
+
+function updateWorkspaceNavigationState(elements: EditorElements): void {
+  elements.editorRoot.dataset.workspace = elements.activeWorkspace;
+
+  for (const button of Array.from(elements.editorRoot.querySelectorAll<HTMLButtonElement>("[data-workspace-mode]"))) {
+    button.setAttribute("aria-pressed", String(getWorkspaceMode(button) === elements.activeWorkspace));
+  }
+
+  for (const element of Array.from(elements.editorRoot.querySelectorAll<HTMLElement>(".card-tool"))) {
+    element.hidden = elements.activeWorkspace !== "card";
+  }
+
+  for (const element of Array.from(elements.editorRoot.querySelectorAll<HTMLElement>(".symbol-tool"))) {
+    element.hidden = elements.activeWorkspace !== "symbol";
+  }
+
+  updateFloatingPanelRailState(elements.editorRoot);
+}
+
+function captureFloatingPanelLayout(root: HTMLElement): Partial<Record<FloatingPanelId, FloatingPanelLayoutSnapshot>> {
+  const layout: Partial<Record<FloatingPanelId, FloatingPanelLayoutSnapshot>> = {};
+
+  for (const panelId of FLOATING_PANEL_IDS) {
+    const panel = getFloatingPanel(root, panelId);
+    layout[panelId] = captureFloatingPanelSnapshot(panel);
+  }
+
+  return layout;
+}
+
+function createClosedFloatingPanelLayout(root: HTMLElement): Partial<Record<FloatingPanelId, FloatingPanelLayoutSnapshot>> {
+  const layout = captureFloatingPanelLayout(root);
+
+  for (const panelId of FLOATING_PANEL_IDS) {
+    const snapshot = layout[panelId];
+    if (!snapshot) {
+      continue;
+    }
+
+    delete snapshot.dockZone;
+    delete snapshot.dockRatio;
+    snapshot.hidden = true;
+    snapshot.panelState = "closed";
+  }
+
+  return layout;
+}
+
+function restoreFloatingPanelLayout(
+  root: HTMLElement,
+  layout: Partial<Record<FloatingPanelId, FloatingPanelLayoutSnapshot>>,
+  documentRef: Document
+): void {
+  const floatingHost = getRequiredElement(root, ".floating-panels", HTMLElement);
+  const dock = getRequiredElement(root, ".floating-panel-dock", HTMLElement);
+  dock.replaceChildren();
+
+  const targetEntries = new Map<HTMLElement, Array<{ panel: HTMLElement; snapshot: FloatingPanelLayoutSnapshot }>>();
+  targetEntries.set(floatingHost, []);
+
+  const dockZones: FloatingPanelDockZone[] = ["left", "right", "bottom"];
+  for (const zone of dockZones) {
+    const target = getRequiredElement(root, `[data-dock-zone="${zone}"]`, HTMLElement);
+    target.querySelectorAll<HTMLElement>(".floating-panel-split-divider").forEach((divider) => divider.remove());
+    targetEntries.set(target, []);
+  }
+
+  for (const panelId of FLOATING_PANEL_IDS) {
+    const panel = getFloatingPanel(root, panelId);
+    const snapshot = layout[panelId] ?? captureFloatingPanelSnapshot(panel);
+    const target = snapshot.panelState === "docked" && snapshot.dockZone
+      ? getRequiredElement(root, `[data-dock-zone="${snapshot.dockZone}"]`, HTMLElement)
+      : floatingHost;
+
+    targetEntries.get(target)?.push({ panel, snapshot });
+  }
+
+  for (const [target, entries] of targetEntries) {
+    entries
+      .sort((a, b) => a.snapshot.order - b.snapshot.order)
+      .forEach(({ panel }) => target.append(panel));
+  }
+
+  restoreDockZoneSizes(root, layout);
+
+  for (const panelId of FLOATING_PANEL_IDS) {
+    const panel = getFloatingPanel(root, panelId);
+    const snapshot = layout[panelId] ?? captureFloatingPanelSnapshot(panel);
+    applyFloatingPanelSnapshot(panel, snapshot);
+
+    if (snapshot.panelState === "minimized") {
+      ensureFloatingPanelDockChip(root, panelId, documentRef);
+    } else {
+      removeFloatingPanelDockChip(root, panelId);
+    }
+  }
+
+  clearFloatingPanelDockTarget(root);
+  hideFloatingPanelTileGhost(root);
+  updateDockedWorkspaceInsets(root);
+  refreshAllDockZoneStacks(root);
+  updateFloatingPanelRailState(root);
+}
+
+function captureFloatingPanelSnapshot(panel: HTMLElement): FloatingPanelLayoutSnapshot {
+  return {
+    dockRatio: getFloatingPanelDockSnapshotRatio(panel),
+    dockZone: getFloatingPanelDockZone(panel),
+    dockSize: getFloatingPanelDockSnapshotSize(panel),
+    hidden: panel.hidden === true,
+    order: getFloatingPanelOrder(panel),
+    panelState: panel.dataset.panelState ?? "closed",
+    style: {
+      left: panel.style.left,
+      top: panel.style.top,
+      right: panel.style.right,
+      bottom: panel.style.bottom,
+      width: panel.style.width,
+      height: panel.style.height,
+      maxHeight: panel.style.maxHeight,
+      zIndex: panel.style.zIndex
+    }
+  };
+}
+
+function getFloatingPanelDockSnapshotSize(panel: HTMLElement): number | undefined {
+  const dockZone = getFloatingPanelDockZone(panel);
+  if (!dockZone || panel.dataset.panelState !== "docked" || !panel.parentElement) {
+    return undefined;
+  }
+
+  return getDockZoneSize(panel.parentElement, dockZone);
+}
+
+function getFloatingPanelDockSnapshotRatio(panel: HTMLElement): number | undefined {
+  const dockZone = getFloatingPanelDockZone(panel);
+  if ((dockZone !== "left" && dockZone !== "right") || panel.dataset.panelState !== "docked") {
+    return undefined;
+  }
+
+  const ratio = getPanelDockRatio(panel);
+  return Number.isFinite(ratio) && ratio > 0 ? ratio : undefined;
+}
+
+function restoreDockZoneSizes(
+  root: HTMLElement,
+  layout: Partial<Record<FloatingPanelId, FloatingPanelLayoutSnapshot>>
+): void {
+  const dockZones: FloatingPanelDockZone[] = ["left", "right", "bottom"];
+  for (const zone of dockZones) {
+    const size = FLOATING_PANEL_IDS
+      .map((panelId) => layout[panelId])
+      .find((snapshot) => snapshot?.dockZone === zone && snapshot.panelState === "docked" && snapshot.dockSize)
+      ?.dockSize;
+    const target = getRequiredElement(root, `[data-dock-zone="${zone}"]`, HTMLElement);
+
+    if (size) {
+      if (zone === "bottom") {
+        target.style.height = `${Math.round(size)}px`;
+      } else {
+        target.style.width = `${Math.round(size)}px`;
+      }
+      continue;
+    }
+
+    if (zone === "bottom") {
+      target.style.removeProperty("height");
+    } else {
+      target.style.removeProperty("width");
+    }
+  }
+}
+
+function getFloatingPanelDockZone(panel: HTMLElement): FloatingPanelDockZone | undefined {
+  const dockZone = panel.dataset.dockZone;
+  if (dockZone === "left" || dockZone === "right" || dockZone === "bottom") {
+    return dockZone;
+  }
+
+  return undefined;
+}
+
+function getFloatingPanelOrder(panel: HTMLElement): number {
+  return Array.from(panel.parentElement?.querySelectorAll<HTMLElement>(".floating-panel") ?? []).indexOf(panel);
+}
+
+function applyFloatingPanelSnapshot(panel: HTMLElement, snapshot: FloatingPanelLayoutSnapshot): void {
+  if (snapshot.dockZone && snapshot.panelState === "docked") {
+    panel.dataset.dockZone = snapshot.dockZone;
+  } else {
+    delete panel.dataset.dockZone;
+  }
+  if (snapshot.dockRatio && snapshot.panelState === "docked") {
+    panel.dataset.dockRatio = String(snapshot.dockRatio);
+  } else {
+    delete panel.dataset.dockRatio;
+  }
+
+  panel.dataset.panelState = snapshot.panelState;
+  panel.hidden = snapshot.hidden || snapshot.panelState === "closed" || snapshot.panelState === "minimized";
+  applyFloatingPanelStyleSnapshot(panel, snapshot.style);
+}
+
+function applyFloatingPanelStyleSnapshot(panel: HTMLElement, style: FloatingPanelStyleSnapshot): void {
+  setInlineStyleValue(panel, "left", style.left);
+  setInlineStyleValue(panel, "top", style.top);
+  setInlineStyleValue(panel, "right", style.right);
+  setInlineStyleValue(panel, "bottom", style.bottom);
+  setInlineStyleValue(panel, "width", style.width);
+  setInlineStyleValue(panel, "height", style.height);
+  setInlineStyleValue(panel, "max-height", style.maxHeight);
+  panel.style.zIndex = style.zIndex;
+}
+
+function setInlineStyleValue(element: HTMLElement, property: string, value: string): void {
+  if (value) {
+    element.style.setProperty(property, value);
+    return;
+  }
+
+  element.style.removeProperty(property);
+}
+
+function queueSnapTourHint(root: HTMLElement, panel: HTMLElement, documentRef: Document): void {
+  const view = documentRef.defaultView;
+  if (!view || root.dataset.snapTourHintQueued === "true" || hasSeenSnapTourHint(root)) {
+    return;
+  }
+
+  if (view.innerWidth <= 768 || documentRef.body.classList.contains("tour-active")) {
+    return;
+  }
+
+  root.dataset.snapTourHintQueued = "true";
+  view.setTimeout(() => showSnapTourHint(root, panel, documentRef), 380);
+}
+
+function hasSeenSnapTourHint(root: HTMLElement): boolean {
+  try {
+    return root.ownerDocument.defaultView?.localStorage.getItem(SNAP_TOUR_HINT_STORAGE_KEY) === "1";
+  } catch {
+    return true;
+  }
+}
+
+function markSnapTourHintSeen(root: HTMLElement): void {
+  try {
+    root.ownerDocument.defaultView?.localStorage.setItem(SNAP_TOUR_HINT_STORAGE_KEY, "1");
+  } catch {
+    // localStorage can be unavailable in embedded or test environments.
+  }
+}
+
+// Adapted from Odysseus static/js/tourHints.js (MIT); see THIRD_PARTY_NOTICES.md.
+function showSnapTourHint(root: HTMLElement, panel: HTMLElement, documentRef: Document): void {
+  const view = documentRef.defaultView;
+  if (!view || hasSeenSnapTourHint(root) || panel.hidden || !panel.isConnected) {
+    return;
+  }
+
+  const rect = panel.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) {
+    return;
+  }
+
+  const hint = documentRef.createElement("div");
+  hint.className = "tour-hint";
+  hint.innerHTML = `
+    <div class="tour-hint-visual" aria-hidden="true">
+      <svg viewBox="0 0 100 60" width="160" height="96">
+        <rect x="0.5" y="0.5" width="99" height="59" rx="3" fill="none" stroke="currentColor" stroke-opacity="0.18" />
+        <rect class="th-zone" x="51" y="2" width="47" height="56" rx="2" fill="currentColor" opacity="0" />
+        <g class="th-modal-group">
+          <rect x="22" y="20" width="34" height="22" rx="2.5" fill="var(--bg)" stroke="currentColor" stroke-width="1.2" />
+          <rect x="22" y="20" width="34" height="5" rx="2.5" fill="currentColor" opacity="0.35" />
+        </g>
+        <path class="th-cursor" d="M0 0 L0 9 L2.5 7 L4.5 10 L6 9 L4 6 L7 6 Z" fill="currentColor" />
+      </svg>
+    </div>
+    <div class="tour-hint-text"><b>Pro tip:</b> drag any window's title bar to a screen edge to snap it. Drag to the top for fullscreen.</div>
+    <button class="tour-hint-dismiss" type="button">Got it</button>
+  `;
+  documentRef.body.append(hint);
+
+  hint.style.opacity = "0";
+  view.requestAnimationFrame(() => {
+    const hintWidth = hint.offsetWidth || 260;
+    const hintHeight = hint.offsetHeight || 200;
+    let left = rect.right + 14;
+    let top = rect.top;
+
+    if (left + hintWidth > view.innerWidth - 8) {
+      left = rect.left - hintWidth - 14;
+      if (left < 8) {
+        left = Math.max(8, rect.left + (rect.width - hintWidth) / 2);
+        top = rect.bottom + 14;
+        if (top + hintHeight > view.innerHeight - 8) {
+          top = Math.max(8, rect.top - hintHeight - 14);
+        }
+      }
+    }
+
+    hint.style.left = `${left}px`;
+    hint.style.top = `${top}px`;
+    hint.style.opacity = "";
+    hint.classList.add("tour-hint-in");
+  });
+
+  const dismiss = (): void => {
+    hint.classList.add("tour-hint-out");
+    view.setTimeout(() => hint.remove(), 280);
+    markSnapTourHintSeen(root);
+  };
+
+  hint.querySelector<HTMLButtonElement>(".tour-hint-dismiss")?.addEventListener("click", dismiss);
+  view.setTimeout(() => {
+    if (hint.isConnected) {
+      dismiss();
+    }
+  }, 14_000);
+}
+
 function createPreviewPane(documentRef: Document): HTMLElement {
-  const pane = createPane(documentRef, "Preview");
+  const pane = createPane(documentRef, "Card editor");
   const controls = documentRef.createElement("div");
   controls.className = "preview-controls";
 
@@ -8571,6 +9997,42 @@ function createSymbolEditorWorkspace(documentRef: Document): HTMLElement {
   const menuBar = documentRef.createElement("div");
   menuBar.className = "symbol-editor-menubar";
 
+  const symbolPanelMenuButton = documentRef.createElement("button");
+  symbolPanelMenuButton.className = "symbol-panel-menu-button utility-button";
+  symbolPanelMenuButton.type = "button";
+  symbolPanelMenuButton.title = "Toggle symbol panels";
+  symbolPanelMenuButton.setAttribute("aria-label", "Toggle symbol panels");
+  symbolPanelMenuButton.setAttribute("aria-expanded", "false");
+  symbolPanelMenuButton.textContent = "☰";
+
+  const symbolPanelMenu = documentRef.createElement("div");
+  symbolPanelMenu.className = "symbol-panel-menu";
+  symbolPanelMenu.hidden = true;
+
+  const symbolMenuEntries: Array<[string, SymbolEditorTabName]> = [
+    ["Items", "items"],
+    ["Parts", "parts"],
+    ["Slots", "slots"]
+  ];
+
+  for (const [label, tab] of symbolMenuEntries) {
+    const button = documentRef.createElement("button");
+    button.className = "symbol-panel-menu-entry";
+    button.type = "button";
+    button.dataset.symbolPanelShortcut = tab;
+    button.textContent = label;
+    button.addEventListener("click", () => {
+      symbolPanelMenu.hidden = true;
+      symbolPanelMenuButton.setAttribute("aria-expanded", "false");
+    });
+    symbolPanelMenu.append(button);
+  }
+
+  symbolPanelMenuButton.addEventListener("click", () => {
+    symbolPanelMenu.hidden = !symbolPanelMenu.hidden;
+    symbolPanelMenuButton.setAttribute("aria-expanded", String(!symbolPanelMenu.hidden));
+  });
+
   const fileMenuWrapper = documentRef.createElement("div");
   fileMenuWrapper.className = "symbol-file-menu-wrapper";
 
@@ -8596,7 +10058,7 @@ function createSymbolEditorWorkspace(documentRef: Document): HTMLElement {
 
   fileMenu.append(importSvgMenuButton);
   fileMenuWrapper.append(fileMenuButton, fileMenu);
-  menuBar.append(fileMenuWrapper);
+  menuBar.append(symbolPanelMenuButton, symbolPanelMenu, fileMenuWrapper);
 
   const controls = documentRef.createElement("div");
   controls.className = "symbol-editor-controls";

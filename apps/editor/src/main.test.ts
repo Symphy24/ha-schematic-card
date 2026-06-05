@@ -23,12 +23,17 @@ describe("editor app", () => {
     const app = createEditorApp(documentRef);
 
     expect(app.dataset.sidebar).toBe("collapsed");
+    expect(app.dataset.workspace).toBe("card");
     expect(app.querySelector(".editor-rail")).not.toBeNull();
     expect(app.querySelector(".editor-sidebar")).toBeNull();
     expect(app.querySelector(".editor-rail-brand")).toBeNull();
     expect(app.querySelector(".editor-rail-compact")).toBeNull();
     expect(app.querySelector(".editor-resize-handle")).toBeNull();
     expect(app.querySelector(".editor-topbar")).not.toBeNull();
+    expect(app.querySelector(".card-editor-workspace")).not.toBeNull();
+    expect(app.querySelector<HTMLElement>(".card-editor-workspace")?.hidden).toBe(false);
+    expect(app.querySelector<HTMLElement>(".symbol-editor-workspace")?.hidden).toBe(true);
+    expect(getFloatingPanel(app, "toolbar").hidden).toBe(true);
     expect(getFloatingPanel(app, "toolbar").contains(getButton(app, ".format-button"))).toBe(true);
     expect(getFloatingPanel(app, "items").querySelector(".item-list-section")).not.toBeNull();
     expect(getFloatingPanel(app, "inspector").querySelector(".inspector-section")).not.toBeNull();
@@ -47,18 +52,22 @@ describe("editor app", () => {
     const toggleButton = getButton(app, ".sidebar-toggle-button");
 
     expect(toggleButton.getAttribute("aria-expanded")).toBe("false");
-    expect(app.querySelector(".editor-nav-sidebar")).not.toBeNull();
+    expect(app.querySelector(".sidebar")).not.toBeNull();
+    expect(app.querySelector(".icon-rail")).toBeNull();
     expect(app.querySelector(".editor-sidebar")).toBeNull();
     const rail = app.querySelector<HTMLElement>(".editor-rail");
-    const navButtons = Array.from(app.querySelectorAll<HTMLButtonElement>(".editor-nav-entry"));
+    const sidebarButtons = Array.from(app.querySelectorAll<HTMLButtonElement>(".sidebar .editor-nav-entry"));
 
     if (!rail) {
       throw new Error("rail missing");
     }
 
-    expect(rail.children[0]).toBe(toggleButton.parentElement);
-    expect(rail.children[1]).toBe(app.querySelector(".editor-nav-sidebar"));
-    expect(navButtons.map((button) => button.getAttribute("aria-label"))).toEqual([
+    expect(rail.children[0]).toBe(toggleButton);
+    expect(rail.children[1]).toBe(app.querySelector(".sidebar-header"));
+    expect(rail.children[2]).toBe(app.querySelector(".sidebar-inner"));
+    expect(sidebarButtons.map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Card editor",
+      "Symbol editor",
       "Toolbar",
       "Inspector",
       "Item List",
@@ -66,7 +75,10 @@ describe("editor app", () => {
       "Export / Payload",
       "Simulation",
       "Layers / Object Tree",
-      "Theme / Preview"
+      "Theme / Preview",
+      "Symbol Items",
+      "Symbol Parts",
+      "Symbol Slots"
     ]);
 
     toggleButton.click();
@@ -76,7 +88,7 @@ describe("editor app", () => {
     expect(getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="json"]').textContent).toContain("JSON Editor");
     expect(getButton(app, '.editor-nav-entry[data-transfer-mode="export"]').textContent).toContain("Export");
     expect(getButton(app, '.editor-nav-entry[data-transfer-mode="theme"]').textContent).toContain("Theme");
-    expect(app.querySelector("svg")).not.toBeNull();
+    expect(app.querySelector(".sidebar")?.classList.contains("hidden")).toBe(false);
 
     toggleButton.click();
     expect(app.dataset.sidebar).toBe("collapsed");
@@ -88,7 +100,8 @@ describe("editor app", () => {
     const app = createEditorApp(documentRef);
     const inspectorPanel = getFloatingPanel(app, "inspector");
 
-    expect(app.querySelectorAll(".floating-panel").length).toBe(4);
+    expect(app.querySelectorAll(".floating-panel").length).toBe(5);
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="inspector"]').click();
     expect(inspectorPanel.dataset.panelState).toBe("open");
 
     getButton(inspectorPanel, ".floating-panel-minimize").click();
@@ -122,17 +135,21 @@ describe("editor app", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
 
+    getButton(app, ".open-toolbar-panel-button").click();
+    getButton(app, ".open-json-panel-button").click();
     getButton(app, ".minimize-all-panels-button").click();
 
-    expect(app.querySelectorAll(".floating-panel-dock-chip").length).toBe(4);
+    expect(app.querySelectorAll(".floating-panel-dock-chip").length).toBe(2);
     for (const panel of Array.from(app.querySelectorAll<HTMLElement>(".floating-panel"))) {
-      expect(panel.dataset.panelState).toBe("minimized");
-      expect(panel.hidden).toBe(true);
+      if (panel.dataset.panelId === "toolbar" || panel.dataset.panelId === "json") {
+        expect(panel.dataset.panelState).toBe("minimized");
+        expect(panel.hidden).toBe(true);
+      }
     }
 
     getButton(app, '[data-dock-panel="json"]').click();
     expect(getFloatingPanel(app, "json").dataset.panelState).toBe("open");
-    expect(app.querySelectorAll(".floating-panel-dock-chip").length).toBe(3);
+    expect(app.querySelectorAll(".floating-panel-dock-chip").length).toBe(1);
   });
 
   it("opens existing export behavior from the floating toolbar panel", () => {
@@ -155,6 +172,7 @@ describe("editor app", () => {
   it("drags floating panels by their headers", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="inspector"]').click();
     const panel = getFloatingPanel(app, "inspector");
     const header = panel.querySelector<HTMLElement>(".floating-panel-header");
     const layer = app.querySelector<HTMLElement>(".floating-panel-layer");
@@ -171,11 +189,209 @@ describe("editor app", () => {
     Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 320 });
 
     header.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: 740, clientY: 38 }));
-    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 800, clientY: 90 }));
-    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 800, clientY: 200 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup", { clientX: 800, clientY: 200 }));
 
     expect(panel.style.left).toBe("780px");
-    expect(panel.style.top).toBe("70px");
+    expect(panel.style.top).toBe("180px");
+  });
+
+  it("docks, stacks, reorders, and undocks managed panels", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const layer = app.querySelector<HTMLElement>(".floating-panel-layer");
+
+    if (!layer) {
+      throw new Error("floating panel layer missing");
+    }
+
+    setElementBounds(layer, { left: 0, top: 0, width: 1200, height: 800 });
+    Object.defineProperty(layer, "clientWidth", { configurable: true, value: 1200 });
+    Object.defineProperty(layer, "clientHeight", { configurable: true, value: 800 });
+
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="inspector"]').click();
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="json"]').click();
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="items"]').click();
+
+    const inspectorPanel = getFloatingPanel(app, "inspector");
+    const jsonPanel = getFloatingPanel(app, "json");
+    const itemsPanel = getFloatingPanel(app, "items");
+    const leftZone = app.querySelector<HTMLElement>('[data-dock-zone="left"]');
+
+    if (!leftZone) {
+      throw new Error("left dock zone missing");
+    }
+
+    dockPanelByDrag(documentRef, layer, inspectorPanel, { left: 720, top: 18, width: 380, height: 320 }, 24, 180);
+    dockPanelByDrag(documentRef, layer, jsonPanel, { left: 720, top: 360, width: 420, height: 260 }, 24, 420);
+    dockPanelByDrag(documentRef, layer, itemsPanel, { left: 24, top: 132, width: 340, height: 280 }, 24, 680);
+
+    expect(inspectorPanel.dataset.panelState).toBe("docked");
+    expect(jsonPanel.dataset.panelState).toBe("docked");
+    expect(itemsPanel.dataset.panelState).toBe("docked");
+    expect(Array.from(leftZone.querySelectorAll<HTMLElement>(".floating-panel")).map((panel) => panel.dataset.panelId)).toEqual([
+      "inspector",
+      "json",
+      "items"
+    ]);
+
+    setElementBounds(inspectorPanel, { left: 0, top: 150, width: 320, height: 180 });
+    setElementBounds(jsonPanel, { left: 0, top: 340, width: 320, height: 180 });
+    setElementBounds(itemsPanel, { left: 0, top: 530, width: 320, height: 180 });
+    getPanelHeader(itemsPanel).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: 20, clientY: 550 }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 20, clientY: 120 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup", { clientX: 20, clientY: 120 }));
+
+    expect(Array.from(leftZone.querySelectorAll<HTMLElement>(".floating-panel")).map((panel) => panel.dataset.panelId)).toEqual([
+      "items",
+      "inspector",
+      "json"
+    ]);
+
+    getPanelHeader(itemsPanel).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: 20, clientY: 120 }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 520, clientY: 220 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup", { clientX: 520, clientY: 220 }));
+    expect(itemsPanel.dataset.panelState).toBe("open");
+    expect(itemsPanel.parentElement?.classList.contains("floating-panels")).toBe(true);
+  });
+
+  it("limits side stacks to three panels and previews the insertion slot", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const layer = app.querySelector<HTMLElement>(".floating-panel-layer");
+    const leftZone = app.querySelector<HTMLElement>('[data-dock-zone="left"]');
+
+    if (!layer || !leftZone) {
+      throw new Error("left dock zone missing");
+    }
+
+    setElementBounds(layer, { left: 0, top: 0, width: 1200, height: 800 });
+    setElementBounds(leftZone, { left: 0, top: 0, width: 456, height: 800 });
+    Object.defineProperty(layer, "clientWidth", { configurable: true, value: 1200 });
+    Object.defineProperty(layer, "clientHeight", { configurable: true, value: 800 });
+
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="inspector"]').click();
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="json"]').click();
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="items"]').click();
+    getButton(app, '[data-transfer-mode="export"]').click();
+
+    const inspectorPanel = getFloatingPanel(app, "inspector");
+    const jsonPanel = getFloatingPanel(app, "json");
+    const itemsPanel = getFloatingPanel(app, "items");
+    const transferPanel = getFloatingPanel(app, "transfer");
+
+    dockPanelByDrag(documentRef, layer, inspectorPanel, { left: 720, top: 18, width: 380, height: 320 }, 24, 160);
+    setElementBounds(inspectorPanel, { left: 0, top: 0, width: 456, height: 800 });
+
+    setElementBounds(jsonPanel, { left: 720, top: 360, width: 420, height: 260 });
+    Object.defineProperty(jsonPanel, "offsetWidth", { configurable: true, value: 420 });
+    Object.defineProperty(jsonPanel, "offsetHeight", { configurable: true, value: 260 });
+    getPanelHeader(jsonPanel).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: 740, clientY: 380 }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 24, clientY: 620 }));
+
+    const ghost = app.querySelector<HTMLElement>("#tile-ghost");
+    expect(ghost?.classList.contains("visible")).toBe(true);
+    expect(ghost?.style.top).toBe("400px");
+    expect(ghost?.style.height).toBe("400px");
+
+    documentRef.dispatchEvent(new MouseEvent("mouseup", { clientX: 24, clientY: 620 }));
+    dockPanelByDrag(documentRef, layer, itemsPanel, { left: 24, top: 132, width: 340, height: 280 }, 24, 680);
+    dockPanelByDrag(documentRef, layer, transferPanel, { left: 180, top: 96, width: 420, height: 320 }, 24, 420);
+
+    expect(Array.from(leftZone.querySelectorAll<HTMLElement>(".floating-panel")).map((panel) => panel.dataset.panelId)).toEqual([
+      "inspector",
+      "json",
+      "items"
+    ]);
+    expect(transferPanel.dataset.panelState).toBe("open");
+    expect(transferPanel.dataset.snapRejected).toBe("left");
+  });
+
+  it("resizes stacked side panels with split dividers and restores ratios per workspace", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const layer = app.querySelector<HTMLElement>(".floating-panel-layer");
+    const leftZone = app.querySelector<HTMLElement>('[data-dock-zone="left"]');
+
+    if (!layer || !leftZone) {
+      throw new Error("left dock zone missing");
+    }
+
+    setElementBounds(layer, { left: 0, top: 0, width: 1200, height: 800 });
+    setElementBounds(leftZone, { left: 0, top: 0, width: 456, height: 800 });
+    Object.defineProperty(layer, "clientWidth", { configurable: true, value: 1200 });
+    Object.defineProperty(layer, "clientHeight", { configurable: true, value: 800 });
+
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="inspector"]').click();
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="json"]').click();
+    const inspectorPanel = getFloatingPanel(app, "inspector");
+    const jsonPanel = getFloatingPanel(app, "json");
+
+    dockPanelByDrag(documentRef, layer, inspectorPanel, { left: 720, top: 18, width: 380, height: 320 }, 24, 160);
+    dockPanelByDrag(documentRef, layer, jsonPanel, { left: 720, top: 360, width: 420, height: 260 }, 24, 640);
+
+    const divider = leftZone.querySelector<HTMLElement>(".floating-panel-split-divider");
+    if (!divider) {
+      throw new Error("side split divider missing");
+    }
+
+    divider.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientY: 400 }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientY: 500 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(Number(inspectorPanel.dataset.dockRatio)).toBeCloseTo(0.625, 3);
+    expect(Number(jsonPanel.dataset.dockRatio)).toBeCloseTo(0.375, 3);
+
+    getButton(app, '.editor-nav-entry[data-workspace-mode="symbol"]').click();
+    expect(inspectorPanel.dataset.panelState).toBe("closed");
+
+    getButton(app, '.editor-nav-entry[data-workspace-mode="card"]').click();
+    expect(inspectorPanel.dataset.panelState).toBe("docked");
+    expect(jsonPanel.dataset.panelState).toBe("docked");
+    expect(Number(inspectorPanel.dataset.dockRatio)).toBeCloseTo(0.625, 3);
+    expect(Number(jsonPanel.dataset.dockRatio)).toBeCloseTo(0.375, 3);
+    expect(leftZone.querySelectorAll(".floating-panel-split-divider").length).toBe(1);
+  });
+
+  it("keeps separate floating panel layouts for card and symbol workspaces", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const layer = app.querySelector<HTMLElement>(".floating-panel-layer");
+    const rightZone = app.querySelector<HTMLElement>('[data-dock-zone="right"]');
+
+    if (!layer || !rightZone) {
+      throw new Error("workspace panel state elements missing");
+    }
+
+    setElementBounds(layer, { left: 0, top: 0, width: 1200, height: 800 });
+    Object.defineProperty(layer, "clientWidth", { configurable: true, value: 1200 });
+    Object.defineProperty(layer, "clientHeight", { configurable: true, value: 800 });
+
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="json"]').click();
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="items"]').click();
+    const jsonPanel = getFloatingPanel(app, "json");
+    const itemsPanel = getFloatingPanel(app, "items");
+
+    dockPanelByDrag(documentRef, layer, jsonPanel, { left: 720, top: 360, width: 420, height: 260 }, 1190, 240);
+    itemsPanel.style.left = "76px";
+    itemsPanel.style.top = "540px";
+
+    expect(jsonPanel.dataset.panelState).toBe("docked");
+    expect(jsonPanel.parentElement).toBe(rightZone);
+    expect(itemsPanel.dataset.panelState).toBe("open");
+
+    getButton(app, '.editor-nav-entry[data-workspace-mode="symbol"]').click();
+    expect(app.dataset.workspace).toBe("symbol");
+    expect(jsonPanel.dataset.panelState).toBe("closed");
+    expect(itemsPanel.dataset.panelState).toBe("closed");
+
+    getButton(app, '.editor-nav-entry[data-workspace-mode="card"]').click();
+    expect(app.dataset.workspace).toBe("card");
+    expect(jsonPanel.dataset.panelState).toBe("docked");
+    expect(jsonPanel.parentElement).toBe(rightZone);
+    expect(itemsPanel.dataset.panelState).toBe("open");
+    expect(itemsPanel.style.left).toBe("76px");
+    expect(itemsPanel.style.top).toBe("540px");
   });
 
   it("opens item and inspector panels from the navigation launchers", () => {
@@ -674,7 +890,6 @@ describe("editor app", () => {
     previewItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
     expect(getButton(app, '[data-item-id="demo-component-a"]').getAttribute("aria-pressed")).toBe("true");
-    expect(getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="items"]').getAttribute("aria-pressed")).toBe("true");
     expect(app.querySelector<HTMLElement>(".inspector-status")?.textContent).toBe("Selected demo-component-a");
     expect(app.querySelector('[data-id="demo-component-a"]')?.getAttribute("data-editor-selected")).toBe("true");
   });
@@ -1930,6 +2145,7 @@ describe("editor app", () => {
   it("resizes floating panels with the bottom-right handle", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="json"]').click();
     const panel = getFloatingPanel(app, "json");
     const handle = panel.querySelector<HTMLElement>(".floating-panel-resize-handle");
     const layer = app.querySelector<HTMLElement>(".floating-panel-layer");
@@ -1956,6 +2172,195 @@ describe("editor app", () => {
 
     expect(panel.style.width).toBe("260px");
     expect(panel.style.height).toBe("160px");
+  });
+
+  it("resizes floating panels from edges and corners", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="json"]').click();
+    const panel = getFloatingPanel(app, "json");
+    const layer = app.querySelector<HTMLElement>(".floating-panel-layer");
+
+    if (!layer) {
+      throw new Error("floating panel layer missing");
+    }
+
+    setElementBounds(layer, { left: 0, top: 0, width: 1200, height: 800 });
+    setElementBounds(panel, { left: 720, top: 360, width: 420, height: 260 });
+    Object.defineProperty(layer, "clientWidth", { configurable: true, value: 1200 });
+    Object.defineProperty(layer, "clientHeight", { configurable: true, value: 800 });
+    Object.defineProperty(panel, "offsetWidth", { configurable: true, value: 420 });
+    Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 260 });
+
+    panel.dispatchEvent(new MouseEvent("mousedown", {
+      bubbles: true,
+      button: 0,
+      clientX: 720,
+      clientY: 360
+    }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 700, clientY: 340 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(panel.style.left).toBe("700px");
+    expect(panel.style.top).toBe("340px");
+    expect(panel.style.width).toBe("440px");
+    expect(panel.style.height).toBe("280px");
+  });
+
+  it("resizes docked side panels and reflows the active workspace", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const layer = app.querySelector<HTMLElement>(".floating-panel-layer");
+    const rightZone = app.querySelector<HTMLElement>('[data-dock-zone="right"]');
+
+    if (!layer || !rightZone) {
+      throw new Error("right dock zone missing");
+    }
+
+    setElementBounds(layer, { left: 0, top: 0, width: 1200, height: 800 });
+    Object.defineProperty(layer, "clientWidth", { configurable: true, value: 1200 });
+    Object.defineProperty(layer, "clientHeight", { configurable: true, value: 800 });
+
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="json"]').click();
+    const panel = getFloatingPanel(app, "json");
+    dockPanelByDrag(documentRef, layer, panel, { left: 720, top: 360, width: 420, height: 260 }, 1190, 240);
+
+    expect(panel.dataset.panelState).toBe("docked");
+    expect(panel.parentElement).toBe(rightZone);
+    expect(rightZone.style.width).toBe("456px");
+    expect(app.style.getPropertyValue("--workspace-right-dock-w")).toBe("456px");
+
+    setElementBounds(rightZone, { left: 744, top: 0, width: 456, height: 800 });
+    setElementBounds(panel, { left: 744, top: 0, width: 456, height: 800 });
+    Object.defineProperty(panel, "offsetWidth", { configurable: true, value: 456 });
+    Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 800 });
+
+    panel.dispatchEvent(new MouseEvent("mousedown", {
+      bubbles: true,
+      button: 0,
+      clientX: 744,
+      clientY: 220
+    }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 700, clientY: 220 }));
+    documentRef.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(rightZone.style.width).toBe("500px");
+    expect(app.style.getPropertyValue("--workspace-right-dock-w")).toBe("500px");
+  });
+
+  it("uses a smaller default bottom dock that still reflows the workspace", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const layer = app.querySelector<HTMLElement>(".floating-panel-layer");
+    const bottomZone = app.querySelector<HTMLElement>('[data-dock-zone="bottom"]');
+
+    if (!layer || !bottomZone) {
+      throw new Error("bottom dock zone missing");
+    }
+
+    setElementBounds(layer, { left: 0, top: 0, width: 1200, height: 800 });
+    Object.defineProperty(layer, "clientWidth", { configurable: true, value: 1200 });
+    Object.defineProperty(layer, "clientHeight", { configurable: true, value: 800 });
+
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="json"]').click();
+    const panel = getFloatingPanel(app, "json");
+    dockPanelByDrag(documentRef, layer, panel, { left: 720, top: 360, width: 420, height: 260 }, 600, 790);
+
+    expect(panel.dataset.panelState).toBe("docked");
+    expect(panel.parentElement).toBe(bottomZone);
+    expect(bottomZone.style.height).toBe("224px");
+    expect(app.style.getPropertyValue("--workspace-bottom-dock-h")).toBe("224px");
+  });
+
+  it("lets floating panels drag beyond the viewport before snap release", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const layer = app.querySelector<HTMLElement>(".floating-panel-layer");
+
+    if (!layer) {
+      throw new Error("floating panel layer missing");
+    }
+
+    setElementBounds(layer, { left: 0, top: 0, width: 1200, height: 800 });
+    Object.defineProperty(layer, "clientWidth", { configurable: true, value: 1200 });
+    Object.defineProperty(layer, "clientHeight", { configurable: true, value: 800 });
+
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="inspector"]').click();
+    const panel = getFloatingPanel(app, "inspector");
+    setElementBounds(panel, { left: 720, top: 18, width: 380, height: 320 });
+    Object.defineProperty(panel, "offsetWidth", { configurable: true, value: 380 });
+    Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 320 });
+
+    getPanelHeader(panel).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: 740, clientY: 38 }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: -80, clientY: -20 }));
+
+    expect(panel.style.left).toBe("-100px");
+    expect(panel.style.top).toBe("-40px");
+
+    documentRef.dispatchEvent(new MouseEvent("mouseup", { clientX: 400, clientY: 400 }));
+  });
+
+  it("detaches docked panels during drag with immediate feedback", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const layer = app.querySelector<HTMLElement>(".floating-panel-layer");
+    const leftZone = app.querySelector<HTMLElement>('[data-dock-zone="left"]');
+
+    if (!layer || !leftZone) {
+      throw new Error("left dock zone missing");
+    }
+
+    setElementBounds(layer, { left: 0, top: 0, width: 1200, height: 800 });
+    Object.defineProperty(layer, "clientWidth", { configurable: true, value: 1200 });
+    Object.defineProperty(layer, "clientHeight", { configurable: true, value: 800 });
+
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="items"]').click();
+    const panel = getFloatingPanel(app, "items");
+    dockPanelByDrag(documentRef, layer, panel, { left: 720, top: 360, width: 420, height: 260 }, 24, 240);
+    setElementBounds(leftZone, { left: 0, top: 0, width: 456, height: 800 });
+    setElementBounds(panel, { left: 0, top: 0, width: 456, height: 260 });
+    Object.defineProperty(panel, "offsetWidth", { configurable: true, value: 456 });
+    Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 260 });
+
+    getPanelHeader(panel).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: 20, clientY: 20 }));
+    expect(panel.dataset.undockPreview).toBe("true");
+
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 520, clientY: 180 }));
+
+    expect(panel.dataset.panelState).toBe("open");
+    expect(panel.dataset.detaching).toBe("true");
+    expect(panel.parentElement?.classList.contains("floating-panels")).toBe(true);
+    expect(app.style.getPropertyValue("--workspace-left-dock-w")).toBe("");
+
+    documentRef.dispatchEvent(new MouseEvent("mouseup", { clientX: 520, clientY: 180 }));
+  });
+
+  it("shows one Odysseus-style snap ghost without competing dock-zone ghosts", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+    const layer = app.querySelector<HTMLElement>(".floating-panel-layer");
+
+    if (!layer) {
+      throw new Error("floating panel layer missing");
+    }
+
+    setElementBounds(layer, { left: 0, top: 0, width: 1200, height: 800 });
+    Object.defineProperty(layer, "clientWidth", { configurable: true, value: 1200 });
+    Object.defineProperty(layer, "clientHeight", { configurable: true, value: 800 });
+
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="json"]').click();
+    const panel = getFloatingPanel(app, "json");
+    setElementBounds(panel, { left: 720, top: 360, width: 420, height: 260 });
+    Object.defineProperty(panel, "offsetWidth", { configurable: true, value: 420 });
+    Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 260 });
+
+    getPanelHeader(panel).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, clientX: 740, clientY: 380 }));
+    documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 1190, clientY: 240 }));
+
+    expect(app.querySelectorAll("#tile-ghost.visible").length).toBe(1);
+    expect(app.querySelectorAll('.floating-panel-dock-zone[data-drop-target="true"]').length).toBe(0);
+
+    documentRef.dispatchEvent(new MouseEvent("mouseup", { clientX: 1190, clientY: 240 }));
   });
 
   it("keeps the copy button with the export payload field", () => {
@@ -2388,6 +2793,37 @@ function getFloatingPanel(root: ParentNode, panelId: string): HTMLElement {
   }
 
   return element;
+}
+
+function getPanelHeader(panel: HTMLElement): HTMLElement {
+  const header = panel.querySelector<HTMLElement>(".floating-panel-header");
+
+  if (!header) {
+    throw new Error("floating panel header missing");
+  }
+
+  return header;
+}
+
+function dockPanelByDrag(
+  documentRef: Document,
+  layer: HTMLElement,
+  panel: HTMLElement,
+  rect: { left: number; top: number; width: number; height: number },
+  clientX: number,
+  clientY: number
+): void {
+  setElementBounds(panel, rect);
+  Object.defineProperty(panel, "offsetWidth", { configurable: true, value: rect.width });
+  Object.defineProperty(panel, "offsetHeight", { configurable: true, value: rect.height });
+  getPanelHeader(panel).dispatchEvent(new MouseEvent("mousedown", {
+    bubbles: true,
+    clientX: rect.left + 20,
+    clientY: rect.top + 20
+  }));
+  documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX, clientY }));
+  documentRef.dispatchEvent(new MouseEvent("mouseup", { clientX, clientY }));
+  layer.dataset.testLastDock = panel.dataset.dockZone ?? "";
 }
 
 function getInput(root: ParentNode, selector: string): HTMLInputElement {
