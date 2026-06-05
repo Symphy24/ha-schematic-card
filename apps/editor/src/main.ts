@@ -69,10 +69,6 @@ type EditorElements = {
   status: HTMLElement;
   copyButton: HTMLButtonElement;
   applyThemeButton: HTMLButtonElement;
-  openImportButton: HTMLButtonElement;
-  openSvgImportButton: HTMLButtonElement;
-  openExportButton: HTMLButtonElement;
-  openThemeButton: HTMLButtonElement;
   openSymbolEditorButton: HTMLButtonElement;
   symbolWorkspace: HTMLElement;
   symbolStartDialog: HTMLElement;
@@ -247,7 +243,7 @@ type AddItemType = "text" | "rect" | "circle" | "polyline";
 type EditorTabName = "items" | "inspector" | "json";
 type SymbolEditorTabName = "items" | "parts" | "slots";
 type WorkspaceMode = "card" | "symbol";
-type FloatingPanelId = "toolbar" | "items" | "inspector" | "json" | "transfer";
+type FloatingPanelId = "items" | "inspector" | "json" | "transfer";
 type FloatingPanelDockZone = "left" | "right" | "bottom";
 type FloatingPanelSnapZone = "fullscreen" | "left" | "right" | "bottom";
 type FloatingPanelResizeMode = "floating" | "dock-zone";
@@ -423,7 +419,7 @@ const ODYSSEUS_FULLSCREEN_SNAP_PX = 8;
 const ODYSSEUS_EDGE_SNAP_PX = 60;
 const ODYSSEUS_BOTTOM_SNAP_PX = 24;
 const SNAP_TOUR_HINT_STORAGE_KEY = "hsc-odysseus-hint-drag-to-snap-seen";
-const FLOATING_PANEL_IDS: FloatingPanelId[] = ["toolbar", "items", "inspector", "json", "transfer"];
+const FLOATING_PANEL_IDS: FloatingPanelId[] = ["items", "inspector", "json", "transfer"];
 
 const INSPECTOR_FIELD_LABELS: Record<"id" | "layer" | "x" | "y" | "text", string> = {
   id: "Item id",
@@ -529,6 +525,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   const jsonPane = createJsonPane(documentRef);
   const previewPane = createPreviewPane(documentRef);
   previewPane.classList.add("card-editor-workspace");
+  previewPane.querySelector(".pane-header")?.append(toolbar);
   const workspace = documentRef.createElement("div");
   workspace.className = "editor-workspace";
   const editorMain = documentRef.createElement("div");
@@ -578,10 +575,6 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     status: getRequiredElement(transferPanel, ".status", HTMLElement),
     copyButton: getRequiredElement(transferPanel, ".copy-button", HTMLButtonElement),
     applyThemeButton: getRequiredElement(transferPanel, ".apply-theme-button", HTMLButtonElement),
-    openImportButton: getRequiredElement(toolbar, ".open-import-button", HTMLButtonElement),
-    openSvgImportButton: getRequiredElement(toolbar, ".open-svg-import-button", HTMLButtonElement),
-    openExportButton: getRequiredElement(toolbar, ".open-export-button", HTMLButtonElement),
-    openThemeButton: getRequiredElement(toolbar, ".open-theme-button", HTMLButtonElement),
     openSymbolEditorButton: getRequiredElement(rail, ".open-symbol-editor-button", HTMLButtonElement),
     symbolWorkspace,
     symbolStartDialog: getRequiredElement(symbolWorkspace, ".symbol-start-dialog", HTMLElement),
@@ -652,8 +645,8 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     closeTransferPanelButton: getRequiredElement(transferPanel, ".transfer-panel-close", HTMLButtonElement),
     importButton: getRequiredElement(transferPanel, ".import-button", HTMLButtonElement),
     importSvgButton: getRequiredElement(transferPanel, ".import-svg-button", HTMLButtonElement),
-    formatButton: getRequiredElement(toolbar, ".format-button", HTMLButtonElement),
-    resetButton: getRequiredElement(toolbar, ".reset-button", HTMLButtonElement),
+    formatButton: getRequiredElement(jsonPane, ".format-button", HTMLButtonElement),
+    resetButton: getRequiredElement(jsonPane, ".reset-button", HTMLButtonElement),
     undoButton: getRequiredElement(toolbar, ".undo-button", HTMLButtonElement),
     redoButton: getRequiredElement(toolbar, ".redo-button", HTMLButtonElement),
     selectedItemIds: [],
@@ -677,10 +670,6 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.copyButton.addEventListener("click", async () => copyExportedPayload(elements));
   elements.applyThemeButton.addEventListener("click", () => applyThemePreview(elements));
   elements.themePreviewToggle.addEventListener("change", () => updateThemePreviewMode(elements));
-  elements.openImportButton.addEventListener("click", () => openTransferPanel(elements, "import"));
-  elements.openSvgImportButton.addEventListener("click", () => openTransferPanel(elements, "svg"));
-  elements.openExportButton.addEventListener("click", () => openTransferPanel(elements, "export"));
-  elements.openThemeButton.addEventListener("click", () => openTransferPanel(elements, "theme"));
   elements.closeSymbolWorkspaceButton.addEventListener("click", () => closeSymbolWorkspace(elements));
   elements.symbolStartImportButton.addEventListener("click", () => startSymbolWorkspaceWithImport(elements, documentRef));
   elements.symbolStartEditButton.addEventListener("click", () => startSymbolWorkspaceWithExistingSymbol(elements, documentRef));
@@ -760,7 +749,6 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   sidebarToggleButton.addEventListener("click", () => toggleEditorSidebar(shell, sidebarToggleButton));
 
   const floatingPanelLayer = createFloatingPanelLayer(documentRef, {
-    toolbar,
     itemListSection: elements.itemListSection,
     inspectorSection: elements.inspectorSection,
     jsonSection: elements.jsonSection,
@@ -947,14 +935,16 @@ function getEditorTabPanelId(tab: EditorTabName): FloatingPanelId {
 function togglePreviewGrid(elements: EditorElements, documentRef: Document): void {
   elements.gridEnabled = !elements.gridEnabled;
   elements.toggleGridButton.setAttribute("aria-pressed", String(elements.gridEnabled));
-  elements.toggleGridButton.textContent = elements.gridEnabled ? "Grid On" : "Grid Off";
+  elements.toggleGridButton.title = elements.gridEnabled ? "Grid on" : "Grid off";
+  elements.toggleGridButton.setAttribute("aria-label", elements.gridEnabled ? "Grid on" : "Grid off");
   updateFromJson(elements, documentRef);
 }
 
 function toggleSnap(elements: EditorElements): void {
   elements.snapEnabled = !elements.snapEnabled;
   elements.toggleSnapButton.setAttribute("aria-pressed", String(elements.snapEnabled));
-  elements.toggleSnapButton.textContent = elements.snapEnabled ? "Snap On" : "Snap Off";
+  elements.toggleSnapButton.title = elements.snapEnabled ? "Snap on" : "Snap off";
+  elements.toggleSnapButton.setAttribute("aria-label", elements.snapEnabled ? "Snap on" : "Snap off");
 }
 
 function togglePanMode(elements: EditorElements): void {
@@ -1001,7 +991,7 @@ function handlePreviewWheel(elements: EditorElements, event: WheelEvent): void {
 function updatePreviewModeControls(elements: EditorElements): void {
   elements.selectToolButton.setAttribute("aria-pressed", String(!elements.panMode));
   elements.panToolButton.setAttribute("aria-pressed", String(elements.panMode));
-  elements.panToolButton.textContent = elements.panMode ? "✋" : "🤚";
+  elements.panToolButton.textContent = "✥";
   elements.previewSurface.dataset.panMode = String(elements.panMode);
 }
 
@@ -2775,7 +2765,9 @@ function upsertDraftPolyline(payload: SchematicPayload, drawState: PolylineDrawS
 function updateDrawControls(elements: EditorElements): void {
   const drawing = elements.drawState !== undefined;
   elements.selectToolButton.setAttribute("aria-pressed", String(!drawing));
-  elements.drawPolylineButton.textContent = drawing ? "Cancel Polyline" : "Draw Polyline";
+  elements.drawPolylineButton.textContent = drawing ? "×" : "⌁";
+  elements.drawPolylineButton.title = drawing ? "Cancel polyline" : "Polyline";
+  elements.drawPolylineButton.setAttribute("aria-label", drawing ? "Cancel polyline" : "Polyline");
   elements.drawPolylineButton.setAttribute("aria-pressed", String(drawing));
   elements.finishPolylineButton.hidden = !drawing;
   elements.previewSurface.dataset.drawMode = drawing ? "polyline" : "";
@@ -4601,7 +4593,7 @@ function toggleSymbolPanMode(elements: EditorElements, enabled: boolean): void {
 function updateSymbolPreviewModeControls(elements: EditorElements): void {
   elements.symbolSelectToolButton.setAttribute("aria-pressed", String(!elements.symbolPanMode));
   elements.symbolPanToolButton.setAttribute("aria-pressed", String(elements.symbolPanMode));
-  elements.symbolPanToolButton.textContent = elements.symbolPanMode ? "✋" : "🤚";
+  elements.symbolPanToolButton.textContent = "✥";
   elements.symbolPreviewSurface.dataset.panMode = String(elements.symbolPanMode);
   elements.symbolDeleteItemButton.disabled = elements.selectedSymbolInternalItemIds.length === 0;
   elements.symbolClearSelectionButton.disabled = elements.selectedSymbolInternalItemIds.length === 0;
@@ -7728,9 +7720,16 @@ function createJsonPane(documentRef: Document): HTMLElement {
   jsonSection.dataset.panel = "json";
   jsonSection.hidden = true;
 
+  const jsonActions = documentRef.createElement("div");
+  jsonActions.className = "json-editor-actions";
+
+  const formatButton = createToolbarButton(documentRef, "format-button", "Format JSON", "{}");
+  const resetButton = createToolbarButton(documentRef, "reset-button", "Reset demo", "↺");
+  jsonActions.append(formatButton, resetButton);
+
   itemListSection.append(itemListLabel, itemList, symbolSummary);
   inspectorSection.append(inspectorLabel, inspector, inspectorStatus);
-  jsonSection.append(jsonInput);
+  jsonSection.append(jsonActions, jsonInput);
   primaryPanel.append(itemListSection, inspectorSection, jsonSection);
   dockedPanel.append(dockedPanelTab);
   itemTools.append(tabList, primaryPanel, tabDropZone, dockedPanel);
@@ -7775,10 +7774,11 @@ function createEditorRail(documentRef: Document): HTMLElement {
       createWorkspaceSidebarButton(documentRef, "Symbol editor", "◇", "Symbol workspace", "symbol", "list-item open-symbol-editor-button")
     ]),
     createSidebarSection(documentRef, "tools-section", "Tools", "Tools", [
-      createNavSidebarPanelButton(documentRef, "Toolbar", "⌘", "Tool controls", "toolbar", undefined, "list-item card-tool"),
       createNavSidebarTabButton(documentRef, "Inspector", "⌁", "Selected item properties", "inspector", "list-item card-tool"),
       createNavSidebarTabButton(documentRef, "Item List", "☷", "Objects and schematic items", "items", "list-item card-tool"),
       createNavSidebarTabButton(documentRef, "JSON Editor", "{}", "Raw payload editing", "json", "list-item card-tool"),
+      createNavSidebarTransferButton(documentRef, "Import Payload", "⇣", "Paste encoded hsc1 payload", "import", "list-item card-tool"),
+      createNavSidebarTransferButton(documentRef, "Import SVG", "SVG", "Convert safe SVG primitives", "svg", "list-item card-tool"),
       createNavSidebarTransferButton(documentRef, "Export / Payload", "⇄", "Encoded card payload", "export", "list-item card-tool"),
       createNavSidebarPanelButton(documentRef, "Simulation", "∿", "Open item state workspace", "inspector", undefined, "list-item card-tool"),
       createNavSidebarTabButton(documentRef, "Layers / Object Tree", "▤", "Layer order and object list", "items", "list-item card-tool"),
@@ -7933,71 +7933,66 @@ function toggleEditorSidebar(shell: HTMLElement, button: HTMLButtonElement): voi
 
 function createGlobalToolbar(documentRef: Document): HTMLElement {
   const toolbar = documentRef.createElement("header");
-  toolbar.className = "editor-topbar";
+  toolbar.className = "editor-topbar card-editor-toolbar";
+  toolbar.setAttribute("aria-label", "Card editor tools");
 
-  const toolGroup = createToolbarGroup(documentRef, "Tools");
+  const toolGroup = createToolbarGroup(documentRef, "TOOL");
 
-  const selectToolButton = createToolbarButton(documentRef, "select-tool-button", "Pointer");
-  selectToolButton.textContent = "↖";
-  selectToolButton.title = "Pointer";
-  selectToolButton.setAttribute("aria-label", "Pointer");
+  const selectToolButton = createToolbarButton(documentRef, "select-tool-button", "Select", "↖");
   selectToolButton.setAttribute("aria-pressed", "true");
 
-  const panToolButton = createToolbarButton(documentRef, "pan-tool-button", "🤚");
-  panToolButton.title = "Pan";
-  panToolButton.setAttribute("aria-label", "Pan");
+  const panToolButton = createToolbarButton(documentRef, "pan-tool-button", "Pan", "✥");
   panToolButton.setAttribute("aria-pressed", "false");
 
-  const drawPolylineButton = createToolbarButton(documentRef, "draw-polyline-button", "Draw Polyline");
+  const drawPolylineButton = createToolbarButton(documentRef, "draw-polyline-button", "Polyline", "⌁");
   drawPolylineButton.setAttribute("aria-pressed", "false");
 
-  const finishPolylineButton = createToolbarButton(documentRef, "finish-polyline-button", "Finish");
+  const finishPolylineButton = createToolbarButton(documentRef, "finish-polyline-button", "Finish polyline", "✓");
   finishPolylineButton.hidden = true;
 
-  toolGroup.append(selectToolButton, panToolButton, drawPolylineButton, finishPolylineButton);
+  appendToolbarActions(toolGroup, selectToolButton, panToolButton, drawPolylineButton, finishPolylineButton);
 
-  const addGroup = createToolbarGroup(documentRef, "Add");
-  addGroup.append(
-    createToolbarButton(documentRef, "add-text-button", "Text"),
-    createToolbarButton(documentRef, "add-rect-button", "Rect"),
-    createToolbarButton(documentRef, "add-circle-button", "Circle")
+  const addGroup = createToolbarGroup(documentRef, "ADD");
+  appendToolbarActions(
+    addGroup,
+    createToolbarButton(documentRef, "add-text-button", "Text", "T"),
+    createToolbarButton(documentRef, "add-rect-button", "Rectangle", "▭"),
+    createToolbarButton(documentRef, "add-circle-button", "Circle", "○")
   );
 
-  const selectionGroup = createToolbarGroup(documentRef, "Selection");
-  const duplicateItemButton = createToolbarButton(documentRef, "duplicate-item-button", "Duplicate");
+  const editGroup = createToolbarGroup(documentRef, "EDIT");
+  const duplicateItemButton = createToolbarButton(documentRef, "duplicate-item-button", "Duplicate", "⧉");
   duplicateItemButton.disabled = true;
-  const deleteItemButton = createToolbarButton(documentRef, "delete-item-button", "Delete");
+  const deleteItemButton = createToolbarButton(documentRef, "delete-item-button", "Delete", "×");
   deleteItemButton.disabled = true;
-  selectionGroup.append(duplicateItemButton, deleteItemButton);
-
-  const historyGroup = createToolbarGroup(documentRef, "History");
-  const undoButton = createToolbarButton(documentRef, "undo-button", "Undo");
+  const undoButton = createToolbarButton(documentRef, "undo-button", "Undo", "↶");
   undoButton.disabled = true;
-  const redoButton = createToolbarButton(documentRef, "redo-button", "Redo");
+  const redoButton = createToolbarButton(documentRef, "redo-button", "Redo", "↷");
   redoButton.disabled = true;
-  historyGroup.append(undoButton, redoButton);
+  appendToolbarActions(editGroup, duplicateItemButton, deleteItemButton, undoButton, redoButton);
 
-  const payloadGroup = createToolbarGroup(documentRef, "Payload");
-  payloadGroup.append(
-    createToolbarButton(documentRef, "format-button", "Format JSON"),
-    createToolbarButton(documentRef, "reset-button", "Reset Demo"),
-    createToolbarButton(documentRef, "open-import-button", "Import"),
-    createToolbarButton(documentRef, "open-svg-import-button", "Import SVG"),
-    createToolbarButton(documentRef, "open-export-button", "Export"),
-    createToolbarButton(documentRef, "open-theme-button", "Theme")
-  );
+  const viewGroup = createToolbarGroup(documentRef, "VIEW");
+  const toggleGridButton = createToolbarButton(documentRef, "toggle-grid-button", "Grid on", "▦");
+  toggleGridButton.setAttribute("aria-pressed", "true");
+  const toggleSnapButton = createToolbarButton(documentRef, "toggle-snap-button", "Snap on", "⌖");
+  toggleSnapButton.setAttribute("aria-pressed", "true");
+  const gridSizeLabel = documentRef.createElement("label");
+  gridSizeLabel.className = "grid-size-field";
+  const gridSizeText = documentRef.createElement("span");
+  gridSizeText.className = "field-label";
+  gridSizeText.textContent = "GRID";
+  const gridSizeInput = documentRef.createElement("input");
+  gridSizeInput.className = "grid-size-input";
+  gridSizeInput.type = "number";
+  gridSizeInput.min = "1";
+  gridSizeInput.step = "1";
+  gridSizeInput.value = String(DEFAULT_EDITOR_GRID_SIZE);
+  gridSizeInput.setAttribute("aria-label", "Grid size");
+  gridSizeLabel.append(gridSizeText, gridSizeInput);
+  const resetViewButton = createToolbarButton(documentRef, "reset-view-button", "Fit view", "⛶");
+  appendToolbarActions(viewGroup, toggleGridButton, toggleSnapButton, gridSizeLabel, resetViewButton);
 
-  const panelGroup = createToolbarGroup(documentRef, "Panels");
-  panelGroup.append(
-    createPanelToolbarButton(documentRef, "open-toolbar-panel-button", "Toolbar", "toolbar"),
-    createPanelToolbarButton(documentRef, "open-items-panel-button", "Items", "items"),
-    createPanelToolbarButton(documentRef, "open-inspector-panel-button", "Inspector", "inspector"),
-    createPanelToolbarButton(documentRef, "open-json-panel-button", "JSON", "json"),
-    createToolbarButton(documentRef, "minimize-all-panels-button", "Min All"),
-    createToolbarButton(documentRef, "close-all-panels-button", "Close All")
-  );
-
-  toolbar.append(toolGroup, addGroup, selectionGroup, historyGroup, payloadGroup, panelGroup);
+  toolbar.append(toolGroup, addGroup, editGroup, viewGroup);
   return toolbar;
 }
 
@@ -8010,33 +8005,30 @@ function createToolbarGroup(documentRef: Document, label: string): HTMLElement {
   groupLabel.className = "toolbar-group-label";
   groupLabel.textContent = label;
 
-  group.append(groupLabel);
+  const actions = documentRef.createElement("div");
+  actions.className = "toolbar-group-actions";
+
+  group.append(groupLabel, actions);
   return group;
 }
 
-function createToolbarButton(documentRef: Document, className: string, label: string): HTMLButtonElement {
-  const button = documentRef.createElement("button");
-  button.className = `${className} utility-button`;
-  button.type = "button";
-  button.textContent = label;
-  return button;
+function appendToolbarActions(group: HTMLElement, ...actions: Array<HTMLElement>): void {
+  getRequiredElement(group, ".toolbar-group-actions", HTMLElement).append(...actions);
 }
 
-function createPanelToolbarButton(
-  documentRef: Document,
-  className: string,
-  label: string,
-  panelId: FloatingPanelId
-): HTMLButtonElement {
-  const button = createToolbarButton(documentRef, className, label);
-  button.dataset.openPanel = panelId;
+function createToolbarButton(documentRef: Document, className: string, label: string, icon = label): HTMLButtonElement {
+  const button = documentRef.createElement("button");
+  button.className = `${className} utility-button toolbar-icon-button`;
+  button.type = "button";
+  button.textContent = icon;
+  button.title = label;
+  button.setAttribute("aria-label", label);
   return button;
 }
 
 function createFloatingPanelLayer(
   documentRef: Document,
   content: {
-    toolbar: HTMLElement;
     itemListSection: HTMLElement;
     inspectorSection: HTMLElement;
     jsonSection: HTMLElement;
@@ -8061,7 +8053,6 @@ function createFloatingPanelLayer(
   const panels = documentRef.createElement("div");
   panels.className = "floating-panels";
   panels.append(
-    createFloatingPanel(documentRef, "toolbar", "Toolbar", "⌘", content.toolbar, { x: 24, y: 18 }, "closed"),
     createFloatingPanel(documentRef, "items", "Item List / Object Tree", "☷", content.itemListSection, { x: 24, y: 132 }, "closed"),
     createFloatingPanel(documentRef, "inspector", "Inspector", "⌁", content.inspectorSection, { x: 720, y: 18 }, "closed"),
     createFloatingPanel(documentRef, "json", "JSON Editor", "{}", content.jsonSection, { x: 720, y: 360 }, "closed"),
@@ -8229,13 +8220,6 @@ function setupFloatingPanels(elements: EditorElements, documentRef: Document): v
     });
   }
 
-  root.querySelector<HTMLButtonElement>(".minimize-all-panels-button")?.addEventListener("click", () => {
-    minimizeAllFloatingPanels(root, documentRef);
-  });
-  root.querySelector<HTMLButtonElement>(".close-all-panels-button")?.addEventListener("click", () => {
-    closeAllFloatingPanels(root);
-  });
-
   updateFloatingPanelRailState(root);
 }
 
@@ -8273,8 +8257,7 @@ function getTransferMode(button: HTMLElement): TransferPanelMode {
 function getFloatingPanelId(element: HTMLElement): FloatingPanelId {
   const panelId = element.dataset.panelId ?? element.dataset.openPanel;
   if (
-    panelId === "toolbar"
-    || panelId === "items"
+    panelId === "items"
     || panelId === "inspector"
     || panelId === "json"
     || panelId === "transfer"
@@ -8343,20 +8326,6 @@ function closeFloatingPanel(root: HTMLElement, panelId: FloatingPanelId): void {
   updateDockedWorkspaceInsets(root);
   refreshAllDockZoneStacks(root);
   updateFloatingPanelRailState(root);
-}
-
-function minimizeAllFloatingPanels(root: HTMLElement, documentRef: Document): void {
-  for (const panel of Array.from(root.querySelectorAll<HTMLElement>(".floating-panel"))) {
-    if (!panel.hidden && panel.dataset.panelState !== "closed") {
-      minimizeFloatingPanel(root, getFloatingPanelId(panel), documentRef);
-    }
-  }
-}
-
-function closeAllFloatingPanels(root: HTMLElement): void {
-  for (const panel of Array.from(root.querySelectorAll<HTMLElement>(".floating-panel"))) {
-    closeFloatingPanel(root, getFloatingPanelId(panel));
-  }
 }
 
 function ensureFloatingPanelDockChip(root: HTMLElement, panelId: FloatingPanelId, documentRef: Document): void {
@@ -9678,45 +9647,7 @@ function showSnapTourHint(root: HTMLElement, panel: HTMLElement, documentRef: Do
 }
 
 function createPreviewPane(documentRef: Document): HTMLElement {
-  const pane = createPane(documentRef, "Card editor");
-  const controls = documentRef.createElement("div");
-  controls.className = "preview-controls";
-
-  const toggleGridButton = documentRef.createElement("button");
-  toggleGridButton.className = "toggle-grid-button utility-button";
-  toggleGridButton.type = "button";
-  toggleGridButton.textContent = "Grid On";
-  toggleGridButton.setAttribute("aria-pressed", "true");
-
-  const gridSizeLabel = documentRef.createElement("label");
-  gridSizeLabel.className = "grid-size-field";
-
-  const gridSizeText = documentRef.createElement("span");
-  gridSizeText.className = "field-label";
-  gridSizeText.textContent = "Grid";
-
-  const gridSizeInput = documentRef.createElement("input");
-  gridSizeInput.className = "grid-size-input";
-  gridSizeInput.type = "number";
-  gridSizeInput.min = "1";
-  gridSizeInput.step = "1";
-  gridSizeInput.value = String(DEFAULT_EDITOR_GRID_SIZE);
-
-  gridSizeLabel.append(gridSizeText, gridSizeInput);
-
-  const toggleSnapButton = documentRef.createElement("button");
-  toggleSnapButton.className = "toggle-snap-button utility-button";
-  toggleSnapButton.type = "button";
-  toggleSnapButton.textContent = "Snap On";
-  toggleSnapButton.setAttribute("aria-pressed", "true");
-
-  const resetViewButton = documentRef.createElement("button");
-  resetViewButton.className = "reset-view-button utility-button";
-  resetViewButton.type = "button";
-  resetViewButton.textContent = "Fit";
-
-  controls.append(toggleGridButton, toggleSnapButton, gridSizeLabel, resetViewButton);
-  pane.querySelector(".pane-header")?.append(controls);
+  const pane = createPane(documentRef, "");
   pane.append(createPreviewSurface(documentRef), createPolylineContextMenu(documentRef));
   return pane;
 }
@@ -10130,25 +10061,25 @@ function createSymbolEditorWorkspace(documentRef: Document): HTMLElement {
   previewTitle.textContent = "Symbol Preview";
   const previewControls = documentRef.createElement("div");
   previewControls.className = "symbol-preview-controls";
-  const symbolSelectButton = createToolbarButton(documentRef, "symbol-select-tool-button", "↖");
+  const symbolSelectButton = createToolbarButton(documentRef, "symbol-select-tool-button", "Select symbol items", "↖");
   symbolSelectButton.title = "Select";
   symbolSelectButton.setAttribute("aria-label", "Select symbol items");
   symbolSelectButton.setAttribute("aria-pressed", "true");
-  const symbolPanButton = createToolbarButton(documentRef, "symbol-pan-tool-button", "🤚");
+  const symbolPanButton = createToolbarButton(documentRef, "symbol-pan-tool-button", "Pan symbol preview", "✥");
   symbolPanButton.title = "Pan";
   symbolPanButton.setAttribute("aria-label", "Pan symbol preview");
   symbolPanButton.setAttribute("aria-pressed", "false");
-  const symbolResetButton = createToolbarButton(documentRef, "symbol-reset-view-button", "Fit");
+  const symbolResetButton = createToolbarButton(documentRef, "symbol-reset-view-button", "Fit symbol preview", "⛶");
   symbolResetButton.title = "Fit symbol preview";
-  const symbolClearButton = createToolbarButton(documentRef, "symbol-clear-selection-button", "Clear");
+  const symbolClearButton = createToolbarButton(documentRef, "symbol-clear-selection-button", "Clear symbol item selection", "◌");
   symbolClearButton.title = "Clear symbol item selection";
-  const symbolDeleteButton = createToolbarButton(documentRef, "symbol-delete-item-button", "Delete");
+  const symbolDeleteButton = createToolbarButton(documentRef, "symbol-delete-item-button", "Delete selected symbol item", "×");
   symbolDeleteButton.title = "Delete selected symbol item";
   symbolDeleteButton.disabled = true;
-  const symbolUndoButton = createToolbarButton(documentRef, "symbol-undo-button", "Undo");
+  const symbolUndoButton = createToolbarButton(documentRef, "symbol-undo-button", "Undo", "↶");
   symbolUndoButton.title = "Undo";
   symbolUndoButton.disabled = true;
-  const symbolRedoButton = createToolbarButton(documentRef, "symbol-redo-button", "Redo");
+  const symbolRedoButton = createToolbarButton(documentRef, "symbol-redo-button", "Redo", "↷");
   symbolRedoButton.title = "Redo";
   symbolRedoButton.disabled = true;
   previewControls.append(
@@ -10260,10 +10191,12 @@ function createPane(documentRef: Document, title: string): HTMLElement {
   const header = documentRef.createElement("div");
   header.className = "pane-header";
 
-  const heading = documentRef.createElement("h1");
-  heading.className = "pane-title";
-  heading.textContent = title;
-  header.append(heading);
+  if (title) {
+    const heading = documentRef.createElement("h1");
+    heading.className = "pane-title";
+    heading.textContent = title;
+    header.append(heading);
+  }
   pane.append(header);
 
   return pane;

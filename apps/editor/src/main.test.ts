@@ -33,8 +33,11 @@ describe("editor app", () => {
     expect(app.querySelector(".card-editor-workspace")).not.toBeNull();
     expect(app.querySelector<HTMLElement>(".card-editor-workspace")?.hidden).toBe(false);
     expect(app.querySelector<HTMLElement>(".symbol-editor-workspace")?.hidden).toBe(true);
-    expect(getFloatingPanel(app, "toolbar").hidden).toBe(true);
-    expect(getFloatingPanel(app, "toolbar").contains(getButton(app, ".format-button"))).toBe(true);
+    expect(app.querySelector(".floating-panel-toolbar")).toBeNull();
+    expect(app.querySelector(".card-editor-workspace .pane-header .editor-topbar")).not.toBeNull();
+    expect(app.querySelector(".card-editor-workspace .pane-header [data-open-panel]")).toBeNull();
+    expect(app.querySelector(".card-editor-workspace .pane-header [data-transfer-mode]")).toBeNull();
+    expect(app.querySelector(".card-editor-workspace .pane-title")).toBeNull();
     expect(getFloatingPanel(app, "items").querySelector(".item-list-section")).not.toBeNull();
     expect(getFloatingPanel(app, "inspector").querySelector(".inspector-section")).not.toBeNull();
     expect(getFloatingPanel(app, "json").querySelector(".json-editor-section")).not.toBeNull();
@@ -68,10 +71,11 @@ describe("editor app", () => {
     expect(sidebarButtons.map((button) => button.getAttribute("aria-label"))).toEqual([
       "Card editor",
       "Symbol editor",
-      "Toolbar",
       "Inspector",
       "Item List",
       "JSON Editor",
+      "Import Payload",
+      "Import SVG",
       "Export / Payload",
       "Simulation",
       "Layers / Object Tree",
@@ -86,6 +90,8 @@ describe("editor app", () => {
     expect(toggleButton.getAttribute("aria-expanded")).toBe("true");
     expect(getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="items"]').textContent).toContain("Item List");
     expect(getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="json"]').textContent).toContain("JSON Editor");
+    expect(getButton(app, '.editor-nav-entry[data-transfer-mode="import"]').textContent).toContain("Import");
+    expect(getButton(app, '.editor-nav-entry[data-transfer-mode="svg"]').textContent).toContain("SVG");
     expect(getButton(app, '.editor-nav-entry[data-transfer-mode="export"]').textContent).toContain("Export");
     expect(getButton(app, '.editor-nav-entry[data-transfer-mode="theme"]').textContent).toContain("Theme");
     expect(app.querySelector(".sidebar")?.classList.contains("hidden")).toBe(false);
@@ -100,7 +106,7 @@ describe("editor app", () => {
     const app = createEditorApp(documentRef);
     const inspectorPanel = getFloatingPanel(app, "inspector");
 
-    expect(app.querySelectorAll(".floating-panel").length).toBe(5);
+    expect(app.querySelectorAll(".floating-panel").length).toBe(4);
     getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="inspector"]').click();
     expect(inspectorPanel.dataset.panelState).toBe("open");
 
@@ -117,7 +123,7 @@ describe("editor app", () => {
     expect(app.querySelector('[data-dock-panel="inspector"]')).toBeNull();
   });
 
-  it("closes floating panels and reopens them from the toolbar", () => {
+  it("closes floating panels and reopens them from the sidebar", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
     const itemsPanel = getFloatingPanel(app, "items");
@@ -126,22 +132,23 @@ describe("editor app", () => {
     expect(itemsPanel.dataset.panelState).toBe("closed");
     expect(itemsPanel.hidden).toBe(true);
 
-    getButton(app, ".open-items-panel-button").click();
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="items"]').click();
     expect(itemsPanel.dataset.panelState).toBe("open");
     expect(itemsPanel.hidden).toBe(false);
   });
 
-  it("minimizes all floating panels and restores one docked panel", () => {
+  it("minimizes floating panels and restores one docked panel", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
 
-    getButton(app, ".open-toolbar-panel-button").click();
-    getButton(app, ".open-json-panel-button").click();
-    getButton(app, ".minimize-all-panels-button").click();
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="items"]').click();
+    getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="json"]').click();
+    getButton(getFloatingPanel(app, "items"), ".floating-panel-minimize").click();
+    getButton(getFloatingPanel(app, "json"), ".floating-panel-minimize").click();
 
     expect(app.querySelectorAll(".floating-panel-dock-chip").length).toBe(2);
     for (const panel of Array.from(app.querySelectorAll<HTMLElement>(".floating-panel"))) {
-      if (panel.dataset.panelId === "toolbar" || panel.dataset.panelId === "json") {
+      if (panel.dataset.panelId === "items" || panel.dataset.panelId === "json") {
         expect(panel.dataset.panelState).toBe("minimized");
         expect(panel.hidden).toBe(true);
       }
@@ -152,7 +159,7 @@ describe("editor app", () => {
     expect(app.querySelectorAll(".floating-panel-dock-chip").length).toBe(1);
   });
 
-  it("opens existing export behavior from the floating toolbar panel", () => {
+  it("opens existing export behavior from the sidebar", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
     const transferPanel = app.querySelector<HTMLElement>(".transfer-panel");
@@ -162,8 +169,8 @@ describe("editor app", () => {
     }
 
     expect(transferPanel.hidden).toBe(true);
-    expect(getFloatingPanel(app, "toolbar").contains(getButton(app, ".open-export-button"))).toBe(true);
-    getButton(app, ".open-export-button").click();
+    expect(app.querySelector(".card-editor-workspace .pane-header [data-transfer-mode]")).toBeNull();
+    getButton(app, '.editor-nav-entry[data-transfer-mode="export"]').click();
     expect(transferPanel.hidden).toBe(false);
     expect(transferPanel.dataset.mode).toBe("export");
     expect(app.querySelector<HTMLTextAreaElement>(".payload-output")?.value.startsWith("hsc1.")).toBe(true);
@@ -1404,7 +1411,8 @@ describe("editor app", () => {
     gridButton.click();
 
     expect(gridButton.getAttribute("aria-pressed")).toBe("false");
-    expect(gridButton.textContent).toBe("Grid Off");
+    expect(gridButton.textContent).toBe("▦");
+    expect(gridButton.getAttribute("aria-label")).toBe("Grid off");
     expect(app.querySelector('[data-editor-grid="true"]')).toBeNull();
   });
 
@@ -1532,7 +1540,7 @@ describe("editor app", () => {
     expect(app.querySelector(".zoom-in-button")).toBeNull();
     expect(app.querySelector(".zoom-out-button")).toBeNull();
     expect(getButton(app, ".select-tool-button").textContent).toBe("↖");
-    expect(getButton(app, ".pan-tool-button").textContent).toBe("🤚");
+    expect(getButton(app, ".pan-tool-button").textContent).toBe("✥");
 
     getButton(app, ".pan-tool-button").click();
     expect(getButton(app, ".pan-tool-button").getAttribute("aria-pressed")).toBe("true");
@@ -2094,7 +2102,7 @@ describe("editor app", () => {
     expect(app.querySelector<HTMLElement>(".inspector-status")?.textContent).toBe("Polyline drawing cancelled");
   });
 
-  it("opens and closes import, SVG import, export, and theme side panels from the top toolbar", () => {
+  it("opens and closes import, SVG import, export, and theme side panels from the sidebar", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
     const panel = app.querySelector<HTMLElement>(".transfer-panel");
@@ -2109,7 +2117,7 @@ describe("editor app", () => {
 
     expect(panel.hidden).toBe(true);
 
-    getButton(app, ".open-import-button").click();
+    getButton(app, '.editor-nav-entry[data-transfer-mode="import"]').click();
     expect(panel.hidden).toBe(false);
     expect(panel.dataset.mode).toBe("import");
     expect(importSection.hidden).toBe(false);
@@ -2117,21 +2125,21 @@ describe("editor app", () => {
     expect(themeSection.hidden).toBe(true);
     expect(exportSection.hidden).toBe(true);
 
-    getButton(app, ".open-svg-import-button").click();
+    getButton(app, '.editor-nav-entry[data-transfer-mode="svg"]').click();
     expect(panel.dataset.mode).toBe("svg");
     expect(importSection.hidden).toBe(true);
     expect(svgImportSection.hidden).toBe(false);
     expect(themeSection.hidden).toBe(true);
     expect(exportSection.hidden).toBe(true);
 
-    getButton(app, ".open-export-button").click();
+    getButton(app, '.editor-nav-entry[data-transfer-mode="export"]').click();
     expect(panel.dataset.mode).toBe("export");
     expect(importSection.hidden).toBe(true);
     expect(svgImportSection.hidden).toBe(true);
     expect(themeSection.hidden).toBe(true);
     expect(exportSection.hidden).toBe(false);
 
-    getButton(app, ".open-theme-button").click();
+    getButton(app, '.editor-nav-entry[data-transfer-mode="theme"]').click();
     expect(panel.dataset.mode).toBe("theme");
     expect(importSection.hidden).toBe(true);
     expect(svgImportSection.hidden).toBe(true);

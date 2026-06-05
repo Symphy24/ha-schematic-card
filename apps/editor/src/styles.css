@@ -348,11 +348,6 @@ textarea {
   pointer-events: auto;
 }
 
-.floating-panel-toolbar {
-  width: min(900px, calc(100vw - 120px));
-  max-height: 180px;
-}
-
 .floating-panel-items {
   width: 340px;
 }
@@ -521,18 +516,6 @@ textarea {
   min-width: 0;
   min-height: 0;
   flex: 1;
-}
-
-.floating-panel-toolbar .floating-panel-body {
-  padding: 0;
-}
-
-.floating-panel-toolbar .editor-topbar {
-  flex-wrap: wrap;
-  overflow: auto;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
 }
 
 .floating-panel-preview {
@@ -2754,11 +2737,6 @@ body {
   height: min(760px, 84vh);
 }
 
-.floating-panel-toolbar {
-  width: min(900px, calc(100vw - 120px));
-  max-height: 180px;
-}
-
 .floating-panel-items { width: 340px; }
 .floating-panel-inspector { width: 380px; }
 
@@ -3293,4 +3271,276 @@ body.window-resizing-active * {
   .th-zone {
     animation: none !important;
   }
+}
+
+/* Compact Odysseus-density chrome pass. Keep the schematic canvas spacious; tighten only editor UI. */
+:root {
+  --editor-ui-font-size: 11px;
+  --editor-ui-font-size-xs: 8px;
+  --editor-control-h: 24px;
+  --editor-control-min-w: 24px;
+  --editor-control-pad-x: 6px;
+  --editor-chrome-gap: 4px;
+  --editor-panel-pad: 7px;
+  --editor-panel-header-h: 28px;
+  --editor-icon-size: 14px;
+}
+
+.card-editor-workspace .pane-header {
+  min-height: 36px;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: var(--editor-chrome-gap);
+  padding: 4px 6px;
+}
+
+.card-editor-toolbar {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  backdrop-filter: none;
+}
+
+.editor-topbar {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.toolbar-group {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  border-left: 1px solid color-mix(in srgb, var(--fg, var(--editor-text)) 10%, transparent);
+  padding: 0 5px;
+  white-space: nowrap;
+}
+
+.toolbar-group:first-child {
+  border-left: 0;
+  padding-left: 0;
+}
+
+.toolbar-group-label {
+  color: var(--editor-text-muted);
+  font-size: var(--editor-ui-font-size-xs);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.toolbar-group-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.toolbar-icon-button {
+  width: var(--editor-control-min-w);
+  min-width: var(--editor-control-min-w);
+  height: var(--editor-control-h);
+  min-height: var(--editor-control-h);
+  border-radius: 4px;
+  padding: 0;
+  font-size: var(--editor-ui-font-size);
+  line-height: 1;
+}
+
+.format-button {
+  width: auto;
+  min-width: 32px;
+  padding: 0 var(--editor-control-pad-x);
+}
+
+.json-editor-actions {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  gap: 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg, var(--editor-text)) 10%, transparent);
+  padding: 4px;
+}
+
+.grid-size-field {
+  display: flex;
+  height: var(--editor-control-h);
+  align-items: center;
+  gap: 3px;
+}
+
+.grid-size-field .field-label {
+  font-size: var(--editor-ui-font-size-xs);
+  line-height: 1;
+}
+
+.grid-size-input {
+  width: 42px;
+  height: var(--editor-control-h);
+  min-height: var(--editor-control-h);
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 10px;
+}
+
+.modal-content,
+.floating-panel {
+  min-width: 280px;
+  min-height: 170px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.modal-header,
+.floating-panel-header {
+  min-height: var(--editor-panel-header-h);
+  gap: 5px;
+  padding: 5px 7px;
+  margin-bottom: 0;
+}
+
+.floating-panel-title-wrap {
+  gap: 5px;
+}
+
+.floating-panel-badge {
+  width: 22px;
+  min-width: 22px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: var(--editor-ui-font-size-xs);
+}
+
+.floating-panel-title {
+  font-size: 12px;
+  line-height: 1.1;
+}
+
+.floating-panel-controls,
+.floating-panel-actions {
+  gap: 3px;
+}
+
+.modal-minimize-btn,
+.modal-close,
+.floating-panel-minimize,
+.floating-panel-close {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.floating-panel-body,
+.floating-panel-content {
+  font-size: 12px;
+}
+
+.floating-panel-dock-chip,
+.minimized-dock-chip {
+  max-width: 180px;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 4px 7px;
+  font-size: 11px;
+}
+
+.utility-button {
+  min-height: var(--editor-control-h);
+  border-radius: 4px;
+  padding: 0 var(--editor-control-pad-x);
+  font-size: var(--editor-ui-font-size);
+}
+
+.inspector-input,
+.style-preset-select,
+.theme-input,
+.import-input,
+.svg-import-input,
+.payload-output,
+.json-input,
+.symbol-select {
+  font-size: 12px;
+}
+
+.polyline-context-menu {
+  min-width: 150px;
+  border-radius: 5px;
+  font-size: 11px;
+}
+
+.polyline-context-menu button {
+  min-height: 0;
+  padding: 5px 7px;
+  font-size: 11px;
+}
+
+.context-menu-heading {
+  padding: 5px 7px;
+  font-size: var(--editor-ui-font-size-xs);
+  letter-spacing: 0;
+}
+
+.symbol-editor-header {
+  min-height: 38px;
+  gap: 6px;
+  padding: 6px 8px;
+}
+
+.symbol-editor-menubar,
+.symbol-editor-controls,
+.symbol-preview-controls {
+  gap: 3px;
+}
+
+.symbol-editor-title {
+  font-size: 12px;
+  line-height: 1.1;
+}
+
+.symbol-editor-body {
+  gap: 8px;
+  padding: 8px;
+}
+
+.symbol-editor-side,
+.symbol-editor-preview-pane,
+.symbol-editor-inspector-pane {
+  border-radius: 6px;
+  padding: var(--editor-panel-pad);
+}
+
+.symbol-preview-header {
+  min-height: 30px;
+  gap: 6px;
+}
+
+.symbol-select {
+  min-width: 150px;
+  height: var(--editor-control-h);
+  padding: 2px 6px;
+}
+
+.symbol-file-menu,
+.symbol-panel-menu {
+  min-width: 140px;
+  border-radius: 5px;
+  padding: 4px;
+  font-size: 11px;
+}
+
+.symbol-file-menu button,
+.symbol-panel-menu button {
+  padding: 5px 7px;
+  font-size: 11px;
 }
