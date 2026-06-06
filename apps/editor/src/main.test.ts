@@ -602,6 +602,35 @@ describe("editor app", () => {
     expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
   });
 
+  it("defines a dynamic style rule for a direct simulated entity", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, '[data-item-id="demo-temperature"]').click();
+    getButton(app, ".dynamic-add-style-rule-button").click();
+
+    const rule = getDynamicStyleRule(app, 0);
+    getInput(rule, ".dynamic-rule-entity-input").value = "input_number.schematic_demo_temperature";
+    getSelect(rule, ".dynamic-rule-operator-select").value = "greaterThan";
+    getInput(rule, ".dynamic-rule-value-input").value = "30";
+    getInput(rule, ".dynamic-rule-fill-input").value = "#ff0000";
+    getButton(rule, ".dynamic-rule-apply-button").click();
+
+    expect(getPayloadItem(app, "demo-temperature")?.styleWhen?.[0]?.when).toMatchObject({
+      entityId: "input_number.schematic_demo_temperature",
+      greaterThan: 30
+    });
+    expect(app.querySelector('[data-id="demo-temperature"]')?.getAttribute("fill")).not.toBe("#ff0000");
+
+    getButton(app, '.editor-nav-entry[data-open-panel="simulation"]').click();
+    const temperatureCard = getSimulationEntityCard(getFloatingPanel(app, "simulation"), "input_number.schematic_demo_temperature");
+    getInput(temperatureCard, ".simulation-temperature-input").value = "42.5";
+    getInput(temperatureCard, ".simulation-temperature-input").dispatchEvent(new Event("change"));
+
+    expect(app.querySelector('[data-id="demo-temperature"]')?.getAttribute("fill")).toBe("#ff0000");
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+  });
+
   it("updates simulation entries when a selected symbol instance binding changes", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
@@ -864,7 +893,7 @@ describe("editor app", () => {
     expect(app.querySelector('.symbol-preview-surface [data-id="unit-box"]')?.getAttribute("fill")).not.toBe("var(--error-color)");
     expect(app.querySelector('.symbol-preview-surface [data-id="unit-status-dot"]')?.getAttribute("data-part-animation")).toBeNull();
 
-    expect(app.querySelector('.symbol-slot-row[data-slot-id="alarm"]')?.textContent).toContain("Affects: body style when alarm = on");
+    expect(app.querySelector('.symbol-slot-row[data-slot-id="alarm"]')?.textContent).toContain("Affects: body style when slot:alarm = on");
     getButton(app, '.symbol-slot-row[data-slot-id="alarm"] .symbol-slot-simulation-on-button').click();
 
     expect(app.querySelector('.symbol-preview-surface [data-id="unit-box"]')?.getAttribute("fill")).toBe("var(--error-color)");
@@ -872,6 +901,75 @@ describe("editor app", () => {
     getButton(app, '.symbol-slot-row[data-slot-id="running"] .symbol-slot-simulation-on-button').click();
 
     expect(app.querySelector('.symbol-preview-surface [data-id="unit-status-dot"]')?.getAttribute("data-part-animation")).toBe("blink");
+  });
+
+  it("defines dynamic styles for symbol internal items from slot values", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".open-symbol-editor-button").click();
+    getButton(app, ".symbol-start-edit-button").click();
+    getButton(app, '[data-symbol-item-id="unit-box"]').click();
+    getButton(app, ".symbol-editor-inspector .dynamic-add-style-rule-button").click();
+
+    const rule = getDynamicStyleRule(app.querySelector(".symbol-editor-inspector")!, 0);
+    expect(getSelect(rule, ".dynamic-rule-entity-select").value).toBe("slot:running");
+    expect(rule.querySelector(".dynamic-rule-entity-input")).toBeNull();
+
+    const fillField = getInspectorField(rule, "Fill");
+    expect(fillField.tagName).toBe("DIV");
+    expect(getSelect(fillField, ".dynamic-rule-fill-theme-select").value).toBe("var(--error-color)");
+    expect(fillField.querySelector<HTMLElement>(".dynamic-paint-theme-row")?.hidden).toBe(false);
+    expect(getInput(fillField, ".dynamic-rule-fill-color-input").hidden).toBe(true);
+    fillField.querySelector<HTMLElement>(".dynamic-paint-mode")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(app.querySelector<HTMLElement>(".symbol-editor-inspector")?.textContent).toContain("Item: unit-box");
+    expect(fillField.querySelector<HTMLElement>(".dynamic-paint-theme-row")?.hidden).toBe(false);
+    expect(getInput(fillField, ".dynamic-rule-fill-color-input").hidden).toBe(true);
+    getButton(fillField, ".dynamic-paint-custom-button").click();
+    expect(fillField.querySelector<HTMLElement>(".dynamic-paint-theme-row")?.hidden).toBe(true);
+    expect(getInput(fillField, ".dynamic-rule-fill-color-input").hidden).toBe(false);
+    getInput(fillField, ".dynamic-rule-fill-color-input").value = "#00ffff";
+    getInput(fillField, ".dynamic-rule-fill-color-input").dispatchEvent(new Event("input"));
+    expect(getInput(fillField, ".dynamic-rule-fill-input").value).toBe("#00ffff");
+    getInput(fillField, ".dynamic-rule-fill-input").value = "";
+
+    getInput(rule, ".dynamic-rule-stroke-input").value = "#ff00ff";
+    getButton(rule, ".dynamic-rule-apply-button").click();
+
+    expect(getSymbolInternalItem(app, "demo-generic-unit", "unit-box")?.styleWhen?.[0]?.when).toMatchObject({
+      entityId: "slot:running",
+      equals: "on"
+    });
+    expect(app.querySelector('.symbol-preview-surface [data-id="unit-box"]')?.getAttribute("stroke")).not.toBe("#ff00ff");
+
+    getButton(app, '.symbol-slot-row[data-slot-id="running"] .symbol-slot-simulation-on-button').click();
+
+    expect(app.querySelector('.symbol-preview-surface [data-id="unit-box"]')?.getAttribute("stroke")).toBe("#ff00ff");
+  });
+
+  it("keeps symbol inspector selection on harmless background clicks", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".open-symbol-editor-button").click();
+    getButton(app, ".symbol-start-edit-button").click();
+    getButton(app, '[data-symbol-item-id="unit-box"]').click();
+
+    const inspector = app.querySelector<HTMLElement>(".symbol-editor-inspector");
+    const svg = app.querySelector<SVGSVGElement>(".symbol-preview-surface svg");
+
+    if (!inspector || !svg) {
+      throw new Error("symbol inspector or preview missing");
+    }
+
+    expect(inspector.textContent).toContain("Item: unit-box");
+
+    inspector.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(app.querySelector<HTMLElement>(".symbol-editor-inspector")?.textContent).toContain("Item: unit-box");
+
+    svg.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(app.querySelector<HTMLElement>(".symbol-editor-inspector")?.textContent).toContain("Item: unit-box");
+    expect(getButton(app, ".symbol-delete-item-button").disabled).toBe(false);
   });
 
   it("zooms, pans, clears, drags, and deletes symbol items in the symbol editor preview", () => {
@@ -1324,11 +1422,16 @@ describe("editor app", () => {
 
     const colorInput = getInspectorField(app, "fill").querySelector<HTMLInputElement>(".style-color-input");
     const presetSelect = getInspectorField(app, "fill").querySelector<HTMLSelectElement>(".style-preset-select");
+    const customButton = getInspectorField(app, "fill").querySelector<HTMLButtonElement>(".paint-custom-button");
+    const themeButton = getInspectorField(app, "fill").querySelector<HTMLButtonElement>(".paint-theme-button");
 
-    if (!colorInput || !presetSelect) {
+    if (!colorInput || !presetSelect || !customButton || !themeButton) {
       throw new Error("paint controls missing");
     }
 
+    customButton.click();
+    expect(customButton.getAttribute("aria-pressed")).toBe("true");
+    expect(colorInput.hidden).toBe(false);
     colorInput.value = "#00ff00";
     colorInput.dispatchEvent(new Event("input"));
     expect(getPayloadItem(app, "demo-title")?.style?.fill).toBe("#00ff00");
@@ -1338,7 +1441,8 @@ describe("editor app", () => {
     presetSelect.dispatchEvent(new Event("change"));
 
     expect(getPayloadItem(app, "demo-title")?.style?.fill).toBe("var(--accent-color)");
-    expect(presetSelect.querySelector("option")?.textContent).toBe("Use theme colors...");
+    expect(themeButton.getAttribute("aria-pressed")).toBe("true");
+    expect(presetSelect.querySelector("option")?.textContent).toBe("primary text");
   });
 
   it("edits rect, circle, and polyline style fields", () => {
@@ -3182,7 +3286,10 @@ function getSimulationEntityCard(root: ParentNode, entityId: string): HTMLElemen
     }
   }
 
-  throw new Error(`simulation entity card missing: ${entityId}`);
+  const available = Array.from(root.querySelectorAll<HTMLElement>(".simulation-entity-card"))
+    .map((element) => element.dataset.entityId ?? "missing")
+    .join(", ");
+  throw new Error(`simulation entity card missing: ${entityId}; available: ${available}; text: ${root.textContent ?? ""}`);
 }
 
 function getPanelHeader(panel: HTMLElement): HTMLElement {
@@ -3221,6 +3328,26 @@ function getInput(root: ParentNode, selector: string): HTMLInputElement {
 
   if (!(element instanceof HTMLInputElement)) {
     throw new Error(`input missing: ${selector}`);
+  }
+
+  return element;
+}
+
+function getSelect(root: ParentNode, selector: string): HTMLSelectElement {
+  const element = root.querySelector(selector);
+
+  if (!(element instanceof HTMLSelectElement)) {
+    throw new Error(`select missing: ${selector}`);
+  }
+
+  return element;
+}
+
+function getDynamicStyleRule(root: ParentNode, index: number): HTMLElement {
+  const element = root.querySelector(`.dynamic-style-rule[data-rule-index="${index}"]`);
+
+  if (!(element instanceof HTMLElement)) {
+    throw new Error(`dynamic style rule missing: ${index}`);
   }
 
   return element;
@@ -3359,25 +3486,9 @@ function getPolylinePoints(app: HTMLElement, itemId: string): unknown[] {
 function getPayloadItem(
   app: HTMLElement,
   itemId: string
-): {
-  id: string;
-  type?: string;
-  layer: number;
-  style?: Record<string, unknown>;
-  slotBindings?: Record<string, string>;
-  children?: Array<{ id: string; type?: string }>;
-  transform?: Array<Record<string, unknown>>;
-} | undefined {
+): TestItem | undefined {
   const parsed = JSON.parse(getTextarea(app, ".json-input").value) as {
-    items: Array<{
-      id: string;
-      type?: string;
-      layer: number;
-      style?: Record<string, unknown>;
-      slotBindings?: Record<string, string>;
-      children?: Array<{ id: string; type?: string }>;
-      transform?: Array<Record<string, unknown>>;
-    }>;
+    items: TestItem[];
   };
   return parsed.items.find((item) => item.id === itemId);
 }
@@ -3401,10 +3512,17 @@ type TestSymbol = {
 type TestItem = {
   id: string;
   type?: string;
+  layer?: number;
   partId?: string;
   cx?: number;
   cy?: number;
   style?: Record<string, unknown>;
+  slotBindings?: Record<string, string>;
+  styleWhen?: Array<{
+    when: Record<string, unknown>;
+    style: Record<string, unknown>;
+  }>;
+  transform?: Array<Record<string, unknown>>;
   children?: TestItem[];
 };
 

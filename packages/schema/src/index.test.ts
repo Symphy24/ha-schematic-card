@@ -158,6 +158,46 @@ describe("schema validation", () => {
     });
   });
 
+  it("accepts v1 dynamic condition operators", () => {
+    const payload: SchematicPayload = {
+      schemaVersion: HSC_SCHEMA_VERSION,
+      viewport: {
+        width: 800,
+        height: 600
+      },
+      items: [
+        {
+          id: "temperature-alert",
+          type: "circle",
+          layer: 700,
+          cx: 10,
+          cy: 10,
+          r: 5,
+          visibleWhen: {
+            entityId: "sensor.temperature",
+            greaterThan: 30
+          },
+          styleWhen: [
+            {
+              when: {
+                entityId: "binary_sensor.alarm",
+                notEquals: "off"
+              },
+              style: {
+                opacity: 0.4
+              }
+            }
+          ]
+        }
+      ]
+    };
+
+    expect(validateSchematicPayload(payload)).toEqual({
+      valid: true,
+      errors: []
+    });
+  });
+
   it("rejects invalid visibility conditions", () => {
     const result = validateSchematicPayload({
       schemaVersion: HSC_SCHEMA_VERSION,
