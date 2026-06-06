@@ -1,11 +1,12 @@
 import { decodePayload, encodePayload } from "@ha-schematic-card/codec";
-import { renderSchematicSvg } from "@ha-schematic-card/renderer";
+import { renderSchematicSvg, type EntityStateValue } from "@ha-schematic-card/renderer";
 import {
   isSchematicPayload,
   type SchematicPayload,
   type SchematicItem,
   type SchematicPoint,
   type SchematicStyle,
+  type SchematicSymbolChildItem,
   type SchematicSymbolDefinition,
   validateSchematicPayload
 } from "@ha-schematic-card/schema";
@@ -33,7 +34,7 @@ const HA_PREVIEW_BACKGROUND_VARIABLES = [
 
 let editorGridPatternCounter = 0;
 
-const demoEntityStates = {
+const demoEntityStates: Record<string, EntityStateValue> = {
   "input_boolean.schematic_demo_alarm": "on",
   "input_boolean.schematic_demo_flow": "on",
   "input_number.schematic_demo_temperature": {
@@ -76,6 +77,8 @@ type EditorElements = {
   themePreviewToggle: HTMLInputElement;
   appThemePanel: HTMLElement;
   appThemeStatus: HTMLElement;
+  simulationPanel: HTMLElement;
+  simulationList: HTMLElement;
   transferPanel: HTMLElement;
   transferPanelTitle: HTMLElement;
   importSection: HTMLElement;
@@ -162,6 +165,7 @@ type EditorElements = {
   selectedSymbolInternalItemIds: string[];
   selectedSymbolPartId?: string;
   selectedSymbolSlotId?: string;
+  instanceSimulationStates: Record<string, string>;
   symbolSimulationStates: Record<string, string>;
   symbolPreviewViewBox?: PreviewViewBox;
   symbolPanMode: boolean;
@@ -254,7 +258,7 @@ type AddItemType = "text" | "rect" | "circle" | "polyline";
 type EditorTabName = "items" | "inspector" | "json";
 type WorkspaceMode = "card" | "symbol";
 type SymbolFloatingPanelId = "symbol-items" | "symbol-parts" | "symbol-slots" | "symbol-inspector" | "symbol-import";
-type FloatingPanelId = "items" | "inspector" | "json" | "transfer" | "app-theme" | SymbolFloatingPanelId;
+type FloatingPanelId = "items" | "inspector" | "json" | "simulation" | "transfer" | "app-theme" | SymbolFloatingPanelId;
 type FloatingPanelDockZone = "left" | "right" | "bottom";
 type FloatingPanelSnapZone = "fullscreen" | "left" | "right" | "bottom";
 type FloatingPanelResizeMode = "floating" | "dock-zone";
@@ -389,6 +393,31 @@ type SymbolInternalItemEntry = {
 
 type SymbolSlotValueType = NonNullable<NonNullable<SchematicSymbolDefinition["entitySlots"]>[number]["valueType"]>;
 
+type SymbolSlotBindingEntry = {
+  kind: "slot";
+  entityId: string;
+  itemId: string;
+  slot: NonNullable<SchematicSymbolDefinition["entitySlots"]>[number];
+  symbol: SchematicSymbolDefinition;
+  valueType: SymbolSlotValueType;
+};
+
+type DirectEntityReferenceEntry = {
+  kind: "direct";
+  entityId: string;
+  itemId: string;
+  sourceLabel: string;
+  valueType: SymbolSlotValueType;
+};
+
+type SimulationUsageEntry = SymbolSlotBindingEntry | DirectEntityReferenceEntry;
+
+type SimulationEntityEntry = {
+  entityId: string;
+  usages: SimulationUsageEntry[];
+  valueType: SymbolSlotValueType;
+};
+
 type StyleSliderConfig = {
   min: number;
   max: number;
@@ -520,6 +549,7 @@ const FLOATING_PANEL_IDS: FloatingPanelId[] = [
   "items",
   "inspector",
   "json",
+  "simulation",
   "transfer",
   "app-theme",
   "symbol-items",
@@ -641,6 +671,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   editorMain.className = "editor-main";
   const transferPanel = createTransferPanel(documentRef);
   const appThemePanel = createAppThemePanel(documentRef);
+  const simulationPanel = createSimulationPanel(documentRef);
   const symbolWorkspace = createSymbolEditorWorkspace(documentRef);
   symbolWorkspace.hidden = true;
 
@@ -676,6 +707,8 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     themePreviewToggle: getRequiredElement(transferPanel, ".theme-preview-toggle", HTMLInputElement),
     appThemePanel,
     appThemeStatus: getRequiredElement(appThemePanel, ".app-theme-status", HTMLElement),
+    simulationPanel,
+    simulationList: getRequiredElement(simulationPanel, ".simulation-list", HTMLElement),
     transferPanel: getRequiredElement(transferPanel, ".transfer-panel", HTMLElement),
     transferPanelTitle: getRequiredElement(transferPanel, ".transfer-panel-title", HTMLElement),
     importSection: getRequiredElement(transferPanel, ".import-section", HTMLElement),
@@ -762,6 +795,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     gridSize: DEFAULT_EDITOR_GRID_SIZE,
     panMode: false,
     activeTab: "items",
+    instanceSimulationStates: {},
     symbolSimulationStates: {},
     symbolPanMode: false,
     symbolWorkspaceStarted: false,
@@ -854,6 +888,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     itemListSection: elements.itemListSection,
     inspectorSection: elements.inspectorSection,
     jsonSection: elements.jsonSection,
+    simulationPanel: elements.simulationPanel,
     transferPanel: elements.transferPanel,
     appThemePanel: elements.appThemePanel,
     symbolItemsSection: elements.symbolItemsSection,
@@ -897,6 +932,7 @@ function updateFromJson(
 
   if (!result.ok) {
     renderDisabledItemTools(elements, result.message);
+    renderSimulationPanelError(elements, result.message, documentRef);
     elements.status.textContent = result.message;
     elements.status.dataset.state = "error";
     return;
@@ -904,7 +940,7 @@ function updateFromJson(
 
   const svg = renderSchematicSvg(result.payload, {
     document: documentRef,
-    entityStates: demoEntityStates
+    entityStates: getEditorPreviewEntityStates(elements, result.payload)
   });
   applyPreviewViewBox(elements, svg, result.payload);
   renderPreviewGrid(svg, result.payload, elements.gridEnabled, elements.gridSize, documentRef);
@@ -925,6 +961,407 @@ function updateFromJson(
   } else {
     highlightSelectedPreviewItem(elements);
   }
+  renderSimulationPanel(elements, result.payload, documentRef);
+}
+
+function getEditorPreviewEntityStates(
+  elements: EditorElements,
+  payload: SchematicPayload
+): Record<string, EntityStateValue> {
+  const entityStates: Record<string, EntityStateValue> = { ...demoEntityStates };
+  const simulationEntries = getSimulationEntityEntries(payload);
+  const activeEntityIds = new Set(simulationEntries.map((entry) => entry.entityId));
+
+  for (const entry of simulationEntries) {
+    if (!Object.hasOwn(entityStates, entry.entityId)) {
+      entityStates[entry.entityId] = getDefaultSimulationEntityValue(entry);
+    }
+  }
+
+  for (const [entityId, value] of Object.entries(elements.instanceSimulationStates)) {
+    if (activeEntityIds.has(entityId)) {
+      entityStates[entityId] = createSimulatedEntityState(entityId, value);
+    }
+  }
+
+  return entityStates;
+}
+
+function renderSimulationPanel(
+  elements: EditorElements,
+  payload: SchematicPayload,
+  documentRef: Document
+): void {
+  elements.simulationList.replaceChildren();
+  const entries = getSimulationEntityEntries(payload);
+
+  if (entries.length === 0) {
+    elements.simulationList.append(createSimulationEmptyState(documentRef, "No entity references"));
+    return;
+  }
+
+  for (const entry of entries) {
+    elements.simulationList.append(createSimulationEntityCard(elements, entry, documentRef));
+  }
+}
+
+function renderSimulationPanelError(elements: EditorElements, message: string, documentRef: Document): void {
+  elements.simulationList.replaceChildren(createSimulationEmptyState(documentRef, message));
+}
+
+function createSimulationEmptyState(documentRef: Document, message: string): HTMLElement {
+  const empty = documentRef.createElement("div");
+  empty.className = "simulation-empty-state field-helper";
+  empty.textContent = message;
+  return empty;
+}
+
+function getSimulationEntityEntries(payload: SchematicPayload): SimulationEntityEntry[] {
+  const byEntity = new Map<string, SimulationEntityEntry>();
+
+  for (const entry of [...getDirectEntityReferenceEntries(payload), ...getActiveSymbolSlotBindingEntries(payload)]) {
+    const existing = byEntity.get(entry.entityId);
+
+    if (existing) {
+      existing.usages.push(entry);
+      existing.valueType = getPreferredSimulationValueType(existing.valueType, entry.valueType);
+      continue;
+    }
+
+    byEntity.set(entry.entityId, {
+      entityId: entry.entityId,
+      usages: [entry],
+      valueType: entry.valueType
+    });
+  }
+
+  return Array.from(byEntity.values()).sort((left, right) => left.entityId.localeCompare(right.entityId));
+}
+
+function getActiveSymbolSlotBindingEntries(payload: SchematicPayload): SymbolSlotBindingEntry[] {
+  const symbols = new Map((payload.symbols ?? []).map((symbol) => [symbol.id, symbol]));
+  const entries: SymbolSlotBindingEntry[] = [];
+
+  for (const item of payload.items) {
+    if (item.type !== "symbol" || !item.slotBindings) {
+      continue;
+    }
+
+    const symbol = symbols.get(item.symbolId);
+
+    if (!symbol) {
+      continue;
+    }
+
+    for (const slot of symbol.entitySlots ?? []) {
+      const entityId = item.slotBindings[slot.id]?.trim();
+
+      if (!entityId) {
+        continue;
+      }
+
+      entries.push({
+        kind: "slot",
+        entityId,
+        itemId: item.id,
+        slot,
+        symbol,
+        valueType: getSymbolSlotValueType(symbol, slot, getSymbolSlotEffects(symbol, slot.id))
+      });
+    }
+  }
+
+  return entries;
+}
+
+function getDirectEntityReferenceEntries(payload: SchematicPayload): DirectEntityReferenceEntry[] {
+  const entries: DirectEntityReferenceEntry[] = [];
+
+  for (const item of payload.items) {
+    collectDirectEntityReferencesFromItem(entries, item, item.id);
+  }
+
+  for (const symbol of payload.symbols ?? []) {
+    for (const item of symbol.items) {
+      collectDirectEntityReferencesFromItem(entries, item, `${symbol.id} / ${item.id}`);
+    }
+
+    for (const partStyle of symbol.partStyles ?? []) {
+      addDirectEntityReference(entries, partStyle.when.entityId, `${symbol.id} / ${partStyle.partId}`, "part style");
+    }
+
+    for (const animation of symbol.partAnimations ?? []) {
+      addDirectEntityReference(entries, animation.when.entityId, `${symbol.id} / ${animation.partId}`, "part animation");
+    }
+  }
+
+  return entries;
+}
+
+function collectDirectEntityReferencesFromItem(
+  entries: DirectEntityReferenceEntry[],
+  item: SchematicItem | SchematicSymbolChildItem,
+  itemLabel: string
+): void {
+  if (item.type === "entityValue") {
+    addDirectEntityReference(entries, item.entityId, itemLabel, "entity value");
+  }
+
+  addDirectEntityReference(entries, item.visibleWhen?.entityId, itemLabel, "visible condition");
+
+  for (const style of item.styleWhen ?? []) {
+    addDirectEntityReference(entries, style.when.entityId, itemLabel, "style condition");
+  }
+
+  addDirectEntityReference(entries, item.flow?.enabledWhen?.entityId, itemLabel, "flow condition");
+
+  if (item.type === "group") {
+    for (const child of item.children) {
+      collectDirectEntityReferencesFromItem(entries, child, `${itemLabel} / ${child.id}`);
+    }
+  }
+}
+
+function addDirectEntityReference(
+  entries: DirectEntityReferenceEntry[],
+  entityId: string | undefined,
+  itemId: string,
+  sourceLabel: string
+): void {
+  const normalizedEntityId = entityId?.trim();
+
+  if (!normalizedEntityId || normalizedEntityId.startsWith("slot:")) {
+    return;
+  }
+
+  entries.push({
+    kind: "direct",
+    entityId: normalizedEntityId,
+    itemId,
+    sourceLabel,
+    valueType: getDirectEntityValueType(normalizedEntityId, sourceLabel)
+  });
+}
+
+function getDirectEntityValueType(entityId: string, sourceLabel: string): SymbolSlotValueType {
+  const domain = entityId.split(".", 1)[0];
+
+  if (/boolean|binary|switch|light|alarm|running|enabled|active|state/.test(domain)
+    || /(^|[._-])(alarm|running|enabled|active|state|open|closed)($|[._-])/i.test(entityId)
+    || sourceLabel.includes("condition")) {
+    return "binary";
+  }
+
+  if (/(^|[._-])(temp|temperature)($|[._-])/i.test(entityId)) {
+    return "temperature";
+  }
+
+  if (/number|sensor/.test(domain)
+    || /(^|[._-])(percent|percentage|level|speed|position|value|humidity|battery)($|[._-])/i.test(entityId)) {
+    return "percent";
+  }
+
+  return "text";
+}
+
+function getPreferredSimulationValueType(
+  current: SymbolSlotValueType,
+  candidate: SymbolSlotValueType
+): SymbolSlotValueType {
+  const priority: Record<SymbolSlotValueType, number> = {
+    text: 0,
+    percent: 1,
+    temperature: 2,
+    binary: 3
+  };
+  return priority[candidate] > priority[current] ? candidate : current;
+}
+
+function createSimulationEntityCard(
+  elements: EditorElements,
+  entry: SimulationEntityEntry,
+  documentRef: Document
+): HTMLElement {
+  const card = documentRef.createElement("section");
+  card.className = "simulation-entity-card";
+  card.dataset.entityId = entry.entityId;
+
+  const header = documentRef.createElement("div");
+  header.className = "simulation-entity-header";
+
+  const title = documentRef.createElement("div");
+  title.className = "simulation-entity-title";
+  title.textContent = entry.entityId;
+
+  const type = documentRef.createElement("span");
+  type.className = "simulation-entity-type";
+  type.textContent = entry.valueType;
+
+  header.append(title, type);
+
+  const usages = documentRef.createElement("ul");
+  usages.className = "simulation-usage-list";
+
+  for (const usage of entry.usages) {
+    const item = documentRef.createElement("li");
+    item.textContent = formatSimulationUsageLabel(usage);
+    usages.append(item);
+  }
+
+  const controls = createInstanceSimulationControls(elements, entry, documentRef);
+  card.append(header, usages, controls);
+  return card;
+}
+
+function formatSimulationUsageLabel(usage: SimulationUsageEntry): string {
+  if (usage.kind === "slot") {
+    const slotLabel = usage.slot.label ? `${usage.slot.id} - ${usage.slot.label}` : usage.slot.id;
+    return `Slot binding: ${usage.itemId} / ${slotLabel}`;
+  }
+
+  return `Direct entity: ${usage.itemId} / ${usage.sourceLabel}`;
+}
+
+function createInstanceSimulationControls(
+  elements: EditorElements,
+  entry: SimulationEntityEntry,
+  documentRef: Document
+): HTMLElement {
+  const controls = documentRef.createElement("div");
+  controls.className = "simulation-controls";
+  const currentValue = getCurrentInstanceSimulationValue(elements, entry);
+
+  if (entry.valueType === "binary") {
+    const offButton = documentRef.createElement("button");
+    offButton.className = "secondary-button simulation-binary-off-button";
+    offButton.type = "button";
+    offButton.textContent = "OFF";
+    offButton.setAttribute("aria-pressed", String(currentValue !== "on"));
+    offButton.addEventListener("click", () => updateInstanceSimulationState(elements, entry.entityId, "off", documentRef));
+
+    const onButton = documentRef.createElement("button");
+    onButton.className = "secondary-button simulation-binary-on-button";
+    onButton.type = "button";
+    onButton.textContent = "ON";
+    onButton.setAttribute("aria-pressed", String(currentValue === "on"));
+    onButton.addEventListener("click", () => updateInstanceSimulationState(elements, entry.entityId, "on", documentRef));
+
+    controls.append(offButton, onButton);
+    return controls;
+  }
+
+  if (entry.valueType === "percent" || entry.valueType === "temperature") {
+    const sliderRange = entry.valueType === "temperature"
+      ? { min: "-40", max: "120", step: "0.1" }
+      : { min: "0", max: "100", step: "1" };
+    const slider = documentRef.createElement("input");
+    slider.className = `style-slider-input simulation-numeric-slider ${entry.valueType === "percent" ? "simulation-percent-slider" : "simulation-temperature-slider"}`;
+    slider.type = "range";
+    slider.min = sliderRange.min;
+    slider.max = sliderRange.max;
+    slider.step = sliderRange.step;
+    slider.value = Number.isFinite(Number(currentValue)) ? currentValue : "0";
+
+    const input = documentRef.createElement("input");
+    input.className = `inspector-input simulation-numeric-input ${entry.valueType === "percent" ? "simulation-percent-input" : "simulation-temperature-input"}`;
+    input.type = "number";
+    input.min = sliderRange.min;
+    input.max = sliderRange.max;
+    input.step = sliderRange.step;
+    input.value = slider.value;
+
+    slider.addEventListener("input", () => {
+      input.value = slider.value;
+    });
+    slider.addEventListener("change", () => {
+      updateInstanceSimulationState(elements, entry.entityId, slider.value, documentRef);
+    });
+    input.addEventListener("change", () => {
+      const value = clampNumber(Number(input.value), Number(sliderRange.min), Number(sliderRange.max));
+      input.value = String(value);
+      slider.value = String(value);
+      updateInstanceSimulationState(elements, entry.entityId, String(value), documentRef);
+    });
+
+    controls.append(slider, input);
+    return controls;
+  }
+
+  const input = documentRef.createElement("input");
+  input.className = "inspector-input simulation-value-input";
+  input.type = "text";
+  input.value = currentValue;
+  input.placeholder = "state or value";
+  input.addEventListener("change", () => updateInstanceSimulationState(elements, entry.entityId, input.value, documentRef));
+  controls.append(input);
+  return controls;
+}
+
+function getCurrentInstanceSimulationValue(elements: EditorElements, entry: SimulationEntityEntry): string {
+  const simulatedValue = elements.instanceSimulationStates[entry.entityId];
+  if (simulatedValue !== undefined) {
+    return simulatedValue;
+  }
+
+  const demoValue = demoEntityStates[entry.entityId];
+  if (demoValue !== undefined) {
+    return stringifyEntityStateValue(demoValue);
+  }
+
+  return getDefaultSimulationEntityValue(entry);
+}
+
+function getDefaultSimulationEntityValue(entry: SimulationEntityEntry): string {
+  const slotUsage = entry.usages.find((usage): usage is SymbolSlotBindingEntry => usage.kind === "slot");
+
+  if (slotUsage) {
+    return getDefaultSymbolSlotSimulationValue(slotUsage.symbol, slotUsage.slot.id);
+  }
+
+  if (entry.valueType === "binary") {
+    return "off";
+  }
+
+  if (entry.valueType === "temperature") {
+    return "20";
+  }
+
+  if (entry.valueType === "text") {
+    return "";
+  }
+
+  return "0";
+}
+
+function createSimulatedEntityState(entityId: string, value: string): EntityStateValue {
+  const demoValue = demoEntityStates[entityId];
+
+  if (typeof demoValue === "object" && demoValue !== null && "state" in demoValue) {
+    return {
+      ...demoValue,
+      state: value
+    };
+  }
+
+  return value;
+}
+
+function stringifyEntityStateValue(value: EntityStateValue): string {
+  if (typeof value === "object" && value !== null && "state" in value) {
+    return value.state === undefined || value.state === null ? "" : String(value.state);
+  }
+
+  return value === undefined || value === null ? "" : String(value);
+}
+
+function updateInstanceSimulationState(
+  elements: EditorElements,
+  entityId: string,
+  value: string,
+  documentRef: Document
+): void {
+  elements.instanceSimulationStates[entityId] = value;
+  updateFromJson(elements, documentRef, { renderTools: false });
 }
 
 function getCurrentSnapshot(elements: EditorElements): EditorSnapshot {
@@ -8557,7 +8994,7 @@ function createEditorRail(documentRef: Document): HTMLElement {
       createNavSidebarTransferButton(documentRef, "Import Payload", "⇣", "Paste encoded hsc1 payload", "import", "list-item card-tool"),
       createNavSidebarTransferButton(documentRef, "Import SVG", "SVG", "Convert safe SVG primitives", "svg", "list-item card-tool"),
       createNavSidebarTransferButton(documentRef, "Export / Payload", "⇄", "Encoded card payload", "export", "list-item card-tool"),
-      createNavSidebarPanelButton(documentRef, "Simulation", "∿", "Open item state workspace", "inspector", undefined, "list-item card-tool"),
+      createNavSidebarPanelButton(documentRef, "Simulation", "∿", "Live symbol slot values", "simulation", undefined, "list-item card-tool"),
       createNavSidebarTabButton(documentRef, "Layers / Object Tree", "▤", "Layer order and object list", "items", "list-item card-tool"),
       createNavSidebarPanelButton(documentRef, "Theme", "◐", "Editor UI theme presets", "app-theme", undefined, "list-item card-tool"),
       createNavSidebarTransferButton(documentRef, "HA Preview", "HA", "Imported Home Assistant preview theme", "theme", "list-item card-tool")
@@ -8812,6 +9249,7 @@ function createFloatingPanelLayer(
     itemListSection: HTMLElement;
     inspectorSection: HTMLElement;
     jsonSection: HTMLElement;
+    simulationPanel: HTMLElement;
     transferPanel: HTMLElement;
     appThemePanel: HTMLElement;
     symbolItemsSection: HTMLElement;
@@ -8842,6 +9280,7 @@ function createFloatingPanelLayer(
     createFloatingPanel(documentRef, "items", "Item List / Object Tree", "☷", content.itemListSection, { x: 24, y: 132 }, "closed"),
     createFloatingPanel(documentRef, "inspector", "Inspector", "⌁", content.inspectorSection, { x: 720, y: 18 }, "closed"),
     createFloatingPanel(documentRef, "json", "JSON Editor", "{}", content.jsonSection, { x: 720, y: 360 }, "closed"),
+    createFloatingPanel(documentRef, "simulation", "Simulation", "∿", content.simulationPanel, { x: 430, y: 118 }, "closed"),
     createFloatingPanel(documentRef, "transfer", "Export / Payload", "⇄", content.transferPanel, { x: 180, y: 96 }, "closed"),
     createFloatingPanel(documentRef, "app-theme", "Editor Theme", "◐", content.appThemePanel, { x: 220, y: 86 }, "closed"),
     createFloatingPanel(documentRef, "symbol-items", "Symbol Items", "☷", content.symbolItemsSection, { x: 28, y: 118 }, "closed"),
@@ -9039,6 +9478,7 @@ function getFloatingPanelId(element: HTMLElement): FloatingPanelId {
     panelId === "items"
     || panelId === "inspector"
     || panelId === "json"
+    || panelId === "simulation"
     || panelId === "transfer"
     || panelId === "app-theme"
     || panelId === "symbol-items"
@@ -10518,6 +10958,21 @@ function createContextMenuButton(documentRef: Document, className: string, label
   button.type = "button";
   button.textContent = label;
   return button;
+}
+
+function createSimulationPanel(documentRef: Document): HTMLElement {
+  const panel = documentRef.createElement("section");
+  panel.className = "simulation-panel";
+
+  const intro = documentRef.createElement("p");
+  intro.className = "field-helper simulation-helper";
+  intro.textContent = "Live preview values for bound symbol slots. Edit entity bindings from the selected symbol instance Inspector.";
+
+  const list = documentRef.createElement("div");
+  list.className = "simulation-list";
+
+  panel.append(intro, list);
+  return panel;
 }
 
 function createTransferPanel(documentRef: Document): HTMLElement {
