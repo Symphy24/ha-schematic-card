@@ -160,6 +160,8 @@ type EditorElements = {
   activeSymbolId?: string;
   selectedSymbolInternalItemId?: string;
   selectedSymbolInternalItemIds: string[];
+  selectedSymbolPartId?: string;
+  selectedSymbolSlotId?: string;
   symbolSimulationStates: Record<string, string>;
   symbolPreviewViewBox?: PreviewViewBox;
   symbolPanMode: boolean;
@@ -4930,6 +4932,8 @@ function renderSymbolPartsAndSlots(
   elements.symbolPartsList.replaceChildren();
   elements.symbolSlotsList.replaceChildren();
   const selectedItem = findSymbolInternalItem(symbol, elements.selectedSymbolInternalItemId);
+  const selectedPart = getSelectedSymbolPart(elements, symbol);
+  const selectedSlot = getSelectedSymbolSlot(elements, symbol);
 
   if (!symbol.parts || symbol.parts.length === 0) {
     elements.symbolPartsList.append(createSymbolWorkspaceEmpty(documentRef, "No parts"));
@@ -4940,6 +4944,10 @@ function renderSymbolPartsAndSlots(
   }
   elements.symbolPartsList.append(createSymbolPartAddControls(elements, documentRef));
 
+  if (selectedPart) {
+    elements.symbolPartsList.append(createSymbolPartDetailCard(elements, symbol, selectedPart, selectedItem, documentRef));
+  }
+
   if (!symbol.entitySlots || symbol.entitySlots.length === 0) {
     elements.symbolSlotsList.append(createSymbolWorkspaceEmpty(documentRef, "No entity slots"));
   } else {
@@ -4948,6 +4956,40 @@ function renderSymbolPartsAndSlots(
     }
   }
   elements.symbolSlotsList.append(createSymbolSlotAddControls(elements, documentRef));
+
+  if (selectedSlot) {
+    elements.symbolSlotsList.append(createSymbolSlotDetailCard(elements, symbol, selectedSlot, documentRef));
+  }
+}
+
+function getSelectedSymbolPart(
+  elements: EditorElements,
+  symbol: SchematicSymbolDefinition
+): NonNullable<SchematicSymbolDefinition["parts"]>[number] | undefined {
+  const parts = symbol.parts ?? [];
+  const selectedPart = parts.find((part) => part.id === elements.selectedSymbolPartId);
+
+  if (selectedPart) {
+    return selectedPart;
+  }
+
+  elements.selectedSymbolPartId = parts[0]?.id;
+  return parts[0];
+}
+
+function getSelectedSymbolSlot(
+  elements: EditorElements,
+  symbol: SchematicSymbolDefinition
+): NonNullable<SchematicSymbolDefinition["entitySlots"]>[number] | undefined {
+  const slots = symbol.entitySlots ?? [];
+  const selectedSlot = slots.find((slot) => slot.id === elements.selectedSymbolSlotId);
+
+  if (selectedSlot) {
+    return selectedSlot;
+  }
+
+  elements.selectedSymbolSlotId = slots[0]?.id;
+  return slots[0];
 }
 
 function createSymbolPartRow(
@@ -4960,6 +5002,23 @@ function createSymbolPartRow(
   const row = documentRef.createElement("div");
   row.className = "symbol-manager-row symbol-part-row";
   row.dataset.partId = part.id;
+  row.dataset.selected = String(elements.selectedSymbolPartId === part.id);
+  row.tabIndex = 0;
+  row.addEventListener("click", (event) => {
+    if (isInteractiveSymbolManagerTarget(event.target)) {
+      return;
+    }
+
+    selectSymbolPart(elements, part.id, documentRef);
+  });
+  row.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    selectSymbolPart(elements, part.id, documentRef);
+  });
 
   const title = documentRef.createElement("div");
   title.className = "symbol-manager-title";
@@ -5004,6 +5063,62 @@ function createSymbolPartRow(
   return row;
 }
 
+function createSymbolPartDetailCard(
+  elements: EditorElements,
+  symbol: SchematicSymbolDefinition,
+  part: NonNullable<SchematicSymbolDefinition["parts"]>[number],
+  selectedItem: SchematicItem | undefined,
+  documentRef: Document
+): HTMLElement {
+  const card = documentRef.createElement("section");
+  card.className = "symbol-manager-detail-card symbol-part-detail-card";
+  card.dataset.partId = part.id;
+
+  const heading = documentRef.createElement("div");
+  heading.className = "symbol-manager-detail-heading";
+  heading.textContent = "Selected part";
+
+  const idInput = createSymbolManagerTextField(
+    documentRef,
+    "Part id",
+    part.id,
+    "symbol-part-detail-id-input",
+    (value) => updateSymbolPart(elements, part.id, "id", value, documentRef)
+  );
+  const labelInput = createSymbolManagerTextField(
+    documentRef,
+    "Label",
+    part.label ?? "",
+    "symbol-part-detail-label-input",
+    (value) => updateSymbolPart(elements, part.id, "label", value, documentRef),
+    "Human-friendly name"
+  );
+  const itemIds = getSymbolPartItemIds(symbol, part.id);
+  const assignedItems = documentRef.createElement("div");
+  assignedItems.className = "field-helper symbol-manager-summary";
+  assignedItems.textContent = itemIds.length > 0 ? `Assigned items: ${itemIds.join(", ")}` : "No assigned items";
+
+  const actions = documentRef.createElement("div");
+  actions.className = "symbol-manager-actions";
+
+  const assignButton = documentRef.createElement("button");
+  assignButton.className = "secondary-button symbol-detail-assign-selected-part-button";
+  assignButton.type = "button";
+  assignButton.textContent = "Assign selected item";
+  assignButton.disabled = !selectedItem;
+  assignButton.addEventListener("click", () => updateSelectedSymbolInternalItemPart(elements, part.id, documentRef));
+
+  const deleteButton = documentRef.createElement("button");
+  deleteButton.className = "secondary-button symbol-detail-delete-part-button";
+  deleteButton.type = "button";
+  deleteButton.textContent = "Delete part";
+  deleteButton.addEventListener("click", () => deleteSymbolPart(elements, part.id, documentRef));
+
+  actions.append(assignButton, deleteButton);
+  card.append(heading, idInput, labelInput, assignedItems, actions);
+  return card;
+}
+
 function createSymbolPartAddControls(elements: EditorElements, documentRef: Document): HTMLElement {
   const row = documentRef.createElement("div");
   row.className = "symbol-manager-add-row";
@@ -5032,6 +5147,23 @@ function createSymbolSlotRow(
   const row = documentRef.createElement("div");
   row.className = "symbol-manager-row symbol-slot-row";
   row.dataset.slotId = slot.id;
+  row.dataset.selected = String(elements.selectedSymbolSlotId === slot.id);
+  row.tabIndex = 0;
+  row.addEventListener("click", (event) => {
+    if (isInteractiveSymbolManagerTarget(event.target)) {
+      return;
+    }
+
+    selectSymbolSlot(elements, slot.id, documentRef);
+  });
+  row.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    selectSymbolSlot(elements, slot.id, documentRef);
+  });
 
   const title = documentRef.createElement("div");
   title.className = "symbol-manager-title";
@@ -5074,17 +5206,7 @@ function createSymbolSlotRow(
   const typeSelect = documentRef.createElement("select");
   typeSelect.className = "inspector-input symbol-slot-type-select";
   typeSelect.setAttribute("aria-label", `Slot type ${slot.id}`);
-  for (const option of [
-    ["binary", "Binary ON/OFF"],
-    ["percent", "Percent 0-100"],
-    ["temperature", "Temperature/value"],
-    ["text", "Text"]
-  ] as Array<[SymbolSlotValueType, string]>) {
-    const typeOption = documentRef.createElement("option");
-    typeOption.value = option[0];
-    typeOption.textContent = option[1];
-    typeSelect.append(typeOption);
-  }
+  appendSymbolSlotTypeOptions(typeSelect, documentRef);
   typeSelect.value = getSymbolSlotValueType(symbol, slot, getSymbolSlotEffects(symbol, slot.id));
   typeSelect.addEventListener("change", () => {
     updateSymbolSlot(elements, slot.id, "valueType", typeSelect.value, documentRef);
@@ -5113,6 +5235,179 @@ function createSymbolSlotRow(
     deleteButton
   );
   return row;
+}
+
+function createSymbolSlotDetailCard(
+  elements: EditorElements,
+  symbol: SchematicSymbolDefinition,
+  slot: NonNullable<SchematicSymbolDefinition["entitySlots"]>[number],
+  documentRef: Document
+): HTMLElement {
+  const card = documentRef.createElement("section");
+  card.className = "symbol-manager-detail-card symbol-slot-detail-card";
+  card.dataset.slotId = slot.id;
+
+  const heading = documentRef.createElement("div");
+  heading.className = "symbol-manager-detail-heading";
+  heading.textContent = "Selected entity slot";
+
+  const idInput = createSymbolManagerTextField(
+    documentRef,
+    "Slot id",
+    slot.id,
+    "symbol-slot-detail-id-input",
+    (value) => updateSymbolSlot(elements, slot.id, "id", value, documentRef)
+  );
+  const labelInput = createSymbolManagerTextField(
+    documentRef,
+    "Label",
+    slot.label ?? "",
+    "symbol-slot-detail-label-input",
+    (value) => updateSymbolSlot(elements, slot.id, "label", value, documentRef),
+    "Human-friendly name"
+  );
+  const descriptionInput = createSymbolManagerTextField(
+    documentRef,
+    "Description",
+    slot.description ?? "",
+    "symbol-slot-detail-description-input",
+    (value) => updateSymbolSlot(elements, slot.id, "description", value, documentRef),
+    "Shown as editor metadata for future binding UX"
+  );
+  const typeSelect = createSymbolSlotTypeSelect(elements, symbol, slot, documentRef);
+
+  const requiredLabel = documentRef.createElement("label");
+  requiredLabel.className = "symbol-manager-checkbox";
+  const requiredInput = documentRef.createElement("input");
+  requiredInput.className = "symbol-slot-detail-required-input";
+  requiredInput.type = "checkbox";
+  requiredInput.checked = slot.required === true;
+  requiredInput.addEventListener("change", () => updateSymbolSlot(elements, slot.id, "required", String(requiredInput.checked), documentRef));
+  requiredLabel.append(requiredInput, documentRef.createTextNode("Required binding"));
+
+  const effects = getSymbolSlotEffects(symbol, slot.id);
+  const effectSummary = documentRef.createElement("div");
+  effectSummary.className = "field-helper symbol-manager-summary";
+  effectSummary.textContent = effects.length > 0 ? `Effects: ${effects.join("; ")}` : "No dynamic effects configured yet";
+
+  const deleteButton = documentRef.createElement("button");
+  deleteButton.className = "secondary-button symbol-detail-delete-slot-button";
+  deleteButton.type = "button";
+  deleteButton.textContent = "Delete slot";
+  deleteButton.addEventListener("click", () => deleteSymbolSlot(elements, slot.id, documentRef));
+
+  card.append(heading, idInput, labelInput, descriptionInput, typeSelect, requiredLabel, effectSummary, createSymbolSlotSimulationControls(elements, symbol, slot, effects, documentRef), deleteButton);
+  return card;
+}
+
+function createSymbolManagerTextField(
+  documentRef: Document,
+  label: string,
+  value: string,
+  className: string,
+  onChange: (value: string) => void,
+  helperText?: string
+): HTMLElement {
+  const field = documentRef.createElement("label");
+  field.className = "inspector-field symbol-manager-detail-field";
+
+  const labelText = documentRef.createElement("span");
+  labelText.className = "field-label";
+  labelText.textContent = label;
+
+  const input = documentRef.createElement("input");
+  input.className = `inspector-input ${className}`;
+  input.type = "text";
+  input.value = value;
+  input.addEventListener("change", () => onChange(input.value));
+
+  field.append(labelText, input);
+
+  if (helperText) {
+    const helper = documentRef.createElement("span");
+    helper.className = "field-helper";
+    helper.textContent = helperText;
+    field.append(helper);
+  }
+
+  return field;
+}
+
+function createSymbolManagerNumberField(
+  documentRef: Document,
+  label: string,
+  value: number,
+  className: string,
+  onChange: (value: string) => void
+): HTMLElement {
+  const field = documentRef.createElement("label");
+  field.className = "inspector-field symbol-manager-detail-field";
+
+  const labelText = documentRef.createElement("span");
+  labelText.className = "field-label";
+  labelText.textContent = label;
+
+  const input = documentRef.createElement("input");
+  input.className = `inspector-input ${className}`;
+  input.type = "number";
+  input.min = "1";
+  input.step = "1";
+  input.value = String(value);
+  input.addEventListener("change", () => onChange(input.value));
+
+  field.append(labelText, input);
+  return field;
+}
+
+function createSymbolSlotTypeSelect(
+  elements: EditorElements,
+  symbol: SchematicSymbolDefinition,
+  slot: NonNullable<SchematicSymbolDefinition["entitySlots"]>[number],
+  documentRef: Document
+): HTMLElement {
+  const field = documentRef.createElement("label");
+  field.className = "inspector-field symbol-manager-detail-field";
+
+  const labelText = documentRef.createElement("span");
+  labelText.className = "field-label";
+  labelText.textContent = "Slot type";
+
+  const select = documentRef.createElement("select");
+  select.className = "inspector-input symbol-slot-detail-type-select";
+
+  appendSymbolSlotTypeOptions(select, documentRef);
+  select.value = getSymbolSlotValueType(symbol, slot, getSymbolSlotEffects(symbol, slot.id));
+  select.addEventListener("change", () => updateSymbolSlot(elements, slot.id, "valueType", select.value, documentRef));
+  field.append(labelText, select);
+  return field;
+}
+
+function appendSymbolSlotTypeOptions(select: HTMLSelectElement, documentRef: Document): void {
+  for (const option of [
+    ["binary", "Binary ON/OFF"],
+    ["percent", "Numeric percent"],
+    ["temperature", "Numeric temperature"],
+    ["text", "Text / select"]
+  ] as Array<[SymbolSlotValueType, string]>) {
+    const typeOption = documentRef.createElement("option");
+    typeOption.value = option[0];
+    typeOption.textContent = option[1];
+    select.append(typeOption);
+  }
+}
+
+function selectSymbolPart(elements: EditorElements, partId: string, documentRef: Document): void {
+  elements.selectedSymbolPartId = partId;
+  renderSymbolWorkspace(elements, documentRef);
+}
+
+function selectSymbolSlot(elements: EditorElements, slotId: string, documentRef: Document): void {
+  elements.selectedSymbolSlotId = slotId;
+  renderSymbolWorkspace(elements, documentRef);
+}
+
+function isInteractiveSymbolManagerTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest("button, input, select, textarea, a") !== null;
 }
 
 function createSymbolSlotSimulationControls(
@@ -5325,6 +5620,7 @@ function renderSymbolEditorInspector(
   documentRef: Document
 ): void {
   elements.symbolInspector.replaceChildren();
+  appendSymbolDefinitionMetadataInspector(elements, documentRef, symbol);
 
   if (elements.selectedSymbolInternalItemIds.length > 1) {
     elements.symbolInspector.append(createSymbolWorkspaceEmpty(
@@ -5357,6 +5653,50 @@ function renderSymbolEditorInspector(
   appendSymbolInternalStyleInspector(elements, documentRef, selectedItem);
 }
 
+function appendSymbolDefinitionMetadataInspector(elements: EditorElements, documentRef: Document, symbol: SchematicSymbolDefinition): void {
+  const section = documentRef.createElement("section");
+  section.className = "symbol-metadata-section";
+
+  const heading = documentRef.createElement("div");
+  heading.className = "symbol-manager-detail-heading";
+  heading.textContent = "Symbol metadata";
+
+  const idField = createSymbolManagerTextField(
+    documentRef,
+    "Symbol id / name",
+    symbol.id,
+    "symbol-id-input",
+    (value) => updateActiveSymbolMetadata(elements, "id", value, documentRef),
+    "Used by symbol instances as symbolId."
+  );
+
+  const viewportFields = documentRef.createElement("div");
+  viewportFields.className = "symbol-metadata-viewport-fields";
+  viewportFields.append(
+    createSymbolManagerNumberField(
+      documentRef,
+      "Viewport width",
+      symbol.viewport?.width ?? 100,
+      "symbol-viewport-width-input",
+      (value) => updateActiveSymbolMetadata(elements, "viewportWidth", value, documentRef)
+    ),
+    createSymbolManagerNumberField(
+      documentRef,
+      "Viewport height",
+      symbol.viewport?.height ?? 80,
+      "symbol-viewport-height-input",
+      (value) => updateActiveSymbolMetadata(elements, "viewportHeight", value, documentRef)
+    )
+  );
+
+  const summary = documentRef.createElement("div");
+  summary.className = "field-helper symbol-manager-summary";
+  summary.textContent = `${symbol.parts?.length ?? 0} part(s), ${symbol.entitySlots?.length ?? 0} entity slot(s), ${getSymbolInternalItemEntries(symbol.items).length} internal item(s)`;
+
+  section.append(heading, idField, viewportFields, summary);
+  elements.symbolInspector.append(section);
+}
+
 function addSymbolPart(elements: EditorElements, rawPartId: string, documentRef: Document): void {
   const edit = getActiveSymbolEdit(elements);
 
@@ -5385,8 +5725,82 @@ function addSymbolPart(elements: EditorElements, rawPartId: string, documentRef:
       label: partId
     }
   ];
+  elements.selectedSymbolPartId = partId;
   commitSymbolEditorPayload(elements, edit.payload, documentRef);
   showSymbolWorkspaceStatus(elements, `Added part ${partId}`);
+}
+
+function updateActiveSymbolMetadata(
+  elements: EditorElements,
+  fieldName: "id" | "viewportWidth" | "viewportHeight",
+  rawValue: string,
+  documentRef: Document
+): void {
+  const edit = getActiveSymbolEdit(elements);
+
+  if (!edit.ok) {
+    renderSymbolWorkspaceError(elements, edit.message);
+    return;
+  }
+
+  if (fieldName === "id") {
+    const nextId = rawValue.trim();
+
+    if (!isValidSymbolMetadataId(nextId)) {
+      showSymbolWorkspaceError(elements, "Symbol id must start with a letter and use letters, numbers, _ or -");
+      return;
+    }
+
+    if (nextId === edit.symbol.id) {
+      return;
+    }
+
+    if ((edit.payload.symbols ?? []).some((symbol) => symbol !== edit.symbol && symbol.id === nextId)) {
+      showSymbolWorkspaceError(elements, `Symbol "${nextId}" already exists`);
+      return;
+    }
+
+    const previousId = edit.symbol.id;
+    recordHistory(elements);
+    edit.symbol.id = nextId;
+    elements.activeSymbolId = nextId;
+
+    for (const item of edit.payload.items) {
+      if (item.type === "symbol" && item.symbolId === previousId) {
+        item.symbolId = nextId;
+      }
+    }
+
+    commitSymbolEditorPayload(elements, edit.payload, documentRef);
+    showSymbolWorkspaceStatus(elements, `Renamed symbol ${previousId} to ${nextId}`);
+    return;
+  }
+
+  const nextValue = Number(rawValue);
+
+  if (!Number.isFinite(nextValue) || nextValue <= 0) {
+    showSymbolWorkspaceError(elements, "Symbol viewport width and height must be positive numbers");
+    return;
+  }
+
+  const viewport = edit.symbol.viewport ?? {
+    width: 100,
+    height: 80
+  };
+  const key = fieldName === "viewportWidth" ? "width" : "height";
+
+  if (viewport[key] === nextValue) {
+    return;
+  }
+
+  recordHistory(elements);
+  edit.symbol.viewport = {
+    ...viewport,
+    [key]: nextValue
+  };
+  delete elements.symbolPreviewViewBox;
+  commitSymbolEditorPayload(elements, edit.payload, documentRef);
+  showSymbolWorkspaceStatus(elements, `Updated symbol viewport ${key}`);
 }
 
 function updateSymbolPart(
@@ -5430,6 +5844,7 @@ function updateSymbolPart(
     recordHistory(elements);
     renameSymbolPartReferences(edit.symbol, part.id, value);
     part.id = value;
+    elements.selectedSymbolPartId = value;
     commitSymbolEditorPayload(elements, edit.payload, documentRef);
     showSymbolWorkspaceStatus(elements, `Renamed part ${partId} to ${value}`);
     return;
@@ -5479,6 +5894,7 @@ function addSymbolSlot(elements: EditorElements, rawSlotId: string, documentRef:
       label: slotId
     }
   ];
+  elements.selectedSymbolSlotId = slotId;
   elements.symbolSimulationStates[slotId] = elements.symbolSimulationStates[slotId] ?? "off";
   commitSymbolEditorPayload(elements, edit.payload, documentRef);
   showSymbolWorkspaceStatus(elements, `Added slot ${slotId}`);
@@ -5505,6 +5921,9 @@ function deleteSymbolPart(elements: EditorElements, partId: string, documentRef:
 
   recordHistory(elements);
   edit.symbol.parts = parts.filter((part) => part.id !== partId);
+  if (elements.selectedSymbolPartId === partId) {
+    delete elements.selectedSymbolPartId;
+  }
   for (const entry of getSymbolInternalItemEntries(edit.symbol.items)) {
     if (entry.item.partId === partId) {
       delete entry.item.partId;
@@ -5538,6 +5957,9 @@ function deleteSymbolSlot(elements: EditorElements, slotId: string, documentRef:
   recordHistory(elements);
   const slotEntityId = `slot:${slotId}`;
   edit.symbol.entitySlots = slots.filter((slot) => slot.id !== slotId);
+  if (elements.selectedSymbolSlotId === slotId) {
+    delete elements.selectedSymbolSlotId;
+  }
   edit.symbol.partStyles = edit.symbol.partStyles?.filter((style) => style.when.entityId !== slotEntityId);
   edit.symbol.partAnimations = edit.symbol.partAnimations?.filter((animation) => animation.when.entityId !== slotEntityId);
 
@@ -5603,6 +6025,7 @@ function updateSymbolSlot(
     recordHistory(elements);
     renameSymbolSlotReferences(edit.payload, edit.symbol, slot.id, value);
     slot.id = value;
+    elements.selectedSymbolSlotId = value;
     elements.symbolSimulationStates[value] = elements.symbolSimulationStates[slotId] ?? "off";
     delete elements.symbolSimulationStates[slotId];
     commitSymbolEditorPayload(elements, edit.payload, documentRef);
@@ -6118,6 +6541,7 @@ function createSymbolPartForSelectedItem(
     }
   ];
   edit.item.partId = partId;
+  elements.selectedSymbolPartId = partId;
   commitSymbolEditorPayload(elements, edit.payload, documentRef);
   showSymbolWorkspaceStatus(elements, `Created part ${partId} and assigned ${edit.item.id}`);
 }

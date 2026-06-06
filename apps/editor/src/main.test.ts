@@ -673,6 +673,9 @@ describe("editor app", () => {
     getButton(app, ".open-symbol-editor-button").click();
     getButton(app, ".symbol-start-edit-button").click();
 
+    expect(getInput(app, ".symbol-id-input").value).toBe("demo-generic-unit");
+    expect(app.querySelector(".symbol-part-detail-card[data-part-id='body']")).not.toBeNull();
+
     const bodyLabel = getInput(app, '.symbol-part-row[data-part-id="body"] .symbol-part-label-input');
     bodyLabel.value = "Main body";
     bodyLabel.dispatchEvent(new Event("change"));
@@ -692,6 +695,7 @@ describe("editor app", () => {
     expect(app.querySelector('.symbol-slot-row[data-slot-id="temperature"]')?.textContent).toContain("No effect configured");
     expect(app.querySelector('.symbol-slot-row[data-slot-id="temperature"] .symbol-slot-simulation-input')).not.toBeNull();
     expect(app.querySelector<HTMLSelectElement>('.symbol-slot-row[data-slot-id="temperature"] .symbol-slot-type-select')?.value).toBe("temperature");
+    expect(app.querySelector(".symbol-slot-detail-card[data-slot-id='temperature']")).not.toBeNull();
 
     getInput(app, ".symbol-add-slot-input").value = "speed_percent";
     getButton(app, ".symbol-add-slot-button").click();
@@ -705,6 +709,74 @@ describe("editor app", () => {
 
     expect(getSymbol(app, "demo-generic-unit")?.entitySlots?.find((slot) => slot.id === "speed_percent")?.valueType).toBe("text");
     expect(app.querySelector('.symbol-slot-row[data-slot-id="speed_percent"] .symbol-slot-simulation-input')).not.toBeNull();
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+  });
+
+  it("edits symbol metadata and selected part/slot detail cards", () => {
+    const windowRef = new Window();
+    const documentRef = windowRef.document as unknown as Document;
+    Object.defineProperty(windowRef, "confirm", {
+      configurable: true,
+      value: () => true
+    });
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".open-symbol-editor-button").click();
+    getButton(app, ".symbol-start-edit-button").click();
+
+    const symbolIdInput = getInput(app, ".symbol-id-input");
+    symbolIdInput.value = "demo-unit-renamed";
+    symbolIdInput.dispatchEvent(new Event("change"));
+
+    expect(getSymbol(app, "demo-unit-renamed")).toBeDefined();
+    expect(getSymbol(app, "demo-generic-unit")).toBeUndefined();
+    expect(getSymbolInstanceIds(app)).toEqual(["demo-unit-renamed", "demo-unit-renamed"]);
+    expect(app.querySelector<HTMLSelectElement>(".symbol-select")?.value).toBe("demo-unit-renamed");
+
+    const viewportWidthInput = getInput(app, ".symbol-viewport-width-input");
+    viewportWidthInput.value = "140";
+    viewportWidthInput.dispatchEvent(new Event("change"));
+
+    expect(getSymbol(app, "demo-unit-renamed")?.viewport?.width).toBe(140);
+
+    const bodyRow = app.querySelector<HTMLElement>('.symbol-part-row[data-part-id="body"]');
+    bodyRow?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(app.querySelector(".symbol-part-detail-card[data-part-id='body']")).not.toBeNull();
+
+    const partDetailId = getInput(app, ".symbol-part-detail-id-input");
+    partDetailId.value = "shell";
+    partDetailId.dispatchEvent(new Event("change"));
+
+    expect(getSymbol(app, "demo-unit-renamed")?.parts?.some((part) => part.id === "shell")).toBe(true);
+    expect(getSymbolInternalItem(app, "demo-unit-renamed", "unit-box")?.partId).toBe("shell");
+    expect(app.querySelector(".symbol-part-detail-card[data-part-id='shell']")).not.toBeNull();
+
+    getInput(app, ".symbol-add-part-input").value = "temporary";
+    getButton(app, ".symbol-add-part-button").click();
+    expect(getSymbol(app, "demo-unit-renamed")?.parts?.some((part) => part.id === "temporary")).toBe(true);
+    getButton(app, ".symbol-detail-delete-part-button").click();
+    expect(getSymbol(app, "demo-unit-renamed")?.parts?.some((part) => part.id === "temporary")).toBe(false);
+
+    getInput(app, ".symbol-add-slot-input").value = "mode";
+    getButton(app, ".symbol-add-slot-button").click();
+    expect(app.querySelector(".symbol-slot-detail-card[data-slot-id='mode']")).not.toBeNull();
+
+    const slotType = app.querySelector<HTMLSelectElement>(".symbol-slot-detail-type-select");
+    expect(slotType).not.toBeNull();
+    slotType!.value = "text";
+    slotType!.dispatchEvent(new Event("change"));
+
+    const required = getInput(app, ".symbol-slot-detail-required-input");
+    required.checked = true;
+    required.dispatchEvent(new Event("change"));
+
+    expect(getSymbol(app, "demo-unit-renamed")?.entitySlots?.find((slot) => slot.id === "mode")).toMatchObject({
+      valueType: "text",
+      required: true
+    });
+
+    getButton(app, ".symbol-detail-delete-slot-button").click();
+    expect(getSymbol(app, "demo-unit-renamed")?.entitySlots?.some((slot) => slot.id === "mode")).toBe(false);
     expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
   });
 
@@ -3236,8 +3308,9 @@ function getPayloadGroupChild(
 
 type TestSymbol = {
   id: string;
+  viewport?: { width: number; height: number };
   parts?: Array<{ id: string; label?: string }>;
-  entitySlots?: Array<{ id: string; label?: string; valueType?: string }>;
+  entitySlots?: Array<{ id: string; label?: string; valueType?: string; required?: boolean }>;
   items: TestItem[];
 };
 
@@ -3256,6 +3329,15 @@ function getSymbol(app: HTMLElement, symbolId: string): TestSymbol | undefined {
     symbols?: TestSymbol[];
   };
   return parsed.symbols?.find((symbol) => symbol.id === symbolId);
+}
+
+function getSymbolInstanceIds(app: HTMLElement): string[] {
+  const parsed = JSON.parse(getTextarea(app, ".json-input").value) as {
+    items: Array<{ type?: string; symbolId?: string }>;
+  };
+  return parsed.items
+    .filter((item) => item.type === "symbol")
+    .map((item) => item.symbolId ?? "");
 }
 
 function getSymbolInternalItem(app: HTMLElement, symbolId: string, itemId: string): TestItem | undefined {
