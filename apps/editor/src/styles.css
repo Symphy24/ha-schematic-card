@@ -261,7 +261,7 @@ textarea {
 .floating-panel-layer {
   position: absolute;
   inset: 76px 12px 12px;
-  z-index: 4;
+  z-index: 30;
   pointer-events: none;
 }
 
@@ -1432,68 +1432,6 @@ textarea {
   border-bottom: 1px solid #d7dde4;
 }
 
-.symbol-editor-menubar {
-  display: flex;
-  min-width: 140px;
-  align-items: center;
-  gap: 8px;
-}
-
-.symbol-file-menu-wrapper,
-.symbol-editor-menubar {
-  position: relative;
-}
-
-.symbol-file-menu,
-.symbol-panel-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 2;
-  min-width: 160px;
-  border: 1px solid var(--editor-border);
-  border-radius: 6px;
-  background: var(--editor-panel);
-  box-shadow: 0 12px 30px rgb(23 32 42 / 18%);
-  padding: 6px;
-}
-
-.symbol-panel-menu {
-  left: 0;
-}
-
-.symbol-file-menu {
-  left: 48px;
-}
-
-.symbol-file-menu[hidden],
-.symbol-panel-menu[hidden] {
-  display: none;
-}
-
-.symbol-file-menu button,
-.symbol-panel-menu button {
-  width: 100%;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--editor-text);
-  padding: 8px 10px;
-  text-align: left;
-}
-
-.symbol-file-menu button:hover,
-.symbol-file-menu button:focus-visible,
-.symbol-panel-menu button:hover,
-.symbol-panel-menu button:focus-visible {
-  background: rgb(86 182 194 / 12%);
-}
-
-.symbol-editor-title {
-  font-size: 16px;
-  font-weight: 700;
-}
-
 .symbol-editor-controls {
   display: flex;
   align-items: center;
@@ -1516,7 +1454,6 @@ textarea {
   padding: 12px;
 }
 
-.symbol-editor-side,
 .symbol-editor-preview-pane,
 .symbol-editor-inspector-pane {
   display: flex;
@@ -1528,13 +1465,6 @@ textarea {
   border-radius: 8px;
   background: #f9fafb;
   padding: 10px;
-}
-
-.symbol-editor-side {
-  width: 300px;
-  min-width: 220px;
-  max-width: min(520px, 45vw);
-  resize: horizontal;
 }
 
 .symbol-editor-preview-pane {
@@ -1891,7 +1821,6 @@ textarea {
 .utility-button,
 .item-list-button,
 .symbol-internal-item-button,
-.symbol-file-menu button,
 .polyline-context-menu button {
   border-color: var(--editor-border-soft);
   background: var(--editor-panel-raised);
@@ -1909,8 +1838,6 @@ textarea {
 .editor-tab:hover,
 .editor-docked-tab:hover,
 .transfer-panel-close:hover,
-.symbol-file-menu button:hover,
-.symbol-file-menu button:focus-visible,
 .polyline-context-menu button:hover,
 .polyline-context-menu button:focus-visible {
   border-color: var(--editor-cyan);
@@ -2018,7 +1945,6 @@ textarea {
 .transfer-panel,
 .symbol-editor-workspace,
 .symbol-start-dialog,
-.symbol-file-menu,
 .symbol-import-dialog {
   border-color: var(--editor-border);
   background: var(--editor-panel);
@@ -2034,7 +1960,6 @@ textarea {
   border-color: var(--editor-border-soft);
 }
 
-.symbol-editor-side,
 .symbol-editor-preview-pane,
 .symbol-editor-inspector-pane {
   border-color: var(--editor-border);
@@ -2151,7 +2076,6 @@ textarea {
     flex-direction: column;
   }
 
-  .symbol-editor-side,
   .symbol-editor-inspector-pane {
     width: auto;
     max-width: none;
@@ -2509,7 +2433,7 @@ body {
 .floating-panel-layer {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: 30;
   pointer-events: none;
 }
 
@@ -2569,7 +2493,7 @@ body {
 .floating-panel-dock-zone-right {
   top: 0;
   bottom: 58px;
-  width: min(620px, max(340px, 38vw));
+  width: min(310px, max(220px, 19vw));
   flex-direction: column;
 }
 
@@ -3001,6 +2925,7 @@ body {
 .symbol-editor-workspace {
   position: absolute;
   inset: 0;
+  z-index: 1;
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -3039,7 +2964,7 @@ body {
 .floating-panel-layer {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: 30;
   pointer-events: none;
 }
 
@@ -3062,7 +2987,7 @@ body {
 .floating-panel-dock-zone-right {
   top: 0;
   bottom: 0;
-  width: min(620px, max(340px, 38vw));
+  width: min(310px, max(220px, 19vw));
   gap: 0;
   padding: 0;
 }
@@ -3085,6 +3010,7 @@ body {
 .floating-panel-dock-zone-left .floating-panel[data-panel-state="docked"],
 .floating-panel-dock-zone-right .floating-panel[data-panel-state="docked"] {
   width: 100%;
+  min-width: 0;
   min-height: 120px;
   flex-basis: 0;
   overflow: hidden;
@@ -3497,15 +3423,8 @@ body.window-resizing-active * {
   padding: 6px 8px;
 }
 
-.symbol-editor-menubar,
-.symbol-editor-controls,
-.symbol-preview-controls {
+.symbol-editor-controls {
   gap: 3px;
-}
-
-.symbol-editor-title {
-  font-size: 12px;
-  line-height: 1.1;
 }
 
 .symbol-editor-body {
@@ -3513,7 +3432,6 @@ body.window-resizing-active * {
   padding: 8px;
 }
 
-.symbol-editor-side,
 .symbol-editor-preview-pane,
 .symbol-editor-inspector-pane {
   border-radius: 6px;
@@ -3531,16 +3449,256 @@ body.window-resizing-active * {
   padding: 2px 6px;
 }
 
-.symbol-file-menu,
-.symbol-panel-menu {
-  min-width: 140px;
-  border-radius: 5px;
-  padding: 4px;
-  font-size: 11px;
+/* Symbol editor now mirrors the Card editor workspace model: fixed canvas + managed tool windows. */
+.symbol-editor-workspace {
+  color: var(--fg, var(--editor-text));
 }
 
-.symbol-file-menu button,
-.symbol-panel-menu button {
-  padding: 5px 7px;
-  font-size: 11px;
+.symbol-editor-header {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  min-height: 48px;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: var(--editor-chrome-gap);
+  border-bottom: 1px solid color-mix(in srgb, var(--fg, var(--editor-text)) 10%, transparent);
+  background: color-mix(in srgb, var(--bg, var(--editor-bg)) 82%, transparent);
+  overflow: visible;
+  padding: 6px 8px;
+  backdrop-filter: blur(10px);
+}
+
+.symbol-editor-toolbar {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow-y: visible;
+  padding: 0;
+  backdrop-filter: none;
+}
+
+.symbol-editor-controls {
+  flex: 0 0 auto;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.symbol-select {
+  max-width: min(220px, 24vw);
+  border-color: color-mix(in srgb, var(--fg, var(--editor-text)) 14%, transparent);
+  background: color-mix(in srgb, var(--bg, var(--editor-bg)) 84%, transparent);
+  color: var(--fg, var(--editor-text));
+}
+
+.symbol-editor-body {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  gap: 0;
+  padding: 0;
+}
+
+.symbol-editor-preview-pane {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.symbol-preview-surface {
+  min-height: 0;
+  flex: 1 1 auto;
+  border-radius: 0;
+  background:
+    radial-gradient(color-mix(in srgb, var(--fg, var(--editor-text)) 8%, transparent) 1px, transparent 1px),
+    var(--bg, var(--editor-bg));
+  background-size: 22px 22px, auto;
+}
+
+.symbol-panel-source[hidden] {
+  display: none !important;
+}
+
+.floating-panel-symbol-items,
+.floating-panel-symbol-parts,
+.floating-panel-symbol-slots {
+  width: 340px;
+}
+
+.floating-panel-symbol-inspector {
+  width: 380px;
+}
+
+.floating-panel-symbol-import {
+  width: min(620px, 52vw);
+  height: min(560px, 64vh);
+}
+
+.floating-panel-app-theme {
+  width: min(430px, 42vw);
+  height: min(520px, 66vh);
+}
+
+.app-theme-panel {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 9px;
+  color: var(--fg, var(--editor-text));
+}
+
+.app-theme-helper {
+  margin: 0;
+}
+
+/* Adapted from Odysseus `static/style.css` theme swatch styles (MIT). */
+.app-theme-grid {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 6px;
+  overflow: auto;
+  padding: 1px;
+}
+
+.app-theme-swatch {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  border: 2px solid var(--border, var(--editor-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel, var(--editor-panel)) 88%, transparent);
+  color: var(--fg, var(--editor-text));
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1.15;
+  padding: 6px;
+  text-align: left;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.app-theme-swatch:hover,
+.app-theme-swatch:focus-visible {
+  border-color: var(--red, var(--editor-coral));
+  transform: translateY(-1px);
+}
+
+.app-theme-swatch.active {
+  border-color: var(--red, var(--editor-coral));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--red, var(--editor-coral)) 33%, transparent);
+}
+
+.app-theme-swatch-colors {
+  display: flex;
+  min-width: 0;
+  justify-content: flex-start;
+  margin-bottom: 1px;
+}
+
+.app-theme-swatch-colors span {
+  width: 16px;
+  height: 16px;
+  margin-left: -5px;
+  border: 1.5px solid color-mix(in srgb, var(--fg, var(--editor-text)) 14%, transparent);
+  border-radius: 50%;
+}
+
+.app-theme-swatch-colors span:first-child {
+  margin-left: 0;
+}
+
+.app-theme-swatch-label {
+  overflow: hidden;
+  color: var(--fg, var(--editor-text));
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-theme-swatch-description {
+  overflow: hidden;
+  color: var(--editor-text-muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-theme-status {
+  flex: 0 0 auto;
+}
+
+.floating-panel .symbol-workspace-section,
+.floating-panel .symbol-editor-inspector-pane {
+  display: flex;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  resize: none;
+}
+
+.floating-panel .symbol-import-dialog {
+  position: static;
+  display: flex;
+  width: auto;
+  max-height: none;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.floating-panel .symbol-import-dialog-header {
+  padding: 0 0 6px;
+}
+
+.floating-panel .symbol-import-dialog-title {
+  font-size: 12px;
+}
+
+.floating-panel .symbol-import-dialog-body {
+  min-height: 0;
+  flex: 1 1 auto;
+  padding: 0;
+}
+
+.symbol-svg-import-input {
+  min-height: 180px;
+  border-color: color-mix(in srgb, var(--fg, var(--editor-text)) 14%, transparent);
+  background: var(--panel, var(--editor-panel));
+  color: var(--fg, var(--editor-text));
+}
+
+.symbol-start-dialog {
+  border-color: var(--border, var(--editor-border));
+  background: var(--panel, var(--editor-panel));
+  color: var(--fg, var(--editor-text));
+}
+
+.symbol-item-group-heading,
+.symbol-manager-title {
+  color: var(--fg, var(--editor-text));
 }
