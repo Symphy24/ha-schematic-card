@@ -20,12 +20,20 @@
   --editor-green: #50fa7b;
   --editor-warning: #e5c07b;
   --editor-shadow: 0 18px 54px rgb(0 0 0 / 34%);
-  --primary-text-color: var(--editor-text);
-  --secondary-text-color: var(--editor-text-muted);
-  --divider-color: var(--editor-border);
-  --accent-color: var(--editor-cyan);
-  --error-color: var(--editor-coral);
-  --success-color: var(--editor-green);
+  --preview-workspace-bg: #eef3f8;
+  --preview-workspace-grid: rgb(3 8 16 / 72%);
+  --preview-surface-bg: #f9fbfd;
+  --preview-surface-grid-dot: rgb(3 8 16 / 62%);
+  --preview-surface-grid-line: rgb(3 8 16 / 48%);
+  --preview-text: #17202a;
+  --preview-divider: rgb(39 55 77 / 28%);
+  --preview-accent: #2f6fed;
+  --primary-text-color: var(--preview-text);
+  --secondary-text-color: #475569;
+  --divider-color: var(--preview-divider);
+  --accent-color: var(--preview-accent);
+  --error-color: #dc2626;
+  --success-color: #16a34a;
 }
 
 * {
@@ -767,25 +775,8 @@ textarea {
   min-height: min(720px, calc(100vh - 140px));
   overflow: hidden;
   padding: 12px;
-  color: var(--primary-text-color, #17202a);
-  background:
-    radial-gradient(rgb(156 222 242 / 12%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(156 222 242 / 5%) 1px, transparent 1px),
-    linear-gradient(0deg, rgb(156 222 242 / 5%) 1px, transparent 1px),
-    var(
-      --ha-card-background,
-      var(
-        --card-background-color,
-        var(
-          --paper-card-background-color,
-          var(
-            --lovelace-background,
-            var(--primary-background-color, #ffffff)
-          )
-        )
-      )
-    );
-  background-size: 18px 18px, 36px 36px, 36px 36px, auto;
+  color: var(--preview-text);
+  background: var(--preview-surface-bg);
 }
 
 .preview-surface svg {
@@ -796,16 +787,21 @@ textarea {
   min-height: 0;
 }
 
-.editor-grid-overlay line {
-  stroke: var(--divider-color, #d7dde4);
-  stroke-width: 0.5;
-  opacity: 0.65;
+.editor-grid-overlay path {
+  stroke: var(--preview-workspace-grid);
+  stroke-width: 0.75;
+  opacity: 1;
+  vector-effect: non-scaling-stroke;
 }
 
 .editor-polyline-rubber-band {
-  stroke: var(--accent-color, #2f6fed);
+  stroke: var(--preview-accent);
   stroke-width: 3;
   opacity: 0.85;
+}
+
+.editor-shell[data-preview-theme="ha"] .editor-polyline-rubber-band {
+  stroke: var(--accent-color, var(--preview-accent));
 }
 
 .editor-selection-rectangle {
@@ -1690,11 +1686,7 @@ textarea {
   justify-content: stretch;
   overflow: hidden;
   border-radius: 6px;
-  background:
-    linear-gradient(90deg, rgb(215 221 228 / 55%) 1px, transparent 1px),
-    linear-gradient(0deg, rgb(215 221 228 / 55%) 1px, transparent 1px),
-    #ffffff;
-  background-size: 20px 20px;
+  background: var(--preview-surface-bg);
 }
 
 .symbol-preview-surface[data-pan-mode="true"],
@@ -1967,12 +1959,7 @@ textarea {
 }
 
 .symbol-preview-surface {
-  background:
-    radial-gradient(rgb(156 222 242 / 12%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(156 222 242 / 5%) 1px, transparent 1px),
-    linear-gradient(0deg, rgb(156 222 242 / 5%) 1px, transparent 1px),
-    var(--editor-bg-deep);
-  background-size: 18px 18px, 36px 36px, 36px 36px, auto;
+  background: var(--preview-surface-bg);
 }
 
 .symbol-svg-import-input,
@@ -1985,11 +1972,6 @@ textarea {
 .symbol-svg-drop-zone[data-dragging="true"] {
   border-color: var(--editor-cyan);
   background: rgb(86 182 194 / 12%);
-}
-
-.editor-grid-overlay line {
-  stroke: var(--editor-cyan);
-  opacity: 0.32;
 }
 
 .editor-polyline-rubber-band,
@@ -2116,6 +2098,14 @@ textarea {
   --editor-green: var(--green);
   --editor-warning: #e5c07b;
   --editor-shadow: 0 8px 32px rgb(0 0 0 / 45%);
+  --preview-workspace-bg: #eef3f8;
+  --preview-workspace-grid: rgb(3 8 16 / 72%);
+  --preview-surface-bg: #f9fbfd;
+  --preview-surface-grid-dot: rgb(3 8 16 / 62%);
+  --preview-surface-grid-line: rgb(3 8 16 / 48%);
+  --preview-text: #17202a;
+  --preview-divider: rgb(39 55 77 / 28%);
+  --preview-accent: #2f6fed;
   color: var(--fg);
   background: var(--bg);
   font-family: var(--font-family, "Fira Code", "SFMono-Regular", "Cascadia Code", Consolas, monospace);
@@ -2420,8 +2410,8 @@ body {
   min-height: 0;
   overflow: hidden;
   background:
-    radial-gradient(color-mix(in srgb, var(--fg) 9%, transparent) 1px, transparent 1px),
-    var(--bg);
+    radial-gradient(var(--preview-workspace-grid) 1px, transparent 1px),
+    var(--preview-workspace-bg);
   background-size: 22px 22px, auto;
   padding: 0;
 }
@@ -2933,11 +2923,43 @@ body {
   overflow: hidden;
   border: 0;
   border-radius: 0;
-  background:
-    radial-gradient(color-mix(in srgb, var(--fg) 9%, transparent) 1px, transparent 1px),
-    var(--bg);
-  background-size: 22px 22px, auto;
+  background: var(--preview-workspace-bg);
   box-shadow: none;
+}
+
+.editor-shell[data-preview-theme="ha"] .card-editor-workspace,
+.editor-shell[data-preview-theme="ha"] .symbol-editor-workspace {
+  background: var(
+    --ha-card-background,
+    var(
+      --card-background-color,
+      var(
+        --paper-card-background-color,
+        var(
+          --lovelace-background,
+          var(--primary-background-color, var(--preview-surface-bg))
+        )
+      )
+    )
+  );
+}
+
+.editor-shell[data-preview-theme="ha"] .preview-surface,
+.editor-shell[data-preview-theme="ha"] .symbol-preview-surface {
+  color: var(--primary-text-color, var(--preview-text));
+  background: var(
+    --ha-card-background,
+    var(
+      --card-background-color,
+      var(
+        --paper-card-background-color,
+        var(
+          --lovelace-background,
+          var(--primary-background-color, var(--preview-surface-bg))
+        )
+      )
+    )
+  );
 }
 
 .card-editor-workspace[hidden],
@@ -3451,7 +3473,7 @@ body.window-resizing-active * {
 
 /* Symbol editor now mirrors the Card editor workspace model: fixed canvas + managed tool windows. */
 .symbol-editor-workspace {
-  color: var(--fg, var(--editor-text));
+  color: var(--preview-text);
 }
 
 .symbol-editor-header {
@@ -3518,10 +3540,7 @@ body.window-resizing-active * {
   min-height: 0;
   flex: 1 1 auto;
   border-radius: 0;
-  background:
-    radial-gradient(color-mix(in srgb, var(--fg, var(--editor-text)) 8%, transparent) 1px, transparent 1px),
-    var(--bg, var(--editor-bg));
-  background-size: 22px 22px, auto;
+  background: var(--preview-surface-bg);
 }
 
 .symbol-panel-source[hidden] {
