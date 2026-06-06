@@ -14,9 +14,24 @@ import demoPayloadJson from "../../../examples/demo-payloads/minimal.json";
 
 const demoPayload = demoPayloadJson as SchematicPayload;
 const DEFAULT_EDITOR_GRID_SIZE = 10;
+const SYMBOL_PREVIEW_VIEWBOX_PADDING_RATIO = 0.25;
+const DEFAULT_PREVIEW_BACKGROUND_COLOR = "#f9fbfd";
+const DEFAULT_PREVIEW_GRID_COLOR = "rgb(3 8 16 / 72%)";
+const DARK_PREVIEW_GRID_COLOR = "rgb(3 8 16 / 76%)";
+const LIGHT_PREVIEW_GRID_COLOR = "rgb(244 248 255 / 78%)";
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const THEME_STORAGE_KEY = "ha-schematic-card-editor-theme-preview";
 const APP_THEME_STORAGE_KEY = "ha-schematic-card-editor-app-theme";
+
+const HA_PREVIEW_BACKGROUND_VARIABLES = [
+  "--ha-card-background",
+  "--card-background-color",
+  "--paper-card-background-color",
+  "--lovelace-background",
+  "--primary-background-color"
+] as const;
+
+let editorGridPatternCounter = 0;
 
 const demoEntityStates = {
   "input_boolean.schematic_demo_alarm": "on",
@@ -80,6 +95,9 @@ type EditorElements = {
   closeSymbolWorkspaceButton: HTMLButtonElement;
   symbolSelectToolButton: HTMLButtonElement;
   symbolPanToolButton: HTMLButtonElement;
+  symbolToggleGridButton: HTMLButtonElement;
+  symbolToggleSnapButton: HTMLButtonElement;
+  symbolGridSizeInput: HTMLInputElement;
   symbolResetViewButton: HTMLButtonElement;
   symbolClearSelectionButton: HTMLButtonElement;
   symbolDeleteItemButton: HTMLButtonElement;
@@ -606,6 +624,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   shell.className = "editor-shell";
   shell.dataset.sidebar = "collapsed";
   shell.dataset.workspace = "card";
+  shell.dataset.previewTheme = "default";
   shell.tabIndex = -1;
 
   const rail = createEditorRail(documentRef);
@@ -674,6 +693,9 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     closeSymbolWorkspaceButton: getRequiredElement(symbolWorkspace, ".close-symbol-workspace-button", HTMLButtonElement),
     symbolSelectToolButton: getRequiredElement(symbolWorkspace, ".symbol-select-tool-button", HTMLButtonElement),
     symbolPanToolButton: getRequiredElement(symbolWorkspace, ".symbol-pan-tool-button", HTMLButtonElement),
+    symbolToggleGridButton: getRequiredElement(symbolWorkspace, ".symbol-grid-toggle-button", HTMLButtonElement),
+    symbolToggleSnapButton: getRequiredElement(symbolWorkspace, ".symbol-snap-toggle-button", HTMLButtonElement),
+    symbolGridSizeInput: getRequiredElement(symbolWorkspace, ".symbol-grid-size-input", HTMLInputElement),
     symbolResetViewButton: getRequiredElement(symbolWorkspace, ".symbol-reset-view-button", HTMLButtonElement),
     symbolClearSelectionButton: getRequiredElement(symbolWorkspace, ".symbol-clear-selection-button", HTMLButtonElement),
     symbolDeleteItemButton: getRequiredElement(symbolWorkspace, ".symbol-delete-item-button", HTMLButtonElement),
@@ -758,6 +780,9 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.symbolStartEditButton.addEventListener("click", () => startSymbolWorkspaceWithExistingSymbol(elements, documentRef));
   elements.symbolSelectToolButton.addEventListener("click", () => toggleSymbolPanMode(elements, false));
   elements.symbolPanToolButton.addEventListener("click", () => toggleSymbolPanMode(elements, true));
+  elements.symbolToggleGridButton.addEventListener("click", () => togglePreviewGrid(elements, documentRef));
+  elements.symbolToggleSnapButton.addEventListener("click", () => toggleSnap(elements));
+  elements.symbolGridSizeInput.addEventListener("change", () => updateGridSize(elements, documentRef, elements.symbolGridSizeInput));
   elements.symbolResetViewButton.addEventListener("click", () => resetSymbolPreviewView(elements));
   elements.symbolClearSelectionButton.addEventListener("click", () => clearSymbolSelection(elements, documentRef));
   elements.symbolDeleteItemButton.addEventListener("click", () => deleteSelectedSymbolInternalItem(elements, documentRef));
@@ -1015,17 +1040,37 @@ function getEditorTabPanelId(tab: EditorTabName): FloatingPanelId {
 
 function togglePreviewGrid(elements: EditorElements, documentRef: Document): void {
   elements.gridEnabled = !elements.gridEnabled;
-  elements.toggleGridButton.setAttribute("aria-pressed", String(elements.gridEnabled));
-  elements.toggleGridButton.title = elements.gridEnabled ? "Grid on" : "Grid off";
-  elements.toggleGridButton.setAttribute("aria-label", elements.gridEnabled ? "Grid on" : "Grid off");
-  updateFromJson(elements, documentRef);
+  updateGridControls(elements);
+  renderWorkspacePreviews(elements, documentRef);
 }
 
 function toggleSnap(elements: EditorElements): void {
   elements.snapEnabled = !elements.snapEnabled;
-  elements.toggleSnapButton.setAttribute("aria-pressed", String(elements.snapEnabled));
-  elements.toggleSnapButton.title = elements.snapEnabled ? "Snap on" : "Snap off";
-  elements.toggleSnapButton.setAttribute("aria-label", elements.snapEnabled ? "Snap on" : "Snap off");
+  updateGridControls(elements);
+}
+
+function updateGridControls(elements: EditorElements): void {
+  for (const button of [elements.toggleGridButton, elements.symbolToggleGridButton]) {
+    button.setAttribute("aria-pressed", String(elements.gridEnabled));
+    button.title = elements.gridEnabled ? "Grid on" : "Grid off";
+    button.setAttribute("aria-label", elements.gridEnabled ? "Grid on" : "Grid off");
+  }
+
+  for (const button of [elements.toggleSnapButton, elements.symbolToggleSnapButton]) {
+    button.setAttribute("aria-pressed", String(elements.snapEnabled));
+    button.title = elements.snapEnabled ? "Snap on" : "Snap off";
+    button.setAttribute("aria-label", elements.snapEnabled ? "Snap on" : "Snap off");
+  }
+
+  syncGridSizeInputs(elements);
+}
+
+function renderWorkspacePreviews(elements: EditorElements, documentRef: Document): void {
+  updateFromJson(elements, documentRef, { renderTools: false });
+
+  if (elements.symbolWorkspaceStarted) {
+    renderSymbolWorkspace(elements, documentRef);
+  }
 }
 
 function togglePanMode(elements: EditorElements): void {
@@ -1296,19 +1341,27 @@ function undockEditorTab(elements: EditorElements, tab: EditorTabName): void {
   updateEditorTabs(elements);
 }
 
-function updateGridSize(elements: EditorElements, documentRef: Document): void {
-  const nextGridSize = Number(elements.gridSizeInput.value);
+function updateGridSize(elements: EditorElements, documentRef: Document, sourceInput: HTMLInputElement = elements.gridSizeInput): void {
+  const nextGridSize = Number(sourceInput.value);
 
   if (!Number.isFinite(nextGridSize) || nextGridSize <= 0) {
-    elements.gridSizeInput.value = String(elements.gridSize);
-    elements.gridSizeInput.setCustomValidity("Grid size must be a positive number");
-    elements.gridSizeInput.reportValidity();
+    sourceInput.value = String(elements.gridSize);
+    sourceInput.setCustomValidity("Grid size must be a positive number");
+    sourceInput.reportValidity();
     return;
   }
 
   elements.gridSize = nextGridSize;
-  elements.gridSizeInput.setCustomValidity("");
-  updateFromJson(elements, documentRef);
+  sourceInput.setCustomValidity("");
+  syncGridSizeInputs(elements);
+  renderWorkspacePreviews(elements, documentRef);
+}
+
+function syncGridSizeInputs(elements: EditorElements): void {
+  for (const input of [elements.gridSizeInput, elements.symbolGridSizeInput]) {
+    input.value = String(elements.gridSize);
+    input.setCustomValidity("");
+  }
 }
 
 function renderPreviewGrid(
@@ -1323,30 +1376,35 @@ function renderPreviewGrid(
   }
 
   const grid = documentRef.createElementNS(SVG_NAMESPACE, "g");
+  const defs = documentRef.createElementNS(SVG_NAMESPACE, "defs");
+  const pattern = documentRef.createElementNS(SVG_NAMESPACE, "pattern");
+  const path = documentRef.createElementNS(SVG_NAMESPACE, "path");
+  const rect = documentRef.createElementNS(SVG_NAMESPACE, "rect");
+  const patternId = `editor-grid-${++editorGridPatternCounter}`;
+
   grid.classList.add("editor-grid-overlay");
   grid.setAttribute("data-editor-grid", "true");
   grid.setAttribute("data-grid-size", String(gridSize));
   grid.setAttribute("pointer-events", "none");
+  pattern.setAttribute("id", patternId);
+  pattern.setAttribute("x", "0");
+  pattern.setAttribute("y", "0");
+  pattern.setAttribute("width", String(gridSize));
+  pattern.setAttribute("height", String(gridSize));
+  pattern.setAttribute("patternUnits", "userSpaceOnUse");
+  path.setAttribute("d", `M ${gridSize} 0 H 0 V ${gridSize}`);
+  path.setAttribute("fill", "none");
+  pattern.append(path);
+  defs.append(pattern);
 
-  for (let x = 0; x <= payload.viewport.width; x += gridSize) {
-    const line = documentRef.createElementNS(SVG_NAMESPACE, "line");
-    line.setAttribute("x1", String(x));
-    line.setAttribute("y1", "0");
-    line.setAttribute("x2", String(x));
-    line.setAttribute("y2", String(payload.viewport.height));
-    grid.append(line);
-  }
-
-  for (let y = 0; y <= payload.viewport.height; y += gridSize) {
-    const line = documentRef.createElementNS(SVG_NAMESPACE, "line");
-    line.setAttribute("x1", "0");
-    line.setAttribute("y1", String(y));
-    line.setAttribute("x2", String(payload.viewport.width));
-    line.setAttribute("y2", String(y));
-    grid.append(line);
-  }
-
-  svg.prepend(grid);
+  const gridExtent = Math.max(payload.viewport.width, payload.viewport.height, gridSize) * 100;
+  rect.setAttribute("x", String(-gridExtent));
+  rect.setAttribute("y", String(-gridExtent));
+  rect.setAttribute("width", String(gridExtent * 2));
+  rect.setAttribute("height", String(gridExtent * 2));
+  rect.setAttribute("fill", `url(#${patternId})`);
+  grid.append(defs, rect);
+  svg.append(grid);
 }
 
 function renderPolylineRubberBand(
@@ -4396,6 +4454,7 @@ function renderSymbolPreview(elements: EditorElements, symbol: SchematicSymbolDe
     }
   });
   applySymbolPreviewViewBox(elements, svg, previewPayload);
+  renderPreviewGrid(svg, previewPayload, elements.gridEnabled, elements.gridSize, documentRef);
   renderSelectionRectangle(svg, elements.symbolSelectionRectState, documentRef);
   svg.addEventListener("click", (event) => {
     if (elements.symbolPanMode) {
@@ -4435,7 +4494,19 @@ function applySymbolPreviewViewBox(elements: EditorElements, svg: SVGSVGElement,
     width: payload.viewport.width,
     height: payload.viewport.height
   };
-  setSvgViewBox(svg, elements.symbolPreviewViewBox ?? fallback);
+  setSvgViewBox(svg, elements.symbolPreviewViewBox ?? getPaddedSymbolPreviewViewBox(fallback));
+}
+
+function getPaddedSymbolPreviewViewBox(viewBox: PreviewViewBox): PreviewViewBox {
+  const paddingX = Math.max(DEFAULT_EDITOR_GRID_SIZE, viewBox.width * SYMBOL_PREVIEW_VIEWBOX_PADDING_RATIO);
+  const paddingY = Math.max(DEFAULT_EDITOR_GRID_SIZE, viewBox.height * SYMBOL_PREVIEW_VIEWBOX_PADDING_RATIO);
+
+  return {
+    x: viewBox.x - paddingX,
+    y: viewBox.y - paddingY,
+    width: viewBox.width + paddingX * 2,
+    height: viewBox.height + paddingY * 2
+  };
 }
 
 function getSymbolPreviewSvg(elements: EditorElements): SVGSVGElement | undefined {
@@ -4498,7 +4569,7 @@ function resetSymbolPreviewView(elements: EditorElements): void {
   const fallback = getSvgDefaultViewBox(svg);
 
   if (fallback) {
-    setSvgViewBox(svg, fallback);
+    setSvgViewBox(svg, getPaddedSymbolPreviewViewBox(fallback));
   }
 }
 
@@ -4726,6 +4797,10 @@ function dragSymbolInternalItem(elements: EditorElements, event: MouseEvent, doc
 
   for (const { startItem, item } of startItems) {
     moveSymbolItemFromStart(item, startItem.item, dx, dy);
+
+    if (elements.snapEnabled) {
+      snapItemToGrid(item, elements.gridSize);
+    }
   }
 
   elements.jsonInput.value = formatPayloadJson(edit.payload);
@@ -7392,14 +7467,14 @@ function applyThemePreview(elements: EditorElements): void {
   elements.themePreviewToggle.checked = true;
   applyThemeVariablesToPreview(elements, result.variables);
 
-  elements.themeStatus.textContent = `Applied ${Object.keys(result.variables).length} theme variables`;
+  elements.themeStatus.textContent = `Applied ${Object.keys(result.variables).length} HA preview variables`;
   elements.themeStatus.dataset.state = "valid";
 }
 
 function updateThemePreviewMode(elements: EditorElements): void {
   if (!elements.themePreviewToggle.checked) {
     clearThemePreviewVariables(elements);
-    elements.themeStatus.textContent = "Using editor theme";
+    elements.themeStatus.textContent = "Using default preview surface";
     elements.themeStatus.dataset.state = "valid";
     return;
   }
@@ -7420,22 +7495,296 @@ function updateThemePreviewMode(elements: EditorElements): void {
 
 function applyThemeVariablesToPreview(elements: EditorElements, variables: Record<string, string>): void {
   clearThemePreviewVariables(elements);
+  elements.editorRoot.dataset.previewTheme = "ha";
+  const gridColor = getContrastingPreviewGridColor(variables);
 
   for (const target of getThemePreviewTargets(elements)) {
     for (const [name, value] of Object.entries(variables)) {
       target.style.setProperty(name, value);
     }
+
+    target.style.setProperty("--preview-workspace-grid", gridColor);
   }
 }
 
 function clearThemePreviewVariables(elements: EditorElements): void {
+  elements.editorRoot.dataset.previewTheme = "default";
+
   for (const target of getThemePreviewTargets(elements)) {
     target.removeAttribute("style");
   }
 }
 
 function getThemePreviewTargets(elements: EditorElements): HTMLElement[] {
-  return [elements.previewSurface, elements.symbolPreviewSurface];
+  return [elements.cardWorkspace, elements.symbolWorkspace, elements.previewSurface, elements.symbolPreviewSurface];
+}
+
+function getContrastingPreviewGridColor(variables: Record<string, string>): string {
+  const background = getPreviewBackgroundColor(variables);
+
+  if (!background) {
+    return DEFAULT_PREVIEW_GRID_COLOR;
+  }
+
+  return getRelativeLuminance(background) > 0.45
+    ? DARK_PREVIEW_GRID_COLOR
+    : LIGHT_PREVIEW_GRID_COLOR;
+}
+
+function getPreviewBackgroundColor(variables: Record<string, string>): RgbColor | undefined {
+  for (const name of HA_PREVIEW_BACKGROUND_VARIABLES) {
+    const value = resolveCssVariableColor(variables[name], variables);
+    const color = value ? parseCssColor(value) : undefined;
+
+    if (color) {
+      return color;
+    }
+  }
+
+  return parseCssColor(DEFAULT_PREVIEW_BACKGROUND_COLOR);
+}
+
+type RgbColor = {
+  r: number;
+  g: number;
+  b: number;
+};
+
+function resolveCssVariableColor(
+  value: string | undefined,
+  variables: Record<string, string>,
+  seen: Set<string> = new Set()
+): string | undefined {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const variable = parseCssVar(trimmed);
+
+  if (!variable) {
+    return trimmed;
+  }
+
+  if (seen.has(variable.name)) {
+    return resolveCssVariableColor(variable.fallback, variables, seen);
+  }
+
+  seen.add(variable.name);
+  return resolveCssVariableColor(variables[variable.name] ?? variable.fallback, variables, seen);
+}
+
+function parseCssVar(value: string): { name: string; fallback?: string } | undefined {
+  const match = /^var\((.*)\)$/.exec(value.trim());
+
+  if (!match) {
+    return undefined;
+  }
+
+  const content = match[1].trim();
+  const commaIndex = findTopLevelComma(content);
+  const name = (commaIndex === -1 ? content : content.slice(0, commaIndex)).trim();
+
+  if (!name.startsWith("--")) {
+    return undefined;
+  }
+
+  return {
+    name,
+    fallback: commaIndex === -1 ? undefined : content.slice(commaIndex + 1).trim()
+  };
+}
+
+function findTopLevelComma(value: string): number {
+  let depth = 0;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+
+    if (character === "(") {
+      depth += 1;
+    } else if (character === ")") {
+      depth = Math.max(0, depth - 1);
+    } else if (character === "," && depth === 0) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function parseCssColor(value: string): RgbColor | undefined {
+  const color = value.trim().toLowerCase();
+
+  if (color === "black") {
+    return { r: 0, g: 0, b: 0 };
+  }
+
+  if (color === "white") {
+    return { r: 255, g: 255, b: 255 };
+  }
+
+  if (color === "transparent") {
+    return undefined;
+  }
+
+  return parseHexColor(color) ?? parseRgbColor(color) ?? parseHslColor(color);
+}
+
+function parseHexColor(value: string): RgbColor | undefined {
+  const hex = /^#([\da-f]{3,8})$/i.exec(value)?.[1];
+
+  if (!hex) {
+    return undefined;
+  }
+
+  if (hex.length === 3 || hex.length === 4) {
+    return {
+      r: Number.parseInt(hex[0] + hex[0], 16),
+      g: Number.parseInt(hex[1] + hex[1], 16),
+      b: Number.parseInt(hex[2] + hex[2], 16)
+    };
+  }
+
+  if (hex.length === 6 || hex.length === 8) {
+    return {
+      r: Number.parseInt(hex.slice(0, 2), 16),
+      g: Number.parseInt(hex.slice(2, 4), 16),
+      b: Number.parseInt(hex.slice(4, 6), 16)
+    };
+  }
+
+  return undefined;
+}
+
+function parseRgbColor(value: string): RgbColor | undefined {
+  const match = /^rgba?\((.*)\)$/.exec(value);
+
+  if (!match) {
+    return undefined;
+  }
+
+  const channels = splitCssColorChannels(match[1]);
+
+  if (channels.length < 3) {
+    return undefined;
+  }
+
+  const [r, g, b] = channels.slice(0, 3).map(parseRgbChannel);
+
+  if (r === undefined || g === undefined || b === undefined) {
+    return undefined;
+  }
+
+  return { r, g, b };
+}
+
+function parseRgbChannel(value: string): number | undefined {
+  const trimmed = value.trim();
+
+  if (trimmed.endsWith("%")) {
+    const percent = Number.parseFloat(trimmed.slice(0, -1));
+    return Number.isFinite(percent) ? clamp(Math.round((percent / 100) * 255), 0, 255) : undefined;
+  }
+
+  const channel = Number.parseFloat(trimmed);
+  return Number.isFinite(channel) ? clamp(Math.round(channel), 0, 255) : undefined;
+}
+
+function parseHslColor(value: string): RgbColor | undefined {
+  const match = /^hsla?\((.*)\)$/.exec(value);
+
+  if (!match) {
+    return undefined;
+  }
+
+  const channels = splitCssColorChannels(match[1]);
+
+  if (channels.length < 3) {
+    return undefined;
+  }
+
+  const hue = parseHue(channels[0]);
+  const saturation = parsePercentChannel(channels[1]);
+  const lightness = parsePercentChannel(channels[2]);
+
+  if (hue === undefined || saturation === undefined || lightness === undefined) {
+    return undefined;
+  }
+
+  return hslToRgb(hue, saturation, lightness);
+}
+
+function splitCssColorChannels(value: string): string[] {
+  const color = value.split("/")[0].trim();
+  return color.includes(",")
+    ? color.split(",").map((channel) => channel.trim())
+    : color.split(/\s+/).filter(Boolean);
+}
+
+function parseHue(value: string): number | undefined {
+  const trimmed = value.trim();
+  const hue = Number.parseFloat(trimmed);
+
+  if (!Number.isFinite(hue)) {
+    return undefined;
+  }
+
+  if (trimmed.endsWith("turn")) {
+    return hue * 360;
+  }
+
+  if (trimmed.endsWith("rad")) {
+    return hue * (180 / Math.PI);
+  }
+
+  return hue;
+}
+
+function parsePercentChannel(value: string): number | undefined {
+  const trimmed = value.trim();
+
+  if (!trimmed.endsWith("%")) {
+    return undefined;
+  }
+
+  const percent = Number.parseFloat(trimmed.slice(0, -1));
+  return Number.isFinite(percent) ? clamp(percent / 100, 0, 1) : undefined;
+}
+
+function hslToRgb(hue: number, saturation: number, lightness: number): RgbColor {
+  const normalizedHue = ((hue % 360) + 360) % 360;
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const huePrime = normalizedHue / 60;
+  const x = chroma * (1 - Math.abs(huePrime % 2 - 1));
+  const [r1, g1, b1] = huePrime < 1
+    ? [chroma, x, 0]
+    : huePrime < 2
+      ? [x, chroma, 0]
+      : huePrime < 3
+        ? [0, chroma, x]
+        : huePrime < 4
+          ? [0, x, chroma]
+          : huePrime < 5
+            ? [x, 0, chroma]
+            : [chroma, 0, x];
+  const m = lightness - chroma / 2;
+
+  return {
+    r: Math.round((r1 + m) * 255),
+    g: Math.round((g1 + m) * 255),
+    b: Math.round((b1 + m) * 255)
+  };
+}
+
+function getRelativeLuminance(color: RgbColor): number {
+  const [r, g, b] = [color.r, color.g, color.b].map((channel) => {
+    const value = channel / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
 function loadStoredThemePreview(elements: EditorElements): void {
@@ -7495,11 +7844,9 @@ function applyEditorTheme(elements: EditorElements, themeId: EditorThemePresetId
   style.setProperty("--editor-cyan", fg);
   style.setProperty("--editor-teal", fg);
   style.setProperty("--editor-coral", red);
-  style.setProperty("--primary-text-color", fg);
-  style.setProperty("--secondary-text-color", muted);
-  style.setProperty("--divider-color", border);
-  style.setProperty("--accent-color", red);
-  style.setProperty("--error-color", red);
+  for (const previewToken of ["--primary-text-color", "--secondary-text-color", "--divider-color", "--accent-color", "--error-color"]) {
+    style.removeProperty(previewToken);
+  }
 
   const metaThemeColor = elements.editorRoot.ownerDocument.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
   metaThemeColor?.setAttribute("content", bg);
@@ -9895,7 +10242,7 @@ function createAppThemePanel(documentRef: Document): HTMLElement {
 
   const intro = documentRef.createElement("p");
   intro.className = "field-helper app-theme-helper";
-  intro.textContent = "Editor theme controls the app chrome, workspaces, panels, dock, menus, and buttons. HA preview theme import is separate.";
+  intro.textContent = "Editor theme controls app chrome: sidebar, headers, panels, dock, menus, and buttons. Preview surfaces stay separate.";
 
   const grid = documentRef.createElement("div");
   grid.className = "app-theme-grid";
@@ -10147,10 +10494,25 @@ function createSymbolEditorToolbar(documentRef: Document): HTMLElement {
   appendToolbarActions(editGroup, symbolUndoButton, symbolRedoButton, symbolDuplicateButton, symbolClearButton, symbolDeleteButton);
 
   const viewGroup = createToolbarGroup(documentRef, "VIEW");
-  const symbolGridButton = createDisabledToolbarButton(documentRef, "symbol-grid-toggle-button", "Grid", "▦");
-  const symbolSnapButton = createDisabledToolbarButton(documentRef, "symbol-snap-toggle-button", "Snap", "⌖");
+  const symbolGridButton = createToolbarButton(documentRef, "symbol-grid-toggle-button", "Grid on", "▦");
+  symbolGridButton.setAttribute("aria-pressed", "true");
+  const symbolSnapButton = createToolbarButton(documentRef, "symbol-snap-toggle-button", "Snap on", "⌖");
+  symbolSnapButton.setAttribute("aria-pressed", "true");
+  const symbolGridSizeLabel = documentRef.createElement("label");
+  symbolGridSizeLabel.className = "grid-size-field symbol-grid-size-field";
+  const symbolGridSizeText = documentRef.createElement("span");
+  symbolGridSizeText.className = "field-label";
+  symbolGridSizeText.textContent = "GRID";
+  const symbolGridSizeInput = documentRef.createElement("input");
+  symbolGridSizeInput.className = "grid-size-input symbol-grid-size-input";
+  symbolGridSizeInput.type = "number";
+  symbolGridSizeInput.min = "1";
+  symbolGridSizeInput.step = "1";
+  symbolGridSizeInput.value = String(DEFAULT_EDITOR_GRID_SIZE);
+  symbolGridSizeInput.setAttribute("aria-label", "Symbol grid size");
+  symbolGridSizeLabel.append(symbolGridSizeText, symbolGridSizeInput);
   const symbolResetButton = createToolbarButton(documentRef, "symbol-reset-view-button", "Fit symbol preview", "⛶");
-  appendToolbarActions(viewGroup, symbolGridButton, symbolSnapButton, symbolResetButton);
+  appendToolbarActions(viewGroup, symbolGridButton, symbolSnapButton, symbolGridSizeLabel, symbolResetButton);
 
   toolbar.append(selectGroup, addGroup, symbolGroup, editGroup, viewGroup);
   return toolbar;
