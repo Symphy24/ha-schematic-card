@@ -211,6 +211,73 @@ describe("SVG renderer", () => {
     expect(svg.children[0]?.getAttribute("fill")).toBe("var(--success-color)");
   });
 
+  it("applies conditional styles for numeric and inverse operators", () => {
+    const svg = renderSchematicSvg(createPayload([
+      {
+        ...rectItem("temperature-status", 100),
+        style: {
+          fill: "var(--success-color)",
+          opacity: 1
+        },
+        styleWhen: [
+          {
+            when: {
+              entityId: "sensor.temperature",
+              greaterThan: 30
+            },
+            style: {
+              fill: "var(--error-color)"
+            }
+          },
+          {
+            when: {
+              entityId: "input_boolean.enabled",
+              notEquals: "on"
+            },
+            style: {
+              opacity: 0.35
+            }
+          }
+        ]
+      }
+    ]), {
+      document: createDocument(),
+      entityStates: {
+        "sensor.temperature": "42.5",
+        "input_boolean.enabled": "off"
+      }
+    });
+
+    expect(svg.children[0]?.getAttribute("fill")).toBe("var(--error-color)");
+    expect(svg.children[0]?.getAttribute("opacity")).toBe("0.35");
+  });
+
+  it("renders visibility conditions for numeric operators", () => {
+    const svg = renderSchematicSvg(createPayload([
+      {
+        ...rectItem("cold-status", 100),
+        visibleWhen: {
+          entityId: "sensor.temperature",
+          lessThan: 5
+        }
+      },
+      {
+        ...rectItem("hot-status", 200),
+        visibleWhen: {
+          entityId: "sensor.temperature",
+          greaterThan: 30
+        }
+      }
+    ]), {
+      document: createDocument(),
+      entityStates: {
+        "sensor.temperature": "42.5"
+      }
+    });
+
+    expect(childIds(svg)).toEqual(["hot-status"]);
+  });
+
   it("applies safe flow animation when enabled", () => {
     const svg = renderSchematicSvg(createPayload([
       {

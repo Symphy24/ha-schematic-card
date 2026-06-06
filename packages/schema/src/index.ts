@@ -67,7 +67,10 @@ export type SchematicBaseItem = {
 
 export type SchematicVisibilityCondition = {
   entityId: string;
-  equals: string;
+  equals?: string;
+  notEquals?: string;
+  greaterThan?: number;
+  lessThan?: number;
 };
 
 export type SchematicConditionalStyle = {
@@ -754,9 +757,29 @@ function validateVisibilityCondition(value: unknown, path: string, errors: strin
     errors.push(`${path}.entityId must be a non-empty string`);
   }
 
-  if (typeof value.equals !== "string") {
+  const operatorCount = [
+    value.equals,
+    value.notEquals,
+    value.greaterThan,
+    value.lessThan
+  ].filter((operatorValue) => operatorValue !== undefined).length;
+
+  if (operatorCount === 0) {
+    errors.push(`${path} must include equals, notEquals, greaterThan, or lessThan`);
+  } else if (operatorCount > 1) {
+    errors.push(`${path} must include only one condition operator`);
+  }
+
+  if (value.equals !== undefined && typeof value.equals !== "string") {
     errors.push(`${path}.equals must be a string`);
   }
+
+  if (value.notEquals !== undefined && typeof value.notEquals !== "string") {
+    errors.push(`${path}.notEquals must be a string`);
+  }
+
+  validateOptionalFiniteNumber(value.greaterThan, `${path}.greaterThan`, errors);
+  validateOptionalFiniteNumber(value.lessThan, `${path}.lessThan`, errors);
 }
 
 function validatePathData(value: unknown, path: string, errors: string[]): void {

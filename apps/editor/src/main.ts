@@ -8,6 +8,7 @@ import {
   type SchematicStyle,
   type SchematicSymbolChildItem,
   type SchematicSymbolDefinition,
+  type SchematicVisibilityCondition,
   validateSchematicPayload
 } from "@ha-schematic-card/schema";
 
@@ -392,6 +393,14 @@ type SymbolInternalItemEntry = {
 };
 
 type SymbolSlotValueType = NonNullable<NonNullable<SchematicSymbolDefinition["entitySlots"]>[number]["valueType"]>;
+
+type DynamicStyleRule = NonNullable<SchematicItem["styleWhen"]>[number];
+type DynamicConditionOperator = "equals" | "notEquals" | "greaterThan" | "lessThan";
+
+type DynamicStyleSourceOption = {
+  label: string;
+  value: string;
+};
 
 type SymbolSlotBindingEntry = {
   kind: "slot";
@@ -1009,6 +1018,16 @@ function renderSimulationPanelError(elements: EditorElements, message: string, d
   elements.simulationList.replaceChildren(createSimulationEmptyState(documentRef, message));
 }
 
+function renderSimulationPanelFromCurrentJson(elements: EditorElements, documentRef: Document): void {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+  if (!result.ok) {
+    renderSimulationPanelError(elements, result.message, documentRef);
+    return;
+  }
+
+  renderSimulationPanel(elements, result.payload, documentRef);
+}
+
 function createSimulationEmptyState(documentRef: Document, message: string): HTMLElement {
   const empty = documentRef.createElement("div");
   empty.className = "simulation-empty-state field-helper";
@@ -1170,9 +1189,9 @@ function getPreferredSimulationValueType(
 ): SymbolSlotValueType {
   const priority: Record<SymbolSlotValueType, number> = {
     text: 0,
-    percent: 1,
-    temperature: 2,
-    binary: 3
+    binary: 1,
+    percent: 2,
+    temperature: 3
   };
   return priority[candidate] > priority[current] ? candidate : current;
 }
@@ -3942,6 +3961,7 @@ function renderInspector(
 
   appendSymbolMetadataInspector(elements, documentRef, item, payload);
   appendStyleInspector(elements, documentRef, item);
+  appendDynamicStyleInspector(elements, documentRef, item, payload);
 }
 
 function appendSymbolMetadataInspector(
@@ -4003,14 +4023,14 @@ function appendSymbolMetadataInspector(
     documentRef,
     "Part dynamic styles",
     definition.partStyles?.map((entry) => (
-      `${entry.partId} when ${entry.when.entityId} = ${entry.when.equals}`
+      `${entry.partId} when ${formatDynamicCondition(entry.when)}`
     )) ?? []
   ));
   section.append(createSymbolMetadataGroup(
     documentRef,
     "Part animations",
     definition.partAnimations?.map((entry) => (
-      `${entry.partId} ${entry.preset} when ${entry.when.entityId} = ${entry.when.equals}`
+      `${entry.partId} ${entry.preset} when ${formatDynamicCondition(entry.when)}`
     )) ?? []
   ));
   appendSymbolSlotBindingEditor(elements, documentRef, item, definition, section);
@@ -4186,6 +4206,542 @@ function appendStyleInspector(elements: EditorElements, documentRef: Document, i
   elements.inspector.append(section);
 }
 
+function appendDynamicStyleInspector(
+  elements: EditorElements,
+  documentRef: Document,
+  item: SchematicItem,
+  payload: SchematicPayload
+): void {
+  const section = createDynamicStyleSection(documentRef, item, getDynamicStyleSourceOptions(payload), "input", {
+    addRule: () => addSelectedItemDynamicStyleRule(elements, payload, documentRef),
+    clearVisibility: () => updateSelectedItemVisibilityCondition(elements, undefined, documentRef),
+    updateRule: (index, rule) => updateSelectedItemDynamicStyleRule(elements, index, rule, documentRef),
+    updateVisibility: (condition) => updateSelectedItemVisibilityCondition(elements, condition, documentRef)
+  });
+  elements.inspector.append(section);
+}
+
+function createDynamicStyleSection(
+  documentRef: Document,
+  item: SchematicItem,
+  sourceOptions: DynamicStyleSourceOption[],
+  sourceMode: "input" | "select",
+  actions: {
+    addRule: () => void;
+    clearVisibility: () => void;
+    updateRule: (index: number, rule: DynamicStyleRule | undefined) => void;
+    updateVisibility: (condition: SchematicVisibilityCondition | undefined) => void;
+  }
+): HTMLElement {
+  const section = documentRef.createElement("section");
+  section.className = "dynamic-style-section";
+
+  const heading = documentRef.createElement("div");
+  heading.className = "field-label";
+  heading.textContent = "Dynamic Styles";
+
+  const helper = documentRef.createElement("p");
+  helper.className = "field-helper dynamic-style-helper";
+  helper.textContent = "React to simulated entities or symbol slots. Rules are stored as visibleWhen and styleWhen JSON.";
+
+  section.append(heading, helper, createDynamicVisibilityEditor(documentRef, item, sourceOptions, sourceMode, actions));
+
+  const rules = documentRef.createElement("div");
+  rules.className = "dynamic-style-rule-list";
+
+  if (!item.styleWhen || item.styleWhen.length === 0) {
+    const empty = documentRef.createElement("div");
+    empty.className = "field-helper dynamic-style-empty";
+    empty.textContent = "No conditional style rules.";
+    rules.append(empty);
+  } else {
+    item.styleWhen.forEach((rule, index) => {
+      rules.append(createDynamicStyleRuleEditor(documentRef, rule, index, sourceOptions, sourceMode, actions));
+    });
+  }
+
+  const addButton = documentRef.createElement("button");
+  addButton.className = "secondary-button dynamic-add-style-rule-button";
+  addButton.type = "button";
+  addButton.textContent = "Add style rule";
+  addButton.addEventListener("click", actions.addRule);
+
+  section.append(rules, addButton);
+  return section;
+}
+
+function createDynamicVisibilityEditor(
+  documentRef: Document,
+  item: SchematicItem,
+  sourceOptions: DynamicStyleSourceOption[],
+  sourceMode: "input" | "select",
+  actions: {
+    clearVisibility: () => void;
+    updateVisibility: (condition: SchematicVisibilityCondition | undefined) => void;
+  }
+): HTMLElement {
+  const card = documentRef.createElement("section");
+  card.className = "dynamic-style-card dynamic-visibility-card";
+
+  const title = documentRef.createElement("div");
+  title.className = "symbol-manager-detail-heading";
+  title.textContent = "Visibility";
+
+  const condition = item.visibleWhen;
+  const entityInput = createDynamicSourceControl(
+    documentRef,
+    "Show when entity / slot",
+    "dynamic-visibility-entity-input",
+    condition?.entityId ?? getDefaultDynamicSource(sourceOptions),
+    sourceOptions,
+    sourceMode
+  );
+  const operatorSelect = createDynamicOperatorSelect(documentRef, "dynamic-visibility-operator-select", getDynamicConditionOperator(condition));
+  const valueInput = createDynamicValueInput(documentRef, "Value", "dynamic-visibility-value-input", getDynamicConditionValue(condition));
+
+  const applyButton = documentRef.createElement("button");
+  applyButton.className = "secondary-button dynamic-visibility-apply-button";
+  applyButton.type = "button";
+  applyButton.textContent = condition ? "Update visibility" : "Set visibility";
+  applyButton.addEventListener("click", () => {
+    const nextCondition = createDynamicCondition(getDynamicSourceValue(entityInput), getDynamicOperatorValue(operatorSelect), getDynamicInputValue(valueInput));
+    if (nextCondition) {
+      actions.updateVisibility(nextCondition);
+    }
+  });
+
+  const clearButton = documentRef.createElement("button");
+  clearButton.className = "secondary-button dynamic-visibility-clear-button";
+  clearButton.type = "button";
+  clearButton.textContent = "Clear";
+  clearButton.disabled = !condition;
+  clearButton.addEventListener("click", actions.clearVisibility);
+
+  const summary = documentRef.createElement("div");
+  summary.className = "field-helper dynamic-style-summary";
+  summary.textContent = condition ? `Currently: ${formatDynamicCondition(condition)}` : "No visibility condition.";
+
+  card.append(title, entityInput, operatorSelect, valueInput, createDynamicActionRow(documentRef, applyButton, clearButton), summary);
+  appendDynamicSourceOptions(card, documentRef, sourceOptions);
+  return card;
+}
+
+function createDynamicStyleRuleEditor(
+  documentRef: Document,
+  rule: DynamicStyleRule,
+  index: number,
+  sourceOptions: DynamicStyleSourceOption[],
+  sourceMode: "input" | "select",
+  actions: {
+    updateRule: (index: number, rule: DynamicStyleRule | undefined) => void;
+  }
+): HTMLElement {
+  const row = documentRef.createElement("section");
+  row.className = "dynamic-style-card dynamic-style-rule";
+  row.dataset.ruleIndex = String(index);
+
+  const title = documentRef.createElement("div");
+  title.className = "symbol-manager-detail-heading";
+  title.textContent = `Style rule ${index + 1}`;
+
+  const entityInput = createDynamicSourceControl(documentRef, "Entity slot", "dynamic-rule-entity-input", rule.when.entityId, sourceOptions, sourceMode);
+  const operatorSelect = createDynamicOperatorSelect(documentRef, "dynamic-rule-operator-select", getDynamicConditionOperator(rule.when));
+  const valueInput = createDynamicValueInput(documentRef, "Value", "dynamic-rule-value-input", getDynamicConditionValue(rule.when));
+
+  const fillInput = createDynamicPaintOutputControl(documentRef, "Fill", "dynamic-rule-fill-input", rule.style.fill);
+  const strokeInput = createDynamicPaintOutputControl(documentRef, "Stroke", "dynamic-rule-stroke-input", rule.style.stroke);
+  const opacityInput = createDynamicStyleOutputInput(documentRef, "Opacity %", "dynamic-rule-opacity-input", formatStyleFieldValue(rule.style.opacity, "opacity"));
+  opacityInput.inputMode = "decimal";
+
+  const applyButton = documentRef.createElement("button");
+  applyButton.className = "secondary-button dynamic-rule-apply-button";
+  applyButton.type = "button";
+  applyButton.textContent = "Update rule";
+  applyButton.addEventListener("click", () => {
+    const nextRule = createDynamicStyleRule(
+      getDynamicSourceValue(entityInput),
+      getDynamicOperatorValue(operatorSelect),
+      getDynamicInputValue(valueInput),
+      getDynamicInputValue(fillInput),
+      getDynamicInputValue(strokeInput),
+      getDynamicInputValue(opacityInput)
+    );
+    if (nextRule) {
+      actions.updateRule(index, nextRule);
+    }
+  });
+
+  const deleteButton = documentRef.createElement("button");
+  deleteButton.className = "secondary-button dynamic-delete-style-rule-button";
+  deleteButton.type = "button";
+  deleteButton.textContent = "Delete";
+  deleteButton.addEventListener("click", () => actions.updateRule(index, undefined));
+
+  row.append(title, entityInput, operatorSelect, valueInput, fillInput, strokeInput, opacityInput, createDynamicActionRow(documentRef, applyButton, deleteButton));
+  appendDynamicSourceOptions(row, documentRef, sourceOptions);
+  return row;
+}
+
+function createDynamicSourceControl(
+  documentRef: Document,
+  label: string,
+  className: string,
+  value: string,
+  sourceOptions: DynamicStyleSourceOption[],
+  sourceMode: "input" | "select"
+): HTMLLabelElement {
+  const field = documentRef.createElement("label");
+  field.className = "inspector-field dynamic-style-field";
+
+  const labelText = documentRef.createElement("span");
+  labelText.className = "field-label";
+  labelText.textContent = label;
+
+  if (sourceMode === "select") {
+    const select = documentRef.createElement("select");
+    select.className = `inspector-input ${className.replace("-input", "-select")}`;
+
+    const options = sourceOptions.length > 0 ? sourceOptions : [{ label: "No slots defined", value: "" }];
+
+    for (const option of options) {
+      const optionElement = documentRef.createElement("option");
+      optionElement.value = option.value;
+      optionElement.textContent = option.label;
+      select.append(optionElement);
+    }
+
+    select.disabled = sourceOptions.length === 0;
+    select.value = options.some((option) => option.value === value) ? value : options[0].value;
+    field.append(labelText, select);
+    return field;
+  }
+
+  const input = documentRef.createElement("input");
+  input.className = `inspector-input ${className}`;
+  input.type = "text";
+  input.value = value;
+  input.placeholder = "sensor.example or slot:running";
+
+  field.append(labelText, input);
+  return field;
+}
+
+function createDynamicOperatorSelect(
+  documentRef: Document,
+  className: string,
+  value: DynamicConditionOperator
+): HTMLLabelElement {
+  const field = documentRef.createElement("label");
+  field.className = "inspector-field dynamic-style-field";
+
+  const labelText = documentRef.createElement("span");
+  labelText.className = "field-label";
+  labelText.textContent = "Condition";
+
+  const select = documentRef.createElement("select");
+  select.className = `inspector-input ${className}`;
+  for (const [operator, label] of [
+    ["equals", "equals"],
+    ["notEquals", "not equals"],
+    ["greaterThan", "greater than"],
+    ["lessThan", "less than"]
+  ] as Array<[DynamicConditionOperator, string]>) {
+    const option = documentRef.createElement("option");
+    option.value = operator;
+    option.textContent = label;
+    select.append(option);
+  }
+  select.value = value;
+
+  field.append(labelText, select);
+  return field;
+}
+
+function createDynamicValueInput(documentRef: Document, label: string, className: string, value: string): HTMLLabelElement {
+  const field = documentRef.createElement("label");
+  field.className = "inspector-field dynamic-style-field";
+
+  const labelText = documentRef.createElement("span");
+  labelText.className = "field-label";
+  labelText.textContent = label;
+
+  const input = documentRef.createElement("input");
+  input.className = `inspector-input ${className}`;
+  input.type = "text";
+  input.value = value;
+  input.placeholder = "on, off, 30...";
+
+  field.append(labelText, input);
+  return field;
+}
+
+function createDynamicStyleOutputInput(
+  documentRef: Document,
+  label: string,
+  className: string,
+  value: string | number | undefined
+): HTMLLabelElement {
+  const field = documentRef.createElement("label");
+  field.className = "inspector-field dynamic-style-field";
+
+  const labelText = documentRef.createElement("span");
+  labelText.className = "field-label";
+  labelText.textContent = label;
+
+  const input = documentRef.createElement("input");
+  input.className = `inspector-input ${className}`;
+  input.type = "text";
+  input.value = value === undefined ? "" : String(value);
+
+  field.append(labelText, input);
+  return field;
+}
+
+function createDynamicPaintOutputControl(
+  documentRef: Document,
+  label: string,
+  className: string,
+  value: string | undefined
+): HTMLElement {
+  const field = documentRef.createElement("div");
+  field.className = "inspector-field dynamic-style-field dynamic-paint-field";
+
+  const labelText = documentRef.createElement("span");
+  labelText.className = "field-label";
+  labelText.textContent = label;
+
+  const valueInput = documentRef.createElement("input");
+  valueInput.className = `dynamic-paint-value-input ${className}`;
+  valueInput.type = "text";
+  valueInput.value = value ?? "";
+
+  const segmented = documentRef.createElement("div");
+  segmented.className = "dynamic-paint-mode";
+
+  const themeButton = documentRef.createElement("button");
+  themeButton.className = "secondary-button dynamic-paint-theme-button";
+  themeButton.type = "button";
+  themeButton.textContent = "Theme";
+
+  const customButton = documentRef.createElement("button");
+  customButton.className = "secondary-button dynamic-paint-custom-button";
+  customButton.type = "button";
+  customButton.textContent = "Custom";
+
+  segmented.append(themeButton, customButton);
+  segmented.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || !target.closest("button")) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  });
+
+  const themeRow = documentRef.createElement("div");
+  themeRow.className = "dynamic-paint-theme-row";
+
+  const themeSwatch = documentRef.createElement("span");
+  themeSwatch.className = "dynamic-paint-swatch";
+
+  const themeSelect = documentRef.createElement("select");
+  themeSelect.className = `inspector-input dynamic-paint-theme-select ${className.replace("-input", "-theme-select")}`;
+
+  for (const preset of THEME_TOKEN_PRESETS) {
+    const option = documentRef.createElement("option");
+    option.value = preset.value;
+    option.textContent = preset.label;
+    themeSelect.append(option);
+  }
+
+  const colorInput = documentRef.createElement("input");
+  colorInput.className = `style-color-input dynamic-paint-color-input ${className.replace("-input", "-color-input")}`;
+  colorInput.type = "color";
+  colorInput.value = isHexColor(value ?? "") ? normalizeHexColor(value ?? "") : "#ff6f61";
+
+  const hasThemeValue = THEME_TOKEN_PRESETS.some((preset) => preset.value === value);
+  const useThemeMode = value === undefined || hasThemeValue;
+  themeSelect.value = hasThemeValue && value ? value : THEME_TOKEN_PRESETS[0]?.value ?? "";
+
+  const syncMode = (mode: "theme" | "custom"): void => {
+    field.dataset.paintMode = mode;
+    const isTheme = mode === "theme";
+    themeButton.setAttribute("aria-pressed", String(isTheme));
+    customButton.setAttribute("aria-pressed", String(!isTheme));
+    themeRow.hidden = !isTheme;
+    colorInput.hidden = isTheme;
+    valueInput.value = isTheme ? themeSelect.value : colorInput.value;
+    themeSwatch.style.background = themeSelect.value;
+  };
+
+  themeButton.addEventListener("click", () => syncMode("theme"));
+  customButton.addEventListener("click", () => syncMode("custom"));
+  themeSelect.addEventListener("change", () => syncMode("theme"));
+  colorInput.addEventListener("input", () => {
+    valueInput.value = colorInput.value;
+  });
+
+  themeRow.append(themeSwatch, themeSelect);
+  field.append(labelText, valueInput, segmented, themeRow, colorInput);
+  syncMode(useThemeMode ? "theme" : "custom");
+  return field;
+}
+
+function createDynamicActionRow(documentRef: Document, ...buttons: HTMLButtonElement[]): HTMLElement {
+  const row = documentRef.createElement("div");
+  row.className = "dynamic-style-actions";
+  row.append(...buttons);
+  return row;
+}
+
+function appendDynamicSourceOptions(container: HTMLElement, documentRef: Document, sourceOptions: DynamicStyleSourceOption[]): void {
+  if (sourceOptions.length === 0) {
+    return;
+  }
+
+  const helper = documentRef.createElement("div");
+  helper.className = "field-helper dynamic-source-helper";
+  helper.textContent = `Sources: ${sourceOptions.slice(0, 4).map((option) => option.label).join(", ")}${sourceOptions.length > 4 ? "..." : ""}`;
+  container.append(helper);
+}
+
+function getDynamicOperatorValue(field: HTMLLabelElement): DynamicConditionOperator {
+  const value = field.querySelector("select")?.value;
+  if (value === "notEquals" || value === "greaterThan" || value === "lessThan") {
+    return value;
+  }
+  return "equals";
+}
+
+function getDynamicInputValue(field: ParentNode): string {
+  return field.querySelector("input")?.value ?? "";
+}
+
+function getDynamicSourceValue(field: HTMLLabelElement): string {
+  return field.querySelector("select")?.value ?? field.querySelector("input")?.value ?? "";
+}
+
+function createDynamicCondition(
+  source: string,
+  operator: DynamicConditionOperator,
+  value: string
+): SchematicVisibilityCondition | undefined {
+  const entityId = source.trim();
+  const conditionValue = value.trim();
+
+  if (!entityId || !conditionValue) {
+    return undefined;
+  }
+
+  if (operator === "greaterThan" || operator === "lessThan") {
+    const numericValue = Number(conditionValue);
+    if (!Number.isFinite(numericValue)) {
+      return undefined;
+    }
+    return operator === "greaterThan"
+      ? { entityId, greaterThan: numericValue }
+      : { entityId, lessThan: numericValue };
+  }
+
+  return operator === "notEquals"
+    ? { entityId, notEquals: conditionValue }
+    : { entityId, equals: conditionValue };
+}
+
+function createDynamicStyleRule(
+  source: string,
+  operator: DynamicConditionOperator,
+  value: string,
+  fill: string,
+  stroke: string,
+  opacity: string
+): DynamicStyleRule | undefined {
+  const condition = createDynamicCondition(source, operator, value);
+  const style: SchematicStyle = {};
+  const fillValue = fill.trim();
+  const strokeValue = stroke.trim();
+  const opacityValue = opacity.trim();
+
+  if (fillValue) {
+    style.fill = fillValue;
+  }
+
+  if (strokeValue) {
+    style.stroke = strokeValue;
+  }
+
+  if (opacityValue) {
+    const opacityNumber = Number(opacityValue);
+    if (!Number.isFinite(opacityNumber)) {
+      return undefined;
+    }
+    style.opacity = opacityNumber / 100;
+  }
+
+  if (!condition || Object.keys(style).length === 0) {
+    return undefined;
+  }
+
+  return {
+    when: condition,
+    style
+  };
+}
+
+function getDynamicConditionOperator(condition: SchematicVisibilityCondition | undefined): DynamicConditionOperator {
+  if (condition?.notEquals !== undefined) {
+    return "notEquals";
+  }
+  if (condition?.greaterThan !== undefined) {
+    return "greaterThan";
+  }
+  if (condition?.lessThan !== undefined) {
+    return "lessThan";
+  }
+  return "equals";
+}
+
+function getDynamicConditionValue(condition: SchematicVisibilityCondition | undefined): string {
+  if (!condition) {
+    return "on";
+  }
+  const operator = getDynamicConditionOperator(condition);
+  const value = condition[operator];
+  return value === undefined ? "" : String(value);
+}
+
+function formatDynamicCondition(condition: SchematicVisibilityCondition): string {
+  const operator = getDynamicConditionOperator(condition);
+  const labels: Record<DynamicConditionOperator, string> = {
+    equals: "=",
+    notEquals: "!=",
+    greaterThan: ">",
+    lessThan: "<"
+  };
+  return `${condition.entityId} ${labels[operator]} ${getDynamicConditionValue(condition)}`;
+}
+
+function getDefaultDynamicSource(sourceOptions: DynamicStyleSourceOption[]): string {
+  return sourceOptions[0]?.value ?? "";
+}
+
+function getDynamicStyleSourceOptions(payload: SchematicPayload): DynamicStyleSourceOption[] {
+  const seen = new Set<string>();
+  const options: DynamicStyleSourceOption[] = [];
+
+  for (const entry of getSimulationEntityEntries(payload)) {
+    if (seen.has(entry.entityId)) {
+      continue;
+    }
+    seen.add(entry.entityId);
+    options.push({
+      label: entry.entityId,
+      value: entry.entityId
+    });
+  }
+
+  return options;
+}
+
 function appendStyleField(
   elements: EditorElements,
   documentRef: Document,
@@ -4294,30 +4850,50 @@ function createPaintFieldControls(
   field: StyleFieldConfig,
   input: HTMLInputElement
 ): HTMLElement {
+  return createPaintTokenControls(documentRef, input, {
+    colorClassName: "style-color-input",
+    presetClassName: "style-preset-select",
+    onChange: () => updateSelectedItemStyleField(elements, field, input.value, documentRef)
+  });
+}
+
+function createPaintTokenControls(
+  documentRef: Document,
+  input: HTMLInputElement,
+  options: {
+    colorClassName: string;
+    onChange: () => void;
+    presetClassName: string;
+  }
+): HTMLElement {
   const group = documentRef.createElement("div");
   group.className = "paint-field-group";
+  input.classList.add("paint-value-input");
 
-  const controls = documentRef.createElement("div");
-  controls.className = "paint-field-controls";
+  const modeControls = documentRef.createElement("div");
+  modeControls.className = "paint-mode";
 
-  const colorInput = documentRef.createElement("input");
-  colorInput.className = "style-color-input";
-  colorInput.type = "color";
-  colorInput.value = isHexColor(input.value) ? normalizeHexColor(input.value) : "#000000";
-  colorInput.title = "Pick color";
-  colorInput.addEventListener("input", () => {
-    input.value = colorInput.value;
-    updateSelectedItemStyleField(elements, field, input.value, documentRef);
-  });
+  const themeButton = documentRef.createElement("button");
+  themeButton.className = "secondary-button paint-theme-button";
+  themeButton.type = "button";
+  themeButton.textContent = "Theme";
+
+  const customButton = documentRef.createElement("button");
+  customButton.className = "secondary-button paint-custom-button";
+  customButton.type = "button";
+  customButton.textContent = "Custom";
+
+  modeControls.append(themeButton, customButton);
+
+  const themeRow = documentRef.createElement("div");
+  themeRow.className = "paint-token-row";
+
+  const themeSwatch = documentRef.createElement("span");
+  themeSwatch.className = "paint-token-swatch";
 
   const presetSelect = documentRef.createElement("select");
-  presetSelect.className = "style-preset-select";
-  presetSelect.title = "Use theme colors";
-
-  const emptyOption = documentRef.createElement("option");
-  emptyOption.value = "";
-  emptyOption.textContent = "Use theme colors...";
-  presetSelect.append(emptyOption);
+  presetSelect.className = options.presetClassName;
+  presetSelect.title = "Use theme color";
 
   for (const preset of THEME_TOKEN_PRESETS) {
     const option = documentRef.createElement("option");
@@ -4326,18 +4902,40 @@ function createPaintFieldControls(
     presetSelect.append(option);
   }
 
-  presetSelect.value = THEME_TOKEN_PRESETS.some((preset) => preset.value === input.value) ? input.value : "";
-  presetSelect.addEventListener("change", () => {
-    if (!presetSelect.value) {
-      return;
-    }
+  const colorInput = documentRef.createElement("input");
+  colorInput.className = options.colorClassName;
+  colorInput.type = "color";
+  colorInput.value = isHexColor(input.value) ? normalizeHexColor(input.value) : "#000000";
+  colorInput.title = "Pick custom color";
 
-    input.value = presetSelect.value;
-    updateSelectedItemStyleField(elements, field, input.value, documentRef);
+  const hasThemeValue = THEME_TOKEN_PRESETS.some((preset) => preset.value === input.value);
+  presetSelect.value = hasThemeValue ? input.value : THEME_TOKEN_PRESETS[0]?.value ?? "";
+
+  const syncMode = (mode: "theme" | "custom", commit: boolean): void => {
+    const isTheme = mode === "theme";
+    group.dataset.paintMode = mode;
+    themeButton.setAttribute("aria-pressed", String(isTheme));
+    customButton.setAttribute("aria-pressed", String(!isTheme));
+    themeRow.hidden = !isTheme;
+    colorInput.hidden = isTheme;
+    input.value = isTheme ? presetSelect.value : colorInput.value;
+    themeSwatch.style.background = presetSelect.value;
+    if (commit) {
+      options.onChange();
+    }
+  };
+
+  themeButton.addEventListener("click", () => syncMode("theme", true));
+  customButton.addEventListener("click", () => syncMode("custom", true));
+  presetSelect.addEventListener("change", () => syncMode("theme", true));
+  colorInput.addEventListener("input", () => {
+    input.value = colorInput.value;
+    options.onChange();
   });
 
-  controls.append(input, colorInput);
-  group.append(controls, presetSelect);
+  themeRow.append(themeSwatch, presetSelect);
+  group.append(input, modeControls, themeRow, colorInput);
+  syncMode(hasThemeValue ? "theme" : "custom", false);
   return group;
 }
 
@@ -4482,6 +5080,98 @@ function updateSelectedItemStyleField(
   elements.jsonInput.value = formatPayloadJson(result.payload);
   updateFromJson(elements, documentRef, options);
   elements.inspectorStatus.textContent = `Updated ${field.name} for ${item.id}`;
+  elements.inspectorStatus.dataset.state = "valid";
+}
+
+function updateSelectedItemVisibilityCondition(
+  elements: EditorElements,
+  condition: SchematicVisibilityCondition | undefined,
+  documentRef: Document
+): void {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  const item = result.payload.items.find((candidate) => candidate.id === elements.selectedItemId);
+
+  if (!item) {
+    elements.inspectorStatus.textContent = "Selected item was not found";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  recordHistory(elements);
+  if (condition) {
+    item.visibleWhen = condition;
+  } else {
+    delete item.visibleWhen;
+  }
+
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  updateFromJson(elements, documentRef);
+  elements.inspectorStatus.textContent = condition ? `Updated visibility for ${item.id}` : `Cleared visibility for ${item.id}`;
+  elements.inspectorStatus.dataset.state = "valid";
+}
+
+function addSelectedItemDynamicStyleRule(
+  elements: EditorElements,
+  payload: SchematicPayload,
+  documentRef: Document
+): void {
+  const defaultSource = getDefaultDynamicSource(getDynamicStyleSourceOptions(payload)) || "input_boolean.schematic_demo_alarm";
+  const defaultRule = createDynamicStyleRule(defaultSource, "equals", "on", "var(--error-color)", "", "");
+
+  if (!defaultRule) {
+    return;
+  }
+
+  updateSelectedItemDynamicStyleRule(elements, -1, defaultRule, documentRef);
+}
+
+function updateSelectedItemDynamicStyleRule(
+  elements: EditorElements,
+  index: number,
+  rule: DynamicStyleRule | undefined,
+  documentRef: Document
+): void {
+  const result = parseAndValidatePayload(elements.jsonInput.value);
+
+  if (!result.ok) {
+    renderDisabledItemTools(elements, result.message);
+    return;
+  }
+
+  const item = result.payload.items.find((candidate) => candidate.id === elements.selectedItemId);
+
+  if (!item) {
+    elements.inspectorStatus.textContent = "Selected item was not found";
+    elements.inspectorStatus.dataset.state = "error";
+    return;
+  }
+
+  recordHistory(elements);
+  const rules = [...(item.styleWhen ?? [])];
+
+  if (index < 0 && rule) {
+    rules.push(rule);
+  } else if (rule) {
+    rules[index] = rule;
+  } else {
+    rules.splice(index, 1);
+  }
+
+  if (rules.length === 0) {
+    delete item.styleWhen;
+  } else {
+    item.styleWhen = rules;
+  }
+
+  elements.jsonInput.value = formatPayloadJson(result.payload);
+  updateFromJson(elements, documentRef);
+  elements.inspectorStatus.textContent = `Updated dynamic styles for ${item.id}`;
   elements.inspectorStatus.dataset.state = "valid";
 }
 
@@ -4908,7 +5598,6 @@ function renderSymbolPreview(elements: EditorElements, symbol: SchematicSymbolDe
     const itemId = findSymbolPreviewInternalItemId(elements, symbol, event.target);
 
     if (!itemId) {
-      clearSymbolSelection(elements, documentRef);
       return;
     }
 
@@ -5991,13 +6680,13 @@ function getSymbolSlotConditionValues(symbol: SchematicSymbolDefinition, slotId:
   const entityId = `slot:${slotId}`;
 
   for (const style of symbol.partStyles ?? []) {
-    if (style.when.entityId === entityId) {
+    if (style.when.entityId === entityId && style.when.equals !== undefined) {
       values.add(style.when.equals);
     }
   }
 
   for (const animation of symbol.partAnimations ?? []) {
-    if (animation.when.entityId === entityId) {
+    if (animation.when.entityId === entityId && animation.when.equals !== undefined) {
       values.add(animation.when.equals);
     }
   }
@@ -6011,13 +6700,13 @@ function getSymbolSlotEffects(symbol: SchematicSymbolDefinition, slotId: string)
 
   for (const style of symbol.partStyles ?? []) {
     if (style.when.entityId === entityId) {
-      effects.push(`${style.partId} style when ${slotId} = ${style.when.equals}`);
+      effects.push(`${style.partId} style when ${formatDynamicCondition(style.when)}`);
     }
   }
 
   for (const animation of symbol.partAnimations ?? []) {
     if (animation.when.entityId === entityId) {
-      effects.push(`${animation.partId} ${animation.preset} when ${slotId} = ${animation.when.equals}`);
+      effects.push(`${animation.partId} ${animation.preset} when ${formatDynamicCondition(animation.when)}`);
     }
   }
 
@@ -6088,6 +6777,7 @@ function renderSymbolEditorInspector(
   appendSymbolInternalItemField(elements, documentRef, selectedItem, "layer", "number");
   appendSymbolPartAssignmentField(elements, documentRef, symbol, selectedItem);
   appendSymbolInternalStyleInspector(elements, documentRef, selectedItem);
+  appendSymbolInternalDynamicStyleInspector(elements, documentRef, symbol, selectedItem);
 }
 
 function appendSymbolDefinitionMetadataInspector(elements: EditorElements, documentRef: Document, symbol: SchematicSymbolDefinition): void {
@@ -6705,6 +7395,28 @@ function appendSymbolInternalStyleInspector(elements: EditorElements, documentRe
   elements.symbolInspector.append(section);
 }
 
+function appendSymbolInternalDynamicStyleInspector(
+  elements: EditorElements,
+  documentRef: Document,
+  symbol: SchematicSymbolDefinition,
+  item: SchematicItem
+): void {
+  const section = createDynamicStyleSection(documentRef, item, getSymbolDynamicStyleSourceOptions(symbol), "select", {
+    addRule: () => addSelectedSymbolInternalDynamicStyleRule(elements, symbol, documentRef),
+    clearVisibility: () => updateSelectedSymbolInternalVisibilityCondition(elements, undefined, documentRef),
+    updateRule: (index, rule) => updateSelectedSymbolInternalDynamicStyleRule(elements, index, rule, documentRef),
+    updateVisibility: (condition) => updateSelectedSymbolInternalVisibilityCondition(elements, condition, documentRef)
+  });
+  elements.symbolInspector.append(section);
+}
+
+function getSymbolDynamicStyleSourceOptions(symbol: SchematicSymbolDefinition): DynamicStyleSourceOption[] {
+  return (symbol.entitySlots ?? []).map((slot) => ({
+    label: slot.label ? `slot:${slot.id} - ${slot.label}` : `slot:${slot.id}`,
+    value: `slot:${slot.id}`
+  }));
+}
+
 function appendSymbolInternalStyleField(
   elements: EditorElements,
   documentRef: Document,
@@ -6802,51 +7514,11 @@ function createSymbolPaintFieldControls(
   field: StyleFieldConfig,
   input: HTMLInputElement
 ): HTMLElement {
-  const group = documentRef.createElement("div");
-  group.className = "paint-field-group";
-
-  const controls = documentRef.createElement("div");
-  controls.className = "paint-field-controls";
-
-  const colorInput = documentRef.createElement("input");
-  colorInput.className = "style-color-input symbol-style-color-input";
-  colorInput.type = "color";
-  colorInput.value = isHexColor(input.value) ? normalizeHexColor(input.value) : "#000000";
-  colorInput.title = "Pick color";
-  colorInput.addEventListener("input", () => {
-    input.value = colorInput.value;
-    updateSelectedSymbolInternalItemStyleField(elements, field, input.value, documentRef);
+  return createPaintTokenControls(documentRef, input, {
+    colorClassName: "style-color-input symbol-style-color-input",
+    presetClassName: "style-preset-select symbol-style-preset-select",
+    onChange: () => updateSelectedSymbolInternalItemStyleField(elements, field, input.value, documentRef)
   });
-
-  const presetSelect = documentRef.createElement("select");
-  presetSelect.className = "style-preset-select symbol-style-preset-select";
-  presetSelect.title = "Use theme colors";
-
-  const emptyOption = documentRef.createElement("option");
-  emptyOption.value = "";
-  emptyOption.textContent = "Use theme colors...";
-  presetSelect.append(emptyOption);
-
-  for (const preset of THEME_TOKEN_PRESETS) {
-    const option = documentRef.createElement("option");
-    option.value = preset.value;
-    option.textContent = preset.label;
-    presetSelect.append(option);
-  }
-
-  presetSelect.value = THEME_TOKEN_PRESETS.some((preset) => preset.value === input.value) ? input.value : "";
-  presetSelect.addEventListener("change", () => {
-    if (!presetSelect.value) {
-      return;
-    }
-
-    input.value = presetSelect.value;
-    updateSelectedSymbolInternalItemStyleField(elements, field, input.value, documentRef);
-  });
-
-  controls.append(input, colorInput);
-  group.append(controls, presetSelect);
-  return group;
 }
 
 function updateSelectedSymbolInternalItemField(
@@ -7026,6 +7698,78 @@ function updateSelectedSymbolInternalItemStyleField(
 
   commitSymbolEditorPayload(elements, edit.payload, documentRef);
   showSymbolWorkspaceStatus(elements, `Updated ${field.name} for ${edit.item.id}`);
+}
+
+function updateSelectedSymbolInternalVisibilityCondition(
+  elements: EditorElements,
+  condition: SchematicVisibilityCondition | undefined,
+  documentRef: Document
+): void {
+  const edit = getSelectedSymbolInternalItemEdit(elements);
+
+  if (!edit.ok) {
+    renderSymbolWorkspaceError(elements, edit.message);
+    return;
+  }
+
+  recordHistory(elements);
+  if (condition) {
+    edit.item.visibleWhen = condition;
+  } else {
+    delete edit.item.visibleWhen;
+  }
+
+  commitSymbolEditorPayload(elements, edit.payload, documentRef);
+  showSymbolWorkspaceStatus(elements, condition ? `Updated visibility for ${edit.item.id}` : `Cleared visibility for ${edit.item.id}`);
+}
+
+function addSelectedSymbolInternalDynamicStyleRule(
+  elements: EditorElements,
+  symbol: SchematicSymbolDefinition,
+  documentRef: Document
+): void {
+  const defaultSource = getDefaultDynamicSource(getSymbolDynamicStyleSourceOptions(symbol)) || "slot:running";
+  const defaultRule = createDynamicStyleRule(defaultSource, "equals", "on", "var(--error-color)", "", "");
+
+  if (!defaultRule) {
+    return;
+  }
+
+  updateSelectedSymbolInternalDynamicStyleRule(elements, -1, defaultRule, documentRef);
+}
+
+function updateSelectedSymbolInternalDynamicStyleRule(
+  elements: EditorElements,
+  index: number,
+  rule: DynamicStyleRule | undefined,
+  documentRef: Document
+): void {
+  const edit = getSelectedSymbolInternalItemEdit(elements);
+
+  if (!edit.ok) {
+    renderSymbolWorkspaceError(elements, edit.message);
+    return;
+  }
+
+  recordHistory(elements);
+  const rules = [...(edit.item.styleWhen ?? [])];
+
+  if (index < 0 && rule) {
+    rules.push(rule);
+  } else if (rule) {
+    rules[index] = rule;
+  } else {
+    rules.splice(index, 1);
+  }
+
+  if (rules.length === 0) {
+    delete edit.item.styleWhen;
+  } else {
+    edit.item.styleWhen = rules;
+  }
+
+  commitSymbolEditorPayload(elements, edit.payload, documentRef);
+  showSymbolWorkspaceStatus(elements, `Updated dynamic styles for ${edit.item.id}`);
 }
 
 function getSelectedSymbolInternalItemEdit(
@@ -9438,7 +10182,11 @@ function setupFloatingPanels(elements: EditorElements, documentRef: Document): v
       return;
     }
 
-    toggleFloatingPanel(root, getFloatingPanelId(button), documentRef);
+    const panelId = getFloatingPanelId(button);
+    toggleFloatingPanel(root, panelId, documentRef);
+    if (panelId === "simulation") {
+      renderSimulationPanelFromCurrentJson(elements, documentRef);
+    }
   });
 
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>("[data-transfer-mode]"))) {

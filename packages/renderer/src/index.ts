@@ -138,7 +138,37 @@ function evaluateVisibilityCondition(
   }
 
   const state = getEntityState(entityStates[entityId]);
-  return state !== null && state !== undefined && String(state) === condition.equals;
+  if (state === null || state === undefined) {
+    return false;
+  }
+
+  if (condition.notEquals !== undefined) {
+    return String(state) !== condition.notEquals;
+  }
+
+  if (condition.greaterThan !== undefined) {
+    return compareNumericCondition(state, condition.greaterThan, (left, right) => left > right);
+  }
+
+  if (condition.lessThan !== undefined) {
+    return compareNumericCondition(state, condition.lessThan, (left, right) => left < right);
+  }
+
+  return condition.equals !== undefined && String(state) === condition.equals;
+}
+
+function compareNumericCondition(
+  state: unknown,
+  threshold: number,
+  compare: (left: number, right: number) => boolean
+): boolean {
+  const numericState = typeof state === "number"
+    ? state
+    : typeof state === "string" && state.trim() !== ""
+      ? Number(state)
+      : Number.NaN;
+
+  return Number.isFinite(numericState) && compare(numericState, threshold);
 }
 
 function resolveEntityId(entityId: string, context: RenderContext): string {
