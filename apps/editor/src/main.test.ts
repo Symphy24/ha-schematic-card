@@ -769,6 +769,42 @@ describe("editor app", () => {
     expect(getSymbolInternalItem(app, "demo-generic-unit", "unit-status-dot")?.partId).toBe("indicator");
   });
 
+  it("assigns selected symbol items to parts and selects part members", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, ".open-symbol-editor-button").click();
+    getButton(app, ".symbol-start-edit-button").click();
+    getButton(app, '[data-symbol-item-id="unit-box"]').click();
+    getButton(app, '[data-symbol-item-id="unit-label"]').dispatchEvent(new MouseEvent("click", { ctrlKey: true, bubbles: true }));
+
+    const bulkSelect = getSelect(app, ".symbol-part-bulk-select");
+    bulkSelect.value = "status";
+    bulkSelect.dispatchEvent(new Event("change"));
+    getButton(app, ".symbol-bulk-assign-part-button").click();
+
+    expect(getSymbolInternalItem(app, "demo-generic-unit", "unit-box")?.partId).toBe("status");
+    expect(getSymbolInternalItem(app, "demo-generic-unit", "unit-label")?.partId).toBe("status");
+    const statusPart = getSymbol(app, "demo-generic-unit")?.parts?.find((part) => part.id === "status") as { itemIds?: string[] } | undefined;
+    expect(statusPart?.itemIds).toEqual(expect.arrayContaining(["unit-box", "unit-label", "unit-status-dot"]));
+    expect(statusPart?.itemIds).toHaveLength(3);
+    expect(app.querySelector('.symbol-part-row[data-part-id="status"]')?.textContent).toContain("unit-box");
+    expect(app.querySelector('.symbol-part-row[data-part-id="status"]')?.textContent).toContain("unit-label");
+
+    app.querySelector<HTMLElement>('.symbol-part-row[data-part-id="status"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(getButton(app, '[data-symbol-item-id="unit-box"]').getAttribute("aria-pressed")).toBe("true");
+    expect(getButton(app, '[data-symbol-item-id="unit-label"]').getAttribute("aria-pressed")).toBe("true");
+    expect(getButton(app, '[data-symbol-item-id="unit-status-dot"]').getAttribute("aria-pressed")).toBe("true");
+    expect(app.querySelector<HTMLElement>(".symbol-editor-inspector")?.textContent).toContain("3 internal items selected");
+
+    getButton(app, ".symbol-bulk-remove-part-button").click();
+    expect(getSymbolInternalItem(app, "demo-generic-unit", "unit-box")?.partId).toBeUndefined();
+    expect(getSymbolInternalItem(app, "demo-generic-unit", "unit-label")?.partId).toBeUndefined();
+    expect(getSymbolInternalItem(app, "demo-generic-unit", "unit-status-dot")?.partId).toBeUndefined();
+    const clearedStatusPart = getSymbol(app, "demo-generic-unit")?.parts?.find((part) => part.id === "status") as { itemIds?: string[] } | undefined;
+    expect(clearedStatusPart?.itemIds).toBeUndefined();
+  });
+
   it("edits symbol parts and slots from the symbol editor manager", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);

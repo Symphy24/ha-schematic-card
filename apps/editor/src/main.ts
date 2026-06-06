@@ -4042,15 +4042,54 @@ function getSymbolPartItemIds(
   definition: NonNullable<SchematicPayload["symbols"]>[number],
   partId: string
 ): string[] {
+  const itemIds = new Set<string>();
+
   const explicitItems = definition.items
     .filter((item) => item.partId === partId)
     .map((item) => item.id);
 
-  if (explicitItems.length > 0) {
-    return explicitItems;
+  for (const itemId of explicitItems) {
+    itemIds.add(itemId);
   }
 
-  return definition.parts?.find((part) => part.id === partId)?.itemIds ?? [];
+  for (const itemId of definition.parts?.find((part) => part.id === partId)?.itemIds ?? []) {
+    itemIds.add(itemId);
+  }
+
+  return [...itemIds];
+}
+
+function getSelectedSymbolInternalItems(symbol: SchematicSymbolDefinition, selectedItemIds: string[]): SchematicItem[] {
+  return selectedItemIds
+    .map((itemId) => findSymbolInternalItem(symbol, itemId))
+    .filter((item): item is SchematicItem => item !== undefined);
+}
+
+function hasSelectedSymbolItemsInPart(
+  symbol: SchematicSymbolDefinition,
+  selectedItemIds: string[],
+  partId: string
+): boolean {
+  return getSelectedSymbolInternalItems(symbol, selectedItemIds).some((item) => item.partId === partId);
+}
+
+function syncSymbolPartItemIds(symbol: SchematicSymbolDefinition): void {
+  const partMap = new Map((symbol.parts ?? []).map((part) => [part.id, part]));
+
+  for (const part of partMap.values()) {
+    delete part.itemIds;
+  }
+
+  for (const entry of getSymbolInternalItemEntries(symbol.items)) {
+    const partId = entry.item.partId;
+    const part = partId ? partMap.get(partId) : undefined;
+
+    if (!part) {
+      continue;
+    }
+
+    part.itemIds = [...(part.itemIds ?? []), entry.item.id];
+  }
 }
 
 function appendSymbolSlotBindingEditor(
@@ -6065,7 +6104,7 @@ function renderSymbolPartsAndSlots(
     elements.symbolPartsList.append(createSymbolWorkspaceEmpty(documentRef, "No parts"));
   } else {
     for (const part of symbol.parts) {
-      elements.symbolPartsList.append(createSymbolPartRow(elements, symbol, part, selectedItem, documentRef));
+      elements.symbolPartsList.append(createSymbolPartRow(elements, symbol, part, documentRef));
     }
   }
   elements.symbolPartsList.append(createSymbolPartAddControls(elements, documentRef));
@@ -6122,7 +6161,6 @@ function createSymbolPartRow(
   elements: EditorElements,
   symbol: SchematicSymbolDefinition,
   part: NonNullable<SchematicSymbolDefinition["parts"]>[number],
-  selectedItem: SchematicItem | undefined,
   documentRef: Document
 ): HTMLElement {
   const row = documentRef.createElement("div");
@@ -6174,9 +6212,18 @@ function createSymbolPartRow(
   assignButton.className = "secondary-button symbol-assign-selected-part-button";
   assignButton.type = "button";
   assignButton.textContent = "Assign selected";
-  assignButton.disabled = !selectedItem;
+  assignButton.disabled = elements.selectedSymbolInternalItemIds.length === 0;
   assignButton.addEventListener("click", () => {
     updateSelectedSymbolInternalItemPart(elements, part.id, documentRef);
+  });
+
+  const removeButton = documentRef.createElement("button");
+  removeButton.className = "secondary-button symbol-remove-selected-part-button";
+  removeButton.type = "button";
+  removeButton.textContent = "Remove selected";
+  removeButton.disabled = !hasSelectedSymbolItemsInPart(symbol, elements.selectedSymbolInternalItemIds, part.id);
+  removeButton.addEventListener("click", () => {
+    updateSelectedSymbolInternalItemPart(elements, "", documentRef);
   });
 
   const deleteButton = documentRef.createElement("button");
@@ -6185,7 +6232,7 @@ function createSymbolPartRow(
   deleteButton.textContent = "Delete part";
   deleteButton.addEventListener("click", () => deleteSymbolPart(elements, part.id, documentRef));
 
-  row.append(title, idInput, labelInput, itemSummary, assignButton, deleteButton);
+  row.append(title, idInput, labelInput, itemSummary, assignButton, removeButton, deleteButton);
   return row;
 }
 
@@ -6230,9 +6277,16 @@ function createSymbolPartDetailCard(
   const assignButton = documentRef.createElement("button");
   assignButton.className = "secondary-button symbol-detail-assign-selected-part-button";
   assignButton.type = "button";
-  assignButton.textContent = "Assign selected item";
-  assignButton.disabled = !selectedItem;
+  assignButton.textContent = "Assign selected";
+  assignButton.disabled = elements.selectedSymbolInternalItemIds.length === 0;
   assignButton.addEventListener("click", () => updateSelectedSymbolInternalItemPart(elements, part.id, documentRef));
+
+  const removeButton = documentRef.createElement("button");
+  removeButton.className = "secondary-button symbol-detail-remove-selected-part-button";
+  removeButton.type = "button";
+  removeButton.textContent = "Remove selected";
+  removeButton.disabled = !hasSelectedSymbolItemsInPart(symbol, elements.selectedSymbolInternalItemIds, part.id);
+  removeButton.addEventListener("click", () => updateSelectedSymbolInternalItemPart(elements, "", documentRef));
 
   const deleteButton = documentRef.createElement("button");
   deleteButton.className = "secondary-button symbol-detail-delete-part-button";
@@ -6240,7 +6294,7 @@ function createSymbolPartDetailCard(
   deleteButton.textContent = "Delete part";
   deleteButton.addEventListener("click", () => deleteSymbolPart(elements, part.id, documentRef));
 
-  actions.append(assignButton, deleteButton);
+  actions.append(assignButton, removeButton, deleteButton);
   card.append(heading, idInput, labelInput, assignedItems, actions);
   return card;
 }
@@ -6524,6 +6578,14 @@ function appendSymbolSlotTypeOptions(select: HTMLSelectElement, documentRef: Doc
 
 function selectSymbolPart(elements: EditorElements, partId: string, documentRef: Document): void {
   elements.selectedSymbolPartId = partId;
+  const edit = getActiveSymbolEdit(elements);
+
+  if (edit.ok) {
+    const itemIds = getSymbolPartItemIds(edit.symbol, partId)
+      .filter((itemId) => findSymbolInternalItem(edit.symbol, itemId));
+    setSelectedSymbolInternalItems(elements, itemIds, itemIds[0]);
+  }
+
   renderSymbolWorkspace(elements, documentRef);
 }
 
@@ -6753,6 +6815,7 @@ function renderSymbolEditorInspector(
       documentRef,
       `${elements.selectedSymbolInternalItemIds.length} internal items selected`
     ));
+    appendSelectedSymbolItemsPartAssignmentField(elements, documentRef, symbol);
     return;
   }
 
@@ -7318,7 +7381,6 @@ function appendSymbolPartAssignmentField(
   symbol: SchematicSymbolDefinition,
   item: SchematicItem
 ): void {
-  const partIds = symbol.parts?.map((part) => part.id) ?? [];
   const field = documentRef.createElement("div");
   field.className = "inspector-field symbol-inspector-field";
   field.dataset.fieldName = "partId";
@@ -7327,25 +7389,18 @@ function appendSymbolPartAssignmentField(
   labelText.className = "field-label";
   labelText.textContent = "Symbol part";
 
-  const select = documentRef.createElement("select");
-  select.className = "inspector-input symbol-part-select";
-
-  const noneOption = documentRef.createElement("option");
-  noneOption.value = "";
-  noneOption.textContent = "No part";
-  select.append(noneOption);
-
-  for (const part of symbol.parts ?? []) {
-    const option = documentRef.createElement("option");
-    option.value = part.id;
-    option.textContent = part.label ? `${part.id} - ${part.label}` : part.id;
-    select.append(option);
-  }
-
+  const select = createSymbolPartSelect(documentRef, symbol, "symbol-part-select");
   select.value = item.partId ?? "";
   select.addEventListener("change", () => {
     updateSelectedSymbolInternalItemPart(elements, select.value, documentRef);
   });
+
+  const removeButton = documentRef.createElement("button");
+  removeButton.className = "secondary-button symbol-remove-item-part-button";
+  removeButton.type = "button";
+  removeButton.textContent = "Remove from part";
+  removeButton.disabled = !item.partId;
+  removeButton.addEventListener("click", () => updateSelectedSymbolInternalItemPart(elements, "", documentRef));
 
   const createControls = documentRef.createElement("div");
   createControls.className = "symbol-part-create-controls";
@@ -7353,7 +7408,7 @@ function appendSymbolPartAssignmentField(
   const newPartInput = documentRef.createElement("input");
   newPartInput.className = "inspector-input symbol-new-part-input";
   newPartInput.type = "text";
-  newPartInput.placeholder = partIds.length === 0 ? "body" : "new-part-id";
+  newPartInput.placeholder = (symbol.parts?.length ?? 0) === 0 ? "body" : "new-part-id";
 
   const createButton = documentRef.createElement("button");
   createButton.className = "secondary-button symbol-create-part-button";
@@ -7368,8 +7423,78 @@ function appendSymbolPartAssignmentField(
   helper.textContent = "Assign this internal item to a symbol part, or create a simple new part from its id.";
 
   createControls.append(newPartInput, createButton);
-  field.append(labelText, select, createControls, helper);
+  field.append(labelText, select, removeButton, createControls, helper);
   elements.symbolInspector.append(field);
+}
+
+function appendSelectedSymbolItemsPartAssignmentField(
+  elements: EditorElements,
+  documentRef: Document,
+  symbol: SchematicSymbolDefinition
+): void {
+  const selectedItems = getSelectedSymbolInternalItems(symbol, elements.selectedSymbolInternalItemIds);
+  const field = documentRef.createElement("div");
+  field.className = "inspector-field symbol-inspector-field symbol-part-bulk-field";
+  field.dataset.fieldName = "partId";
+
+  const labelText = documentRef.createElement("span");
+  labelText.className = "field-label";
+  labelText.textContent = "Symbol part";
+
+  const select = createSymbolPartSelect(documentRef, symbol, "symbol-part-select symbol-part-bulk-select");
+  const partIds = new Set(selectedItems.map((item) => item.partId ?? ""));
+  select.value = partIds.size === 1 ? [...partIds][0] : "";
+
+  const actions = documentRef.createElement("div");
+  actions.className = "symbol-manager-actions";
+
+  const assignButton = documentRef.createElement("button");
+  assignButton.className = "secondary-button symbol-bulk-assign-part-button";
+  assignButton.type = "button";
+  assignButton.textContent = "Assign selected";
+  assignButton.disabled = select.value.length === 0;
+  select.addEventListener("change", () => {
+    assignButton.disabled = select.value.length === 0;
+  });
+  assignButton.addEventListener("click", () => updateSelectedSymbolInternalItemPart(elements, select.value, documentRef));
+
+  const removeButton = documentRef.createElement("button");
+  removeButton.className = "secondary-button symbol-bulk-remove-part-button";
+  removeButton.type = "button";
+  removeButton.textContent = "Remove from part";
+  removeButton.disabled = !selectedItems.some((item) => item.partId);
+  removeButton.addEventListener("click", () => updateSelectedSymbolInternalItemPart(elements, "", documentRef));
+
+  const helper = documentRef.createElement("span");
+  helper.className = "field-helper";
+  helper.textContent = `Assign or remove part membership for ${selectedItems.length} selected item(s).`;
+
+  actions.append(assignButton, removeButton);
+  field.append(labelText, select, actions, helper);
+  elements.symbolInspector.append(field);
+}
+
+function createSymbolPartSelect(
+  documentRef: Document,
+  symbol: SchematicSymbolDefinition,
+  className: string
+): HTMLSelectElement {
+  const select = documentRef.createElement("select");
+  select.className = `inspector-input ${className}`;
+
+  const noneOption = documentRef.createElement("option");
+  noneOption.value = "";
+  noneOption.textContent = "No part";
+  select.append(noneOption);
+
+  for (const part of symbol.parts ?? []) {
+    const option = documentRef.createElement("option");
+    option.value = part.id;
+    option.textContent = part.label ? `${part.id} - ${part.label}` : part.id;
+    select.append(option);
+  }
+
+  return select;
 }
 
 function appendSymbolInternalStyleInspector(elements: EditorElements, documentRef: Document, item: SchematicItem): void {
@@ -7585,7 +7710,7 @@ function updateSelectedSymbolInternalItemPart(
   partId: string,
   documentRef: Document
 ): void {
-  const edit = getSelectedSymbolInternalItemEdit(elements);
+  const edit = getActiveSymbolEdit(elements);
 
   if (!edit.ok) {
     renderSymbolWorkspaceError(elements, edit.message);
@@ -7593,9 +7718,10 @@ function updateSelectedSymbolInternalItemPart(
   }
 
   const nextPartId = partId.trim();
-  const currentPartId = edit.item.partId ?? "";
+  const selectedItems = getSelectedSymbolInternalItems(edit.symbol, elements.selectedSymbolInternalItemIds);
 
-  if (currentPartId === nextPartId) {
+  if (selectedItems.length === 0) {
+    showSymbolWorkspaceError(elements, "Select one or more symbol items first");
     return;
   }
 
@@ -7604,16 +7730,30 @@ function updateSelectedSymbolInternalItemPart(
     return;
   }
 
-  recordHistory(elements);
+  const changedItems = selectedItems.filter((item) => (item.partId ?? "") !== nextPartId);
 
-  if (nextPartId.length === 0) {
-    delete edit.item.partId;
-  } else {
-    edit.item.partId = nextPartId;
+  if (changedItems.length === 0) {
+    return;
   }
 
+  recordHistory(elements);
+
+  for (const item of changedItems) {
+    if (nextPartId.length === 0) {
+      delete item.partId;
+    } else {
+      item.partId = nextPartId;
+    }
+  }
+
+  syncSymbolPartItemIds(edit.symbol);
   commitSymbolEditorPayload(elements, edit.payload, documentRef);
-  showSymbolWorkspaceStatus(elements, nextPartId ? `Assigned ${edit.item.id} to ${nextPartId}` : `Removed part assignment from ${edit.item.id}`);
+  showSymbolWorkspaceStatus(
+    elements,
+    nextPartId
+      ? `Assigned ${changedItems.length} item(s) to ${nextPartId}`
+      : `Removed part assignment from ${changedItems.length} item(s)`
+  );
 }
 
 function createSymbolPartForSelectedItem(
