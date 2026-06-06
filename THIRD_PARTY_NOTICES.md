@@ -13,6 +13,7 @@ Source files inspected/adapted include:
 - `static/js/tileManager.js`
 - `static/js/modalSnap.js`
 - `static/js/sidebar-layout.js`
+- `static/js/theme.js`
 - `static/js/tourHints.js`
 
 Odysseus is licensed under the MIT License:

@@ -16,6 +16,7 @@ const demoPayload = demoPayloadJson as SchematicPayload;
 const DEFAULT_EDITOR_GRID_SIZE = 10;
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const THEME_STORAGE_KEY = "ha-schematic-card-editor-theme-preview";
+const APP_THEME_STORAGE_KEY = "ha-schematic-card-editor-app-theme";
 
 const demoEntityStates = {
   "input_boolean.schematic_demo_alarm": "on",
@@ -58,6 +59,8 @@ type EditorElements = {
   themeInput: HTMLTextAreaElement;
   themeStatus: HTMLElement;
   themePreviewToggle: HTMLInputElement;
+  appThemePanel: HTMLElement;
+  appThemeStatus: HTMLElement;
   transferPanel: HTMLElement;
   transferPanelTitle: HTMLElement;
   importSection: HTMLElement;
@@ -82,21 +85,12 @@ type EditorElements = {
   symbolDeleteItemButton: HTMLButtonElement;
   symbolUndoButton: HTMLButtonElement;
   symbolRedoButton: HTMLButtonElement;
-  symbolFileMenuButton: HTMLButtonElement;
-  symbolFileMenu: HTMLElement;
   symbolImportDialog: HTMLElement;
   closeSymbolImportDialogButton: HTMLButtonElement;
   cancelSymbolImportButton: HTMLButtonElement;
   createSymbolButton: HTMLButtonElement;
   symbolSelect: HTMLSelectElement;
   symbolPreviewSurface: HTMLElement;
-  symbolItemsTabButton: HTMLButtonElement;
-  symbolPartsTabButton: HTMLButtonElement;
-  symbolSlotsTabButton: HTMLButtonElement;
-  symbolPrimaryPanel: HTMLElement;
-  symbolDockedPanel: HTMLElement;
-  symbolDockedPanelTab: HTMLButtonElement;
-  symbolTabDropZone: HTMLElement;
   symbolItemsSection: HTMLElement;
   symbolPartsSection: HTMLElement;
   symbolSlotsSection: HTMLElement;
@@ -162,11 +156,8 @@ type EditorElements = {
   panMode: boolean;
   previewViewBox?: PreviewViewBox;
   activeTab: EditorTabName;
-  activeSymbolTab: SymbolEditorTabName;
   dockedTab?: EditorTabName;
   draggedTab?: EditorTabName;
-  dockedSymbolTab?: SymbolEditorTabName;
-  draggedSymbolTab?: SymbolEditorTabName;
   undoStack: EditorSnapshot[];
   redoStack: EditorSnapshot[];
   dragState?: PreviewDragState;
@@ -241,9 +232,9 @@ type MirrorAction = "horizontal" | "vertical";
 type AddItemType = "text" | "rect" | "circle" | "polyline";
 
 type EditorTabName = "items" | "inspector" | "json";
-type SymbolEditorTabName = "items" | "parts" | "slots";
 type WorkspaceMode = "card" | "symbol";
-type FloatingPanelId = "items" | "inspector" | "json" | "transfer";
+type SymbolFloatingPanelId = "symbol-items" | "symbol-parts" | "symbol-slots" | "symbol-inspector" | "symbol-import";
+type FloatingPanelId = "items" | "inspector" | "json" | "transfer" | "app-theme" | SymbolFloatingPanelId;
 type FloatingPanelDockZone = "left" | "right" | "bottom";
 type FloatingPanelSnapZone = "fullscreen" | "left" | "right" | "bottom";
 type FloatingPanelResizeMode = "floating" | "dock-zone";
@@ -336,6 +327,31 @@ type ThemeTokenPreset = {
   value: string;
 };
 
+type EditorThemePresetId =
+  | "odysseus"
+  | "light"
+  | "midnight"
+  | "paper"
+  | "cyberpunk"
+  | "ocean"
+  | "terminal"
+  | "gpt"
+  | "claude";
+
+type EditorThemePreset = {
+  id: EditorThemePresetId;
+  label: string;
+  description: string;
+  colors: {
+    bg: string;
+    fg: string;
+    panel: string;
+    border: string;
+    red: string;
+    muted: string;
+  };
+};
+
 type SvgImportResult =
   | { ok: true; items: SchematicItem[]; warnings: string[] }
   | { ok: false; errors: string[] };
@@ -408,9 +424,70 @@ const THEME_TOKEN_PRESETS: ThemeTokenPreset[] = [
   { label: "divider", value: "var(--divider-color)" }
 ];
 
+// Adapted from Odysseus `static/js/theme.js` preset color tokens (MIT).
+const EDITOR_THEME_PRESETS: EditorThemePreset[] = [
+  {
+    id: "odysseus",
+    label: "Odysseus",
+    description: "Default dark technical shell",
+    colors: { bg: "#282c34", fg: "#9cdef2", panel: "#111111", border: "#355a66", red: "#e06c75", muted: "#6b8a94" }
+  },
+  {
+    id: "light",
+    label: "Light",
+    description: "Soft warm light controls",
+    colors: { bg: "#f0ebe3", fg: "#5a5248", panel: "#faf6f0", border: "#d4cdc2", red: "#c47d5a", muted: "#8d8275" }
+  },
+  {
+    id: "midnight",
+    label: "Midnight",
+    description: "Deep blue-black workspace",
+    colors: { bg: "#0d1117", fg: "#c9d1d9", panel: "#161b22", border: "#30363d", red: "#f85149", muted: "#7d8590" }
+  },
+  {
+    id: "paper",
+    label: "Paper",
+    description: "Low contrast paper surface",
+    colors: { bg: "#faf8f5", fg: "#3b3836", panel: "#ffffff", border: "#d5d0c8", red: "#c5ac4a", muted: "#817a71" }
+  },
+  {
+    id: "cyberpunk",
+    label: "Cyberpunk",
+    description: "Neon cyan and violet",
+    colors: { bg: "#0a0a0f", fg: "#0ff0fc", panel: "#12101a", border: "#9b30ff", red: "#e040fb", muted: "#7aa9c7" }
+  },
+  {
+    id: "ocean",
+    label: "Ocean",
+    description: "Blue technical workspace",
+    colors: { bg: "#0b1a2c", fg: "#64d2ff", panel: "#091422", border: "#1e5074", red: "#4facfe", muted: "#719bb5" }
+  },
+  {
+    id: "terminal",
+    label: "Terminal",
+    description: "Green phosphor interface",
+    colors: { bg: "#000000", fg: "#00ff41", panel: "#0a0a0a", border: "#003b00", red: "#00ff41", muted: "#158f32" }
+  },
+  {
+    id: "gpt",
+    label: "GPT",
+    description: "Neutral charcoal panels",
+    colors: { bg: "#212121", fg: "#ececec", panel: "#171717", border: "#424242", red: "#949494", muted: "#a6a6a6" }
+  },
+  {
+    id: "claude",
+    label: "Claude",
+    description: "Warm gray and coral",
+    colors: { bg: "#262624", fg: "#f5f4f0", panel: "#30302e", border: "#4a4a47", red: "#c6613f", muted: "#b5b0a7" }
+  }
+];
+
 const FLOATING_PANEL_MIN_WIDTH = 260;
 const FLOATING_PANEL_MIN_HEIGHT = 160;
 const FLOATING_PANEL_DOCK_RESERVE = 56;
+const FLOATING_PANEL_SIDE_DOCK_MIN_WIDTH = 220;
+const FLOATING_PANEL_SIDE_DOCK_MAX_WIDTH = 310;
+const FLOATING_PANEL_SIDE_DOCK_DEFAULT_RATIO = 0.19;
 const FLOATING_PANEL_RESIZE_EDGE_PX = 7;
 const FLOATING_PANEL_UNDOCK_PX = 24;
 const FLOATING_PANEL_SIDE_STACK_LIMIT = 3;
@@ -419,7 +496,18 @@ const ODYSSEUS_FULLSCREEN_SNAP_PX = 8;
 const ODYSSEUS_EDGE_SNAP_PX = 60;
 const ODYSSEUS_BOTTOM_SNAP_PX = 24;
 const SNAP_TOUR_HINT_STORAGE_KEY = "hsc-odysseus-hint-drag-to-snap-seen";
-const FLOATING_PANEL_IDS: FloatingPanelId[] = ["items", "inspector", "json", "transfer"];
+const FLOATING_PANEL_IDS: FloatingPanelId[] = [
+  "items",
+  "inspector",
+  "json",
+  "transfer",
+  "app-theme",
+  "symbol-items",
+  "symbol-parts",
+  "symbol-slots",
+  "symbol-inspector",
+  "symbol-import"
+];
 
 const INSPECTOR_FIELD_LABELS: Record<"id" | "layer" | "x" | "y" | "text", string> = {
   id: "Item id",
@@ -531,6 +619,7 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   const editorMain = documentRef.createElement("div");
   editorMain.className = "editor-main";
   const transferPanel = createTransferPanel(documentRef);
+  const appThemePanel = createAppThemePanel(documentRef);
   const symbolWorkspace = createSymbolEditorWorkspace(documentRef);
   symbolWorkspace.hidden = true;
 
@@ -564,6 +653,8 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     themeInput: getRequiredElement(transferPanel, ".theme-input", HTMLTextAreaElement),
     themeStatus: getRequiredElement(transferPanel, ".theme-status", HTMLElement),
     themePreviewToggle: getRequiredElement(transferPanel, ".theme-preview-toggle", HTMLInputElement),
+    appThemePanel,
+    appThemeStatus: getRequiredElement(appThemePanel, ".app-theme-status", HTMLElement),
     transferPanel: getRequiredElement(transferPanel, ".transfer-panel", HTMLElement),
     transferPanelTitle: getRequiredElement(transferPanel, ".transfer-panel-title", HTMLElement),
     importSection: getRequiredElement(transferPanel, ".import-section", HTMLElement),
@@ -588,21 +679,12 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     symbolDeleteItemButton: getRequiredElement(symbolWorkspace, ".symbol-delete-item-button", HTMLButtonElement),
     symbolUndoButton: getRequiredElement(symbolWorkspace, ".symbol-undo-button", HTMLButtonElement),
     symbolRedoButton: getRequiredElement(symbolWorkspace, ".symbol-redo-button", HTMLButtonElement),
-    symbolFileMenuButton: getRequiredElement(symbolWorkspace, ".symbol-file-menu-button", HTMLButtonElement),
-    symbolFileMenu: getRequiredElement(symbolWorkspace, ".symbol-file-menu", HTMLElement),
     symbolImportDialog: getRequiredElement(symbolWorkspace, ".symbol-import-dialog", HTMLElement),
     closeSymbolImportDialogButton: getRequiredElement(symbolWorkspace, ".close-symbol-import-dialog-button", HTMLButtonElement),
     cancelSymbolImportButton: getRequiredElement(symbolWorkspace, ".cancel-symbol-import-button", HTMLButtonElement),
     createSymbolButton: getRequiredElement(symbolWorkspace, ".create-symbol-button", HTMLButtonElement),
     symbolSelect: getRequiredElement(symbolWorkspace, ".symbol-select", HTMLSelectElement),
     symbolPreviewSurface: getRequiredElement(symbolWorkspace, ".symbol-preview-surface", HTMLElement),
-    symbolItemsTabButton: getRequiredElement(symbolWorkspace, ".symbol-items-tab-button", HTMLButtonElement),
-    symbolPartsTabButton: getRequiredElement(symbolWorkspace, ".symbol-parts-tab-button", HTMLButtonElement),
-    symbolSlotsTabButton: getRequiredElement(symbolWorkspace, ".symbol-slots-tab-button", HTMLButtonElement),
-    symbolPrimaryPanel: getRequiredElement(symbolWorkspace, ".symbol-primary-panel", HTMLElement),
-    symbolDockedPanel: getRequiredElement(symbolWorkspace, ".symbol-docked-panel", HTMLElement),
-    symbolDockedPanelTab: getRequiredElement(symbolWorkspace, ".symbol-docked-panel-tab", HTMLButtonElement),
-    symbolTabDropZone: getRequiredElement(symbolWorkspace, ".symbol-tab-drop-zone", HTMLElement),
     symbolItemsSection: getRequiredElement(symbolWorkspace, ".symbol-items-section", HTMLElement),
     symbolPartsSection: getRequiredElement(symbolWorkspace, ".symbol-parts-section", HTMLElement),
     symbolSlotsSection: getRequiredElement(symbolWorkspace, ".symbol-slots-section", HTMLElement),
@@ -656,7 +738,6 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     gridSize: DEFAULT_EDITOR_GRID_SIZE,
     panMode: false,
     activeTab: "items",
-    activeSymbolTab: "items",
     symbolSimulationStates: {},
     symbolPanMode: false,
     symbolWorkspaceStarted: false,
@@ -665,7 +746,9 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   };
 
   elements.jsonInput.value = formatPayloadJson();
+  loadStoredEditorTheme(elements);
   loadStoredThemePreview(elements);
+  setupAppThemePanel(elements);
   elements.jsonInput.addEventListener("input", () => updateFromJson(elements, documentRef));
   elements.copyButton.addEventListener("click", async () => copyExportedPayload(elements));
   elements.applyThemeButton.addEventListener("click", () => applyThemePreview(elements));
@@ -680,7 +763,6 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.symbolDeleteItemButton.addEventListener("click", () => deleteSelectedSymbolInternalItem(elements, documentRef));
   elements.symbolUndoButton.addEventListener("click", () => undoEditorChange(elements, documentRef));
   elements.symbolRedoButton.addEventListener("click", () => redoEditorChange(elements, documentRef));
-  elements.symbolFileMenuButton.addEventListener("click", () => toggleSymbolFileMenu(elements));
   elements.createSymbolButton.addEventListener("click", () => createSymbolFromWorkspace(elements, documentRef));
   elements.symbolSvgImportButton.addEventListener("click", () => importSvgIntoSelectedSymbol(elements, documentRef));
   elements.closeSymbolImportDialogButton.addEventListener("click", () => closeSymbolImportDialog(elements));
@@ -736,13 +818,6 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
   elements.inspectorTabButton.addEventListener("click", () => showEditorTab(elements, "inspector"));
   elements.jsonTabButton.addEventListener("click", () => showEditorTab(elements, "json"));
   setupEditorTabDocking(elements);
-  elements.symbolItemsTabButton.addEventListener("click", () => showSymbolEditorTab(elements, "items"));
-  elements.symbolPartsTabButton.addEventListener("click", () => showSymbolEditorTab(elements, "parts"));
-  elements.symbolSlotsTabButton.addEventListener("click", () => showSymbolEditorTab(elements, "slots"));
-  setupSymbolEditorTabDocking(elements);
-  for (const button of Array.from(symbolWorkspace.querySelectorAll<HTMLButtonElement>("[data-symbol-panel-shortcut]"))) {
-    button.addEventListener("click", () => showSymbolEditorTab(elements, getSymbolPanelShortcut(button)));
-  }
   shell.addEventListener("keydown", (event) => handleEditorKeyDown(elements, event, documentRef));
 
   const sidebarToggleButton = getRequiredElement(rail, ".sidebar-toggle-button", HTMLButtonElement);
@@ -752,7 +827,13 @@ export function createEditorApp(documentRef: Document = document): HTMLElement {
     itemListSection: elements.itemListSection,
     inspectorSection: elements.inspectorSection,
     jsonSection: elements.jsonSection,
-    transferPanel: elements.transferPanel
+    transferPanel: elements.transferPanel,
+    appThemePanel: elements.appThemePanel,
+    symbolItemsSection: elements.symbolItemsSection,
+    symbolPartsSection: elements.symbolPartsSection,
+    symbolSlotsSection: elements.symbolSlotsSection,
+    symbolInspectorPane: getRequiredElement(symbolWorkspace, ".symbol-editor-inspector-pane", HTMLElement),
+    symbolImportDialog: elements.symbolImportDialog
   });
 
   editorMain.append(previewPane, symbolWorkspace);
@@ -1213,160 +1294,6 @@ function undockEditorTab(elements: EditorElements, tab: EditorTabName): void {
   delete elements.dockedTab;
   elements.activeTab = tab;
   updateEditorTabs(elements);
-}
-
-function showSymbolEditorTab(elements: EditorElements, tab: SymbolEditorTabName): void {
-  if (elements.dockedSymbolTab === tab) {
-    undockSymbolEditorTab(elements, tab);
-  }
-
-  elements.activeSymbolTab = tab;
-  updateSymbolEditorTabs(elements);
-}
-
-function updateSymbolEditorTabs(elements: EditorElements): void {
-  const tabs: SymbolEditorTabName[] = ["items", "parts", "slots"];
-  const buttons = {
-    items: elements.symbolItemsTabButton,
-    parts: elements.symbolPartsTabButton,
-    slots: elements.symbolSlotsTabButton
-  };
-  const sections = {
-    items: elements.symbolItemsSection,
-    parts: elements.symbolPartsSection,
-    slots: elements.symbolSlotsSection
-  };
-
-  for (const tab of tabs) {
-    const active = elements.activeSymbolTab === tab;
-    const docked = elements.dockedSymbolTab === tab;
-    buttons[tab].setAttribute("aria-selected", String(active));
-    buttons[tab].dataset.docked = String(docked);
-    sections[tab].hidden = !active && !docked;
-
-    if (docked && sections[tab].parentElement !== elements.symbolDockedPanel) {
-      elements.symbolDockedPanel.append(sections[tab]);
-    } else if (!docked && sections[tab].parentElement !== elements.symbolPrimaryPanel) {
-      elements.symbolPrimaryPanel.append(sections[tab]);
-    }
-  }
-
-  elements.symbolDockedPanel.hidden = elements.dockedSymbolTab === undefined;
-  elements.symbolDockedPanelTab.hidden = elements.dockedSymbolTab === undefined;
-  elements.symbolDockedPanelTab.textContent = elements.dockedSymbolTab ? getSymbolEditorTabLabel(elements.dockedSymbolTab) : "";
-  elements.symbolDockedPanelTab.dataset.symbolTab = elements.dockedSymbolTab;
-}
-
-function setupSymbolEditorTabDocking(elements: EditorElements): void {
-  for (const button of [elements.symbolItemsTabButton, elements.symbolPartsTabButton, elements.symbolSlotsTabButton]) {
-    button.draggable = true;
-    button.addEventListener("dragstart", (event) => {
-      elements.draggedSymbolTab = getSymbolTabNameFromButton(button);
-      event.dataTransfer?.setData("text/plain", elements.draggedSymbolTab);
-    });
-    button.addEventListener("dragend", () => {
-      delete elements.draggedSymbolTab;
-      elements.symbolTabDropZone.dataset.dropTarget = "false";
-    });
-  }
-
-  elements.symbolDockedPanelTab.draggable = true;
-  elements.symbolDockedPanelTab.addEventListener("dragstart", (event) => {
-    if (!elements.dockedSymbolTab) {
-      return;
-    }
-
-    elements.draggedSymbolTab = elements.dockedSymbolTab;
-    event.dataTransfer?.setData("text/plain", elements.draggedSymbolTab);
-  });
-  elements.symbolDockedPanelTab.addEventListener("dragend", () => {
-    delete elements.draggedSymbolTab;
-    elements.symbolTabDropZone.dataset.dropTarget = "false";
-  });
-
-  elements.symbolTabDropZone.addEventListener("dragover", (event) => {
-    if (!elements.draggedSymbolTab || elements.draggedSymbolTab === elements.dockedSymbolTab) {
-      return;
-    }
-
-    event.preventDefault();
-    elements.symbolTabDropZone.dataset.dropTarget = "true";
-  });
-  elements.symbolTabDropZone.addEventListener("dragleave", () => {
-    elements.symbolTabDropZone.dataset.dropTarget = "false";
-  });
-  elements.symbolTabDropZone.addEventListener("drop", (event) => {
-    event.preventDefault();
-    const tab = elements.draggedSymbolTab;
-    elements.symbolTabDropZone.dataset.dropTarget = "false";
-
-    if (!tab || tab === elements.dockedSymbolTab) {
-      return;
-    }
-
-    dockSymbolEditorTab(elements, tab);
-  });
-
-  const tabRow = elements.symbolItemsTabButton.parentElement;
-  tabRow?.addEventListener("dragover", (event) => {
-    if (elements.draggedSymbolTab && elements.draggedSymbolTab === elements.dockedSymbolTab) {
-      event.preventDefault();
-      tabRow.dataset.dropTarget = "true";
-    }
-  });
-  tabRow?.addEventListener("dragleave", () => {
-    tabRow.dataset.dropTarget = "false";
-  });
-  tabRow?.addEventListener("drop", (event) => {
-    event.preventDefault();
-    tabRow.dataset.dropTarget = "false";
-
-    if (elements.draggedSymbolTab) {
-      undockSymbolEditorTab(elements, elements.draggedSymbolTab);
-    }
-  });
-
-  updateSymbolEditorTabs(elements);
-}
-
-function getSymbolTabNameFromButton(button: HTMLButtonElement): SymbolEditorTabName {
-  const tab = button.dataset.symbolTab;
-  return tab === "parts" || tab === "slots" ? tab : "items";
-}
-
-function getSymbolEditorTabLabel(tab: SymbolEditorTabName): string {
-  switch (tab) {
-    case "items":
-      return "Items";
-    case "parts":
-      return "Parts";
-    case "slots":
-      return "Entity Slots";
-  }
-}
-
-function dockSymbolEditorTab(elements: EditorElements, tab: SymbolEditorTabName): void {
-  if (elements.dockedSymbolTab && elements.dockedSymbolTab !== tab) {
-    undockSymbolEditorTab(elements, elements.dockedSymbolTab);
-  }
-
-  elements.dockedSymbolTab = tab;
-
-  if (elements.activeSymbolTab === tab) {
-    elements.activeSymbolTab = tab === "items" ? "parts" : "items";
-  }
-
-  updateSymbolEditorTabs(elements);
-}
-
-function undockSymbolEditorTab(elements: EditorElements, tab: SymbolEditorTabName): void {
-  if (elements.dockedSymbolTab !== tab) {
-    return;
-  }
-
-  delete elements.dockedSymbolTab;
-  elements.activeSymbolTab = tab;
-  updateSymbolEditorTabs(elements);
 }
 
 function updateGridSize(elements: EditorElements, documentRef: Document): void {
@@ -4162,26 +4089,16 @@ function startSymbolWorkspaceWithImport(elements: EditorElements, documentRef: D
   elements.symbolWorkspaceStarted = true;
   elements.symbolStartDialog.hidden = true;
   renderSymbolWorkspace(elements, documentRef);
-  openSymbolImportDialog(elements.symbolWorkspace);
+  openSymbolImportDialog(elements);
 }
 
-function toggleSymbolFileMenu(elements: EditorElements): void {
-  elements.symbolFileMenu.hidden = !elements.symbolFileMenu.hidden;
-  elements.symbolFileMenuButton.setAttribute("aria-expanded", String(!elements.symbolFileMenu.hidden));
-}
-
-function openSymbolImportDialog(root: ParentNode): void {
-  const dialog = root.querySelector<HTMLElement>(".symbol-import-dialog");
-
-  if (dialog) {
-    dialog.hidden = false;
-  }
+function openSymbolImportDialog(elements: EditorElements): void {
+  elements.symbolImportDialog.hidden = false;
+  openFloatingPanel(elements.editorRoot, "symbol-import");
 }
 
 function closeSymbolImportDialog(elements: EditorElements): void {
-  elements.symbolImportDialog.hidden = true;
-  elements.symbolFileMenu.hidden = true;
-  elements.symbolFileMenuButton.setAttribute("aria-expanded", "false");
+  closeFloatingPanel(elements.editorRoot, "symbol-import");
 }
 
 function setupSymbolSvgDropZone(elements: EditorElements): void {
@@ -7504,13 +7421,21 @@ function updateThemePreviewMode(elements: EditorElements): void {
 function applyThemeVariablesToPreview(elements: EditorElements, variables: Record<string, string>): void {
   clearThemePreviewVariables(elements);
 
-  for (const [name, value] of Object.entries(variables)) {
-    elements.previewSurface.style.setProperty(name, value);
+  for (const target of getThemePreviewTargets(elements)) {
+    for (const [name, value] of Object.entries(variables)) {
+      target.style.setProperty(name, value);
+    }
   }
 }
 
 function clearThemePreviewVariables(elements: EditorElements): void {
-  elements.previewSurface.removeAttribute("style");
+  for (const target of getThemePreviewTargets(elements)) {
+    target.removeAttribute("style");
+  }
+}
+
+function getThemePreviewTargets(elements: EditorElements): HTMLElement[] {
+  return [elements.previewSurface, elements.symbolPreviewSurface];
 }
 
 function loadStoredThemePreview(elements: EditorElements): void {
@@ -7522,6 +7447,87 @@ function loadStoredThemePreview(elements: EditorElements): void {
 
   elements.themeInput.value = storedTheme;
   applyThemePreview(elements);
+}
+
+function setupAppThemePanel(elements: EditorElements): void {
+  elements.appThemePanel.addEventListener("click", (event) => {
+    const target = event.target;
+    const button = target instanceof Element ? target.closest("[data-editor-theme-preset]") : null;
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    applyEditorTheme(elements, getEditorThemePresetId(button), true);
+  });
+}
+
+function loadStoredEditorTheme(elements: EditorElements): void {
+  const storedTheme = getEditorLocalStorage(elements)?.getItem(APP_THEME_STORAGE_KEY);
+  applyEditorTheme(elements, getEditorThemePresetById(storedTheme)?.id ?? "odysseus", false);
+}
+
+function applyEditorTheme(elements: EditorElements, themeId: EditorThemePresetId, persist: boolean): void {
+  const preset = getEditorThemePresetById(themeId) ?? EDITOR_THEME_PRESETS[0];
+  const root = elements.editorRoot.ownerDocument.documentElement;
+  const style = root.style;
+  const { bg, fg, panel, border, red, muted } = preset.colors;
+
+  root.dataset.editorTheme = preset.id;
+  elements.editorRoot.dataset.editorTheme = preset.id;
+  style.setProperty("--bg", bg);
+  style.setProperty("--fg", fg);
+  style.setProperty("--panel", panel);
+  style.setProperty("--border", border);
+  style.setProperty("--red", red);
+  style.setProperty("--accent", red);
+  style.setProperty("--accent-primary", red);
+  style.setProperty("--color-accent", red);
+  style.setProperty("--editor-bg", bg);
+  style.setProperty("--editor-bg-deep", panel);
+  style.setProperty("--editor-panel", panel);
+  style.setProperty("--editor-panel-raised", `color-mix(in srgb, ${panel} 72%, ${bg})`);
+  style.setProperty("--editor-panel-soft", `color-mix(in srgb, ${panel} 78%, ${bg})`);
+  style.setProperty("--editor-border", border);
+  style.setProperty("--editor-border-soft", `color-mix(in srgb, ${fg} 13%, transparent)`);
+  style.setProperty("--editor-text", fg);
+  style.setProperty("--editor-text-strong", `color-mix(in srgb, ${fg} 88%, white)`);
+  style.setProperty("--editor-text-muted", muted);
+  style.setProperty("--editor-cyan", fg);
+  style.setProperty("--editor-teal", fg);
+  style.setProperty("--editor-coral", red);
+  style.setProperty("--primary-text-color", fg);
+  style.setProperty("--secondary-text-color", muted);
+  style.setProperty("--divider-color", border);
+  style.setProperty("--accent-color", red);
+  style.setProperty("--error-color", red);
+
+  const metaThemeColor = elements.editorRoot.ownerDocument.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  metaThemeColor?.setAttribute("content", bg);
+
+  if (persist) {
+    getEditorLocalStorage(elements)?.setItem(APP_THEME_STORAGE_KEY, preset.id);
+  }
+
+  updateAppThemePanelState(elements, preset);
+}
+
+function updateAppThemePanelState(elements: EditorElements, preset: EditorThemePreset): void {
+  for (const button of Array.from(elements.appThemePanel.querySelectorAll<HTMLButtonElement>("[data-editor-theme-preset]"))) {
+    const active = button.dataset.editorThemePreset === preset.id;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
+
+  elements.appThemeStatus.textContent = `Editor theme: ${preset.label}`;
+  elements.appThemeStatus.dataset.state = "valid";
+}
+
+function getEditorThemePresetId(button: HTMLElement): EditorThemePresetId {
+  return getEditorThemePresetById(button.dataset.editorThemePreset)?.id ?? "odysseus";
+}
+
+function getEditorThemePresetById(themeId: string | undefined | null): EditorThemePreset | undefined {
+  return EDITOR_THEME_PRESETS.find((preset) => preset.id === themeId);
 }
 
 function getEditorLocalStorage(elements: EditorElements): Storage | undefined {
@@ -7614,7 +7620,7 @@ function getTransferPanelTitle(mode: "import" | "svg" | "export" | "theme"): str
     case "export":
       return "Export Payload";
     case "theme":
-      return "Theme Preview";
+      return "HA Preview Theme";
   }
 }
 
@@ -7782,12 +7788,16 @@ function createEditorRail(documentRef: Document): HTMLElement {
       createNavSidebarTransferButton(documentRef, "Export / Payload", "⇄", "Encoded card payload", "export", "list-item card-tool"),
       createNavSidebarPanelButton(documentRef, "Simulation", "∿", "Open item state workspace", "inspector", undefined, "list-item card-tool"),
       createNavSidebarTabButton(documentRef, "Layers / Object Tree", "▤", "Layer order and object list", "items", "list-item card-tool"),
-      createNavSidebarTransferButton(documentRef, "Theme / Preview", "◐", "Imported HA theme controls", "theme", "list-item card-tool")
+      createNavSidebarPanelButton(documentRef, "Theme", "◐", "Editor UI theme presets", "app-theme", undefined, "list-item card-tool"),
+      createNavSidebarTransferButton(documentRef, "HA Preview", "HA", "Imported Home Assistant preview theme", "theme", "list-item card-tool")
     ]),
     createSidebarSection(documentRef, "editor-mode-symbol", "Symbol editor", "Symbol editor", [
-      createSymbolSidebarButton(documentRef, "Symbol Items", "☷", "Internal symbol objects", "items"),
-      createSymbolSidebarButton(documentRef, "Symbol Parts", "▧", "Part definitions", "parts"),
-      createSymbolSidebarButton(documentRef, "Symbol Slots", "◌", "Slot simulation states", "slots")
+      createSymbolSidebarButton(documentRef, "Symbol Items", "☷", "Internal symbol objects", "symbol-items"),
+      createSymbolSidebarButton(documentRef, "Symbol Parts", "▧", "Part definitions", "symbol-parts"),
+      createSymbolSidebarButton(documentRef, "Symbol Slots", "◌", "Slot simulation states", "symbol-slots"),
+      createSymbolSidebarButton(documentRef, "Symbol Inspector", "⌁", "Selected symbol item properties", "symbol-inspector"),
+      createSymbolSidebarButton(documentRef, "Import SVG", "SVG", "Import SVG into the active symbol", "symbol-import"),
+      createNavSidebarPanelButton(documentRef, "Theme", "◐", "Editor UI theme presets", "app-theme", undefined, "list-item symbol-tool")
     ])
   );
 
@@ -7813,11 +7823,10 @@ function createSymbolSidebarButton(
   label: string,
   icon: string,
   description: string,
-  tab: SymbolEditorTabName
+  panelId: SymbolFloatingPanelId
 ): HTMLButtonElement {
   const button = createNavSidebarButton(documentRef, label, icon, description, "list-item symbol-tool");
-  button.dataset.workspaceMode = "symbol";
-  button.dataset.symbolPanelShortcut = tab;
+  button.dataset.openPanel = panelId;
   return button;
 }
 
@@ -8033,6 +8042,12 @@ function createFloatingPanelLayer(
     inspectorSection: HTMLElement;
     jsonSection: HTMLElement;
     transferPanel: HTMLElement;
+    appThemePanel: HTMLElement;
+    symbolItemsSection: HTMLElement;
+    symbolPartsSection: HTMLElement;
+    symbolSlotsSection: HTMLElement;
+    symbolInspectorPane: HTMLElement;
+    symbolImportDialog: HTMLElement;
   }
 ): HTMLElement {
   const layer = documentRef.createElement("div");
@@ -8056,7 +8071,13 @@ function createFloatingPanelLayer(
     createFloatingPanel(documentRef, "items", "Item List / Object Tree", "☷", content.itemListSection, { x: 24, y: 132 }, "closed"),
     createFloatingPanel(documentRef, "inspector", "Inspector", "⌁", content.inspectorSection, { x: 720, y: 18 }, "closed"),
     createFloatingPanel(documentRef, "json", "JSON Editor", "{}", content.jsonSection, { x: 720, y: 360 }, "closed"),
-    createFloatingPanel(documentRef, "transfer", "Export / Payload", "⇄", content.transferPanel, { x: 180, y: 96 }, "closed")
+    createFloatingPanel(documentRef, "transfer", "Export / Payload", "⇄", content.transferPanel, { x: 180, y: 96 }, "closed"),
+    createFloatingPanel(documentRef, "app-theme", "Editor Theme", "◐", content.appThemePanel, { x: 220, y: 86 }, "closed"),
+    createFloatingPanel(documentRef, "symbol-items", "Symbol Items", "☷", content.symbolItemsSection, { x: 28, y: 118 }, "closed"),
+    createFloatingPanel(documentRef, "symbol-parts", "Symbol Parts", "▧", content.symbolPartsSection, { x: 360, y: 118 }, "closed"),
+    createFloatingPanel(documentRef, "symbol-slots", "Symbol Slots", "◌", content.symbolSlotsSection, { x: 720, y: 118 }, "closed"),
+    createFloatingPanel(documentRef, "symbol-inspector", "Symbol Inspector", "⌁", content.symbolInspectorPane, { x: 720, y: 360 }, "closed"),
+    createFloatingPanel(documentRef, "symbol-import", "Symbol SVG Import", "SVG", content.symbolImportDialog, { x: 180, y: 96 }, "closed")
   );
 
   const dock = documentRef.createElement("div");
@@ -8198,21 +8219,17 @@ function setupFloatingPanels(elements: EditorElements, documentRef: Document): v
     button.addEventListener("click", () => {
       const workspace = getWorkspaceMode(button);
       switchEditorWorkspace(elements, workspace, documentRef);
-      if (button.dataset.symbolPanelShortcut) {
-        showSymbolEditorTab(elements, getSymbolPanelShortcut(button));
-      }
     });
   }
 
-  for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>("[data-open-panel]"))) {
-    if (button.dataset.editorTabShortcut) {
-      continue;
+  root.addEventListener("click", (event) => {
+    const button = (event.target as Element | null)?.closest<HTMLButtonElement>("[data-open-panel]");
+    if (!button || !root.contains(button) || button.disabled || button.dataset.editorTabShortcut) {
+      return;
     }
 
-    button.addEventListener("click", () => {
-      toggleFloatingPanel(root, getFloatingPanelId(button), documentRef);
-    });
-  }
+    toggleFloatingPanel(root, getFloatingPanelId(button), documentRef);
+  });
 
   for (const button of Array.from(root.querySelectorAll<HTMLButtonElement>("[data-transfer-mode]"))) {
     button.addEventListener("click", () => {
@@ -8236,15 +8253,6 @@ function getWorkspaceMode(button: HTMLElement): WorkspaceMode {
   return button.dataset.workspaceMode === "symbol" ? "symbol" : "card";
 }
 
-function getSymbolPanelShortcut(button: HTMLElement): SymbolEditorTabName {
-  const tab = button.dataset.symbolPanelShortcut;
-  if (tab === "parts" || tab === "slots") {
-    return tab;
-  }
-
-  return "items";
-}
-
 function getTransferMode(button: HTMLElement): TransferPanelMode {
   const mode = button.dataset.transferMode;
   if (mode === "svg" || mode === "export" || mode === "theme") {
@@ -8261,6 +8269,12 @@ function getFloatingPanelId(element: HTMLElement): FloatingPanelId {
     || panelId === "inspector"
     || panelId === "json"
     || panelId === "transfer"
+    || panelId === "app-theme"
+    || panelId === "symbol-items"
+    || panelId === "symbol-parts"
+    || panelId === "symbol-slots"
+    || panelId === "symbol-inspector"
+    || panelId === "symbol-import"
   ) {
     return panelId;
   }
@@ -9102,13 +9116,21 @@ function resizeDockZone(root: HTMLElement, state: FloatingPanelResizeState, even
   const layerWidth = state.layer.clientWidth || state.layer.getBoundingClientRect().width || 1;
   const layerHeight = state.layer.clientHeight || state.layer.getBoundingClientRect().height || 1;
   if (state.dockZone === "left") {
-    const width = clamp(state.startWidth + event.clientX - state.startClientX, FLOATING_PANEL_MIN_WIDTH, Math.max(FLOATING_PANEL_MIN_WIDTH, layerWidth * 0.72));
+    const width = clamp(
+      state.startWidth + event.clientX - state.startClientX,
+      FLOATING_PANEL_SIDE_DOCK_MIN_WIDTH,
+      Math.max(FLOATING_PANEL_SIDE_DOCK_MIN_WIDTH, layerWidth * 0.72)
+    );
     setDockZoneSize(root, "left", width);
     return;
   }
 
   if (state.dockZone === "right") {
-    const width = clamp(state.startWidth - (event.clientX - state.startClientX), FLOATING_PANEL_MIN_WIDTH, Math.max(FLOATING_PANEL_MIN_WIDTH, layerWidth * 0.72));
+    const width = clamp(
+      state.startWidth - (event.clientX - state.startClientX),
+      FLOATING_PANEL_SIDE_DOCK_MIN_WIDTH,
+      Math.max(FLOATING_PANEL_SIDE_DOCK_MIN_WIDTH, layerWidth * 0.72)
+    );
     setDockZoneSize(root, "right", width);
     return;
   }
@@ -9228,7 +9250,10 @@ function getDefaultDockZoneSize(element: HTMLElement, zone: FloatingPanelDockZon
     return Math.max(180, Math.min(320, Math.round(height * 0.28)));
   }
 
-  return Math.max(340, Math.min(620, Math.round(width * 0.38)));
+  return Math.max(
+    FLOATING_PANEL_SIDE_DOCK_MIN_WIDTH,
+    Math.min(FLOATING_PANEL_SIDE_DOCK_MAX_WIDTH, Math.round(width * FLOATING_PANEL_SIDE_DOCK_DEFAULT_RATIO))
+  );
 }
 
 function getDockZoneSize(target: HTMLElement, zone: FloatingPanelDockZone): number {
@@ -9800,7 +9825,7 @@ function createTransferPanel(documentRef: Document): HTMLElement {
 
   const themeLabel = documentRef.createElement("label");
   themeLabel.className = "field-label";
-  themeLabel.textContent = "Theme preview JSON";
+  themeLabel.textContent = "HA preview theme variables JSON";
 
   const themeInput = documentRef.createElement("textarea");
   themeInput.className = "theme-input";
@@ -9814,7 +9839,7 @@ function createTransferPanel(documentRef: Document): HTMLElement {
   const applyThemeButton = documentRef.createElement("button");
   applyThemeButton.className = "apply-theme-button utility-button";
   applyThemeButton.type = "button";
-  applyThemeButton.textContent = "Apply Theme";
+  applyThemeButton.textContent = "Apply HA Theme";
 
   const themePreviewLabel = documentRef.createElement("label");
   themePreviewLabel.className = "theme-preview-toggle-field";
@@ -9824,13 +9849,13 @@ function createTransferPanel(documentRef: Document): HTMLElement {
   themePreviewToggle.type = "checkbox";
 
   const themePreviewText = documentRef.createElement("span");
-  themePreviewText.textContent = "Use Imported Theme";
+  themePreviewText.textContent = "Preview HA theme";
 
   themePreviewLabel.append(themePreviewToggle, themePreviewText);
 
   const themeStatus = documentRef.createElement("span");
   themeStatus.className = "theme-status";
-  themeStatus.textContent = "Optional theme preview";
+  themeStatus.textContent = "Optional HA preview";
 
   themeControls.append(applyThemeButton, themePreviewLabel, themeStatus);
   themeSection.append(themeLabel, themeInput, themeControls);
@@ -9864,25 +9889,64 @@ function createTransferPanel(documentRef: Document): HTMLElement {
   return wrapper;
 }
 
+function createAppThemePanel(documentRef: Document): HTMLElement {
+  const panel = documentRef.createElement("section");
+  panel.className = "app-theme-panel";
+
+  const intro = documentRef.createElement("p");
+  intro.className = "field-helper app-theme-helper";
+  intro.textContent = "Editor theme controls the app chrome, workspaces, panels, dock, menus, and buttons. HA preview theme import is separate.";
+
+  const grid = documentRef.createElement("div");
+  grid.className = "app-theme-grid";
+  grid.setAttribute("role", "list");
+
+  for (const preset of EDITOR_THEME_PRESETS) {
+    grid.append(createAppThemeSwatch(documentRef, preset));
+  }
+
+  const status = documentRef.createElement("div");
+  status.className = "app-theme-status theme-status";
+  status.textContent = "Editor theme: Odysseus";
+
+  panel.append(intro, grid, status);
+  return panel;
+}
+
+function createAppThemeSwatch(documentRef: Document, preset: EditorThemePreset): HTMLButtonElement {
+  const button = documentRef.createElement("button");
+  button.className = "app-theme-swatch";
+  button.type = "button";
+  button.dataset.editorThemePreset = preset.id;
+  button.setAttribute("aria-label", `Use ${preset.label} editor theme`);
+  button.setAttribute("aria-pressed", "false");
+
+  const colors = documentRef.createElement("span");
+  colors.className = "app-theme-swatch-colors";
+  colors.setAttribute("aria-hidden", "true");
+
+  for (const value of [preset.colors.bg, preset.colors.panel, preset.colors.fg, preset.colors.red]) {
+    const dot = documentRef.createElement("span");
+    dot.style.background = value;
+    colors.append(dot);
+  }
+
+  const label = documentRef.createElement("span");
+  label.className = "app-theme-swatch-label";
+  label.textContent = preset.label;
+
+  const description = documentRef.createElement("span");
+  description.className = "app-theme-swatch-description";
+  description.textContent = preset.description;
+
+  button.append(colors, label, description);
+  return button;
+}
+
 function createPreviewSurface(documentRef: Document): HTMLElement {
   const previewSurface = documentRef.createElement("div");
   previewSurface.className = "preview-surface";
   return previewSurface;
-}
-
-function createSymbolTabButton(
-  documentRef: Document,
-  tab: SymbolEditorTabName,
-  label: string,
-  className: string
-): HTMLButtonElement {
-  const button = documentRef.createElement("button");
-  button.className = `editor-tab ${className}`;
-  button.type = "button";
-  button.dataset.symbolTab = tab;
-  button.setAttribute("role", "tab");
-  button.textContent = label;
-  return button;
 }
 
 function createSymbolEditorWorkspace(documentRef: Document): HTMLElement {
@@ -9921,76 +9985,7 @@ function createSymbolEditorWorkspace(documentRef: Document): HTMLElement {
   const header = documentRef.createElement("header");
   header.className = "symbol-editor-header";
 
-  const title = documentRef.createElement("div");
-  title.className = "symbol-editor-title";
-  title.textContent = "Symbol Editor";
-
-  const menuBar = documentRef.createElement("div");
-  menuBar.className = "symbol-editor-menubar";
-
-  const symbolPanelMenuButton = documentRef.createElement("button");
-  symbolPanelMenuButton.className = "symbol-panel-menu-button utility-button";
-  symbolPanelMenuButton.type = "button";
-  symbolPanelMenuButton.title = "Toggle symbol panels";
-  symbolPanelMenuButton.setAttribute("aria-label", "Toggle symbol panels");
-  symbolPanelMenuButton.setAttribute("aria-expanded", "false");
-  symbolPanelMenuButton.textContent = "☰";
-
-  const symbolPanelMenu = documentRef.createElement("div");
-  symbolPanelMenu.className = "symbol-panel-menu";
-  symbolPanelMenu.hidden = true;
-
-  const symbolMenuEntries: Array<[string, SymbolEditorTabName]> = [
-    ["Items", "items"],
-    ["Parts", "parts"],
-    ["Slots", "slots"]
-  ];
-
-  for (const [label, tab] of symbolMenuEntries) {
-    const button = documentRef.createElement("button");
-    button.className = "symbol-panel-menu-entry";
-    button.type = "button";
-    button.dataset.symbolPanelShortcut = tab;
-    button.textContent = label;
-    button.addEventListener("click", () => {
-      symbolPanelMenu.hidden = true;
-      symbolPanelMenuButton.setAttribute("aria-expanded", "false");
-    });
-    symbolPanelMenu.append(button);
-  }
-
-  symbolPanelMenuButton.addEventListener("click", () => {
-    symbolPanelMenu.hidden = !symbolPanelMenu.hidden;
-    symbolPanelMenuButton.setAttribute("aria-expanded", String(!symbolPanelMenu.hidden));
-  });
-
-  const fileMenuWrapper = documentRef.createElement("div");
-  fileMenuWrapper.className = "symbol-file-menu-wrapper";
-
-  const fileMenuButton = documentRef.createElement("button");
-  fileMenuButton.className = "symbol-file-menu-button utility-button";
-  fileMenuButton.type = "button";
-  fileMenuButton.textContent = "File";
-  fileMenuButton.setAttribute("aria-expanded", "false");
-
-  const fileMenu = documentRef.createElement("div");
-  fileMenu.className = "symbol-file-menu";
-  fileMenu.hidden = true;
-
-  const importSvgMenuButton = documentRef.createElement("button");
-  importSvgMenuButton.className = "open-symbol-svg-import-dialog-button";
-  importSvgMenuButton.type = "button";
-  importSvgMenuButton.textContent = "Import SVG";
-  importSvgMenuButton.addEventListener("click", () => {
-    fileMenu.hidden = true;
-    fileMenuButton.setAttribute("aria-expanded", "false");
-    openSymbolImportDialog(wrapper);
-  });
-
-  fileMenu.append(importSvgMenuButton);
-  fileMenuWrapper.append(fileMenuButton, fileMenu);
-  menuBar.append(symbolPanelMenuButton, symbolPanelMenu, fileMenuWrapper);
-
+  const symbolToolbar = createSymbolEditorToolbar(documentRef);
   const controls = documentRef.createElement("div");
   controls.className = "symbol-editor-controls";
 
@@ -10001,7 +9996,9 @@ function createSymbolEditorWorkspace(documentRef: Document): HTMLElement {
   const createButton = documentRef.createElement("button");
   createButton.className = "create-symbol-button utility-button";
   createButton.type = "button";
-  createButton.textContent = "Create Symbol";
+  createButton.textContent = "+";
+  createButton.title = "Create symbol";
+  createButton.setAttribute("aria-label", "Create symbol");
 
   const closeButton = documentRef.createElement("button");
   closeButton.className = "close-symbol-workspace-button utility-button";
@@ -10010,37 +10007,10 @@ function createSymbolEditorWorkspace(documentRef: Document): HTMLElement {
   closeButton.setAttribute("aria-label", "Close symbol editor");
 
   controls.append(symbolSelect, createButton, closeButton);
-  header.append(menuBar, title, controls);
+  header.append(symbolToolbar, controls);
 
   const body = documentRef.createElement("div");
   body.className = "symbol-editor-body";
-
-  const side = documentRef.createElement("aside");
-  side.className = "symbol-editor-side";
-
-  const symbolTabs = documentRef.createElement("div");
-  symbolTabs.className = "editor-tabs symbol-tabs";
-
-  const symbolItemsTab = createSymbolTabButton(documentRef, "items", "Items", "symbol-items-tab-button");
-  const symbolPartsTab = createSymbolTabButton(documentRef, "parts", "Parts", "symbol-parts-tab-button");
-  const symbolSlotsTab = createSymbolTabButton(documentRef, "slots", "Entity Slots", "symbol-slots-tab-button");
-  symbolTabs.append(symbolItemsTab, symbolPartsTab, symbolSlotsTab);
-
-  const symbolPrimaryPanel = documentRef.createElement("div");
-  symbolPrimaryPanel.className = "editor-primary-panel symbol-primary-panel";
-
-  const symbolTabDropZone = documentRef.createElement("div");
-  symbolTabDropZone.className = "editor-tab-drop-zone symbol-tab-drop-zone";
-  symbolTabDropZone.textContent = "Drop tab here to split";
-
-  const symbolDockedPanel = documentRef.createElement("div");
-  symbolDockedPanel.className = "editor-docked-panel symbol-docked-panel";
-  symbolDockedPanel.hidden = true;
-
-  const symbolDockedPanelTab = documentRef.createElement("button");
-  symbolDockedPanelTab.className = "editor-tab editor-docked-panel-tab symbol-docked-panel-tab";
-  symbolDockedPanelTab.type = "button";
-  symbolDockedPanelTab.hidden = true;
 
   const itemsSection = createSymbolWorkspaceSection(documentRef, "Internal Items", "symbol-internal-item-list");
   itemsSection.classList.add("symbol-items-section");
@@ -10048,53 +10018,12 @@ function createSymbolEditorWorkspace(documentRef: Document): HTMLElement {
   partsSection.classList.add("symbol-parts-section");
   const slotsSection = createSymbolWorkspaceSection(documentRef, "Entity Slots", "symbol-slots-list");
   slotsSection.classList.add("symbol-slots-section");
-  symbolPrimaryPanel.append(itemsSection, partsSection, slotsSection);
-  symbolDockedPanel.append(symbolDockedPanelTab);
-  side.append(symbolTabs, symbolPrimaryPanel, symbolTabDropZone, symbolDockedPanel);
 
   const preview = documentRef.createElement("section");
   preview.className = "symbol-editor-preview-pane";
-  const previewHeader = documentRef.createElement("div");
-  previewHeader.className = "symbol-preview-header";
-  const previewTitle = documentRef.createElement("div");
-  previewTitle.className = "field-label";
-  previewTitle.textContent = "Symbol Preview";
-  const previewControls = documentRef.createElement("div");
-  previewControls.className = "symbol-preview-controls";
-  const symbolSelectButton = createToolbarButton(documentRef, "symbol-select-tool-button", "Select symbol items", "↖");
-  symbolSelectButton.title = "Select";
-  symbolSelectButton.setAttribute("aria-label", "Select symbol items");
-  symbolSelectButton.setAttribute("aria-pressed", "true");
-  const symbolPanButton = createToolbarButton(documentRef, "symbol-pan-tool-button", "Pan symbol preview", "✥");
-  symbolPanButton.title = "Pan";
-  symbolPanButton.setAttribute("aria-label", "Pan symbol preview");
-  symbolPanButton.setAttribute("aria-pressed", "false");
-  const symbolResetButton = createToolbarButton(documentRef, "symbol-reset-view-button", "Fit symbol preview", "⛶");
-  symbolResetButton.title = "Fit symbol preview";
-  const symbolClearButton = createToolbarButton(documentRef, "symbol-clear-selection-button", "Clear symbol item selection", "◌");
-  symbolClearButton.title = "Clear symbol item selection";
-  const symbolDeleteButton = createToolbarButton(documentRef, "symbol-delete-item-button", "Delete selected symbol item", "×");
-  symbolDeleteButton.title = "Delete selected symbol item";
-  symbolDeleteButton.disabled = true;
-  const symbolUndoButton = createToolbarButton(documentRef, "symbol-undo-button", "Undo", "↶");
-  symbolUndoButton.title = "Undo";
-  symbolUndoButton.disabled = true;
-  const symbolRedoButton = createToolbarButton(documentRef, "symbol-redo-button", "Redo", "↷");
-  symbolRedoButton.title = "Redo";
-  symbolRedoButton.disabled = true;
-  previewControls.append(
-    symbolSelectButton,
-    symbolPanButton,
-    symbolResetButton,
-    symbolClearButton,
-    symbolDeleteButton,
-    symbolUndoButton,
-    symbolRedoButton
-  );
-  previewHeader.append(previewTitle, previewControls);
   const previewSurface = documentRef.createElement("div");
   previewSurface.className = "symbol-preview-surface";
-  preview.append(previewHeader, previewSurface);
+  preview.append(previewSurface);
 
   const inspectorPane = documentRef.createElement("aside");
   inspectorPane.className = "symbol-editor-inspector-pane";
@@ -10106,7 +10035,6 @@ function createSymbolEditorWorkspace(documentRef: Document): HTMLElement {
 
   const importDialog = documentRef.createElement("section");
   importDialog.className = "symbol-import-dialog";
-  importDialog.hidden = true;
 
   const importHeader = documentRef.createElement("div");
   importHeader.className = "symbol-import-dialog-header";
@@ -10164,9 +10092,86 @@ function createSymbolEditorWorkspace(documentRef: Document): HTMLElement {
   importDialog.append(importHeader, importBody);
   inspectorPane.append(inspectorTitle, inspector);
 
-  body.append(side, preview, inspectorPane);
-  wrapper.append(header, body, importDialog, startDialog);
+  const panelSource = documentRef.createElement("div");
+  panelSource.className = "symbol-panel-source";
+  panelSource.hidden = true;
+  panelSource.append(itemsSection, partsSection, slotsSection, inspectorPane, importDialog);
+
+  body.append(preview);
+  wrapper.append(header, body, panelSource, startDialog);
   return wrapper;
+}
+
+function createSymbolEditorToolbar(documentRef: Document): HTMLElement {
+  const toolbar = documentRef.createElement("header");
+  toolbar.className = "editor-topbar symbol-editor-toolbar";
+  toolbar.setAttribute("aria-label", "Symbol editor tools");
+
+  const selectGroup = createToolbarGroup(documentRef, "SELECT");
+  const symbolSelectButton = createToolbarButton(documentRef, "symbol-select-tool-button", "Select symbol items", "↖");
+  symbolSelectButton.setAttribute("aria-pressed", "true");
+  const symbolPanButton = createToolbarButton(documentRef, "symbol-pan-tool-button", "Pan symbol preview", "✥");
+  symbolPanButton.setAttribute("aria-pressed", "false");
+  appendToolbarActions(selectGroup, symbolSelectButton, symbolPanButton);
+
+  const addGroup = createToolbarGroup(documentRef, "ADD");
+  appendToolbarActions(
+    addGroup,
+    createDisabledToolbarButton(documentRef, "symbol-add-path-button", "Path / primitive", "⌁"),
+    createDisabledToolbarButton(documentRef, "symbol-add-text-button", "Text", "T"),
+    createDisabledToolbarButton(documentRef, "symbol-add-rect-button", "Rectangle", "▭"),
+    createDisabledToolbarButton(documentRef, "symbol-add-circle-button", "Circle / ellipse", "○"),
+    createDisabledToolbarButton(documentRef, "symbol-add-group-button", "Group", "⧉")
+  );
+
+  const symbolGroup = createToolbarGroup(documentRef, "SYMBOL");
+  appendToolbarActions(
+    symbolGroup,
+    createSymbolPanelToolbarButton(documentRef, "open-symbol-items-panel-button", "Symbol items", "☷", "symbol-items"),
+    createSymbolPanelToolbarButton(documentRef, "open-symbol-parts-panel-button", "Parts", "▧", "symbol-parts"),
+    createDisabledToolbarButton(documentRef, "symbol-ports-button", "Ports", "⊙"),
+    createSymbolPanelToolbarButton(documentRef, "open-symbol-slots-panel-button", "Slots", "◌", "symbol-slots"),
+    createSymbolPanelToolbarButton(documentRef, "open-symbol-inspector-panel-button", "Inspector", "⌁", "symbol-inspector"),
+    createSymbolPanelToolbarButton(documentRef, "open-symbol-import-panel-button", "Import SVG", "SVG", "symbol-import")
+  );
+
+  const editGroup = createToolbarGroup(documentRef, "EDIT");
+  const symbolUndoButton = createToolbarButton(documentRef, "symbol-undo-button", "Undo", "↶");
+  symbolUndoButton.disabled = true;
+  const symbolRedoButton = createToolbarButton(documentRef, "symbol-redo-button", "Redo", "↷");
+  symbolRedoButton.disabled = true;
+  const symbolDuplicateButton = createDisabledToolbarButton(documentRef, "symbol-duplicate-item-button", "Duplicate", "⧉");
+  const symbolClearButton = createToolbarButton(documentRef, "symbol-clear-selection-button", "Clear symbol item selection", "◌");
+  const symbolDeleteButton = createToolbarButton(documentRef, "symbol-delete-item-button", "Delete selected symbol item", "×");
+  symbolDeleteButton.disabled = true;
+  appendToolbarActions(editGroup, symbolUndoButton, symbolRedoButton, symbolDuplicateButton, symbolClearButton, symbolDeleteButton);
+
+  const viewGroup = createToolbarGroup(documentRef, "VIEW");
+  const symbolGridButton = createDisabledToolbarButton(documentRef, "symbol-grid-toggle-button", "Grid", "▦");
+  const symbolSnapButton = createDisabledToolbarButton(documentRef, "symbol-snap-toggle-button", "Snap", "⌖");
+  const symbolResetButton = createToolbarButton(documentRef, "symbol-reset-view-button", "Fit symbol preview", "⛶");
+  appendToolbarActions(viewGroup, symbolGridButton, symbolSnapButton, symbolResetButton);
+
+  toolbar.append(selectGroup, addGroup, symbolGroup, editGroup, viewGroup);
+  return toolbar;
+}
+
+function createSymbolPanelToolbarButton(
+  documentRef: Document,
+  className: string,
+  label: string,
+  icon: string,
+  panelId: SymbolFloatingPanelId
+): HTMLButtonElement {
+  const button = createToolbarButton(documentRef, className, label, icon);
+  button.dataset.openPanel = panelId;
+  return button;
+}
+
+function createDisabledToolbarButton(documentRef: Document, className: string, label: string, icon: string): HTMLButtonElement {
+  const button = createToolbarButton(documentRef, className, label, icon);
+  button.disabled = true;
+  return button;
 }
 
 function createSymbolWorkspaceSection(documentRef: Document, title: string, listClassName: string): HTMLElement {

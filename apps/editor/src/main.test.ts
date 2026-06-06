@@ -79,10 +79,14 @@ describe("editor app", () => {
       "Export / Payload",
       "Simulation",
       "Layers / Object Tree",
-      "Theme / Preview",
+      "Theme",
+      "HA Preview",
       "Symbol Items",
       "Symbol Parts",
-      "Symbol Slots"
+      "Symbol Slots",
+      "Symbol Inspector",
+      "Import SVG",
+      "Theme"
     ]);
 
     toggleButton.click();
@@ -93,7 +97,8 @@ describe("editor app", () => {
     expect(getButton(app, '.editor-nav-entry[data-transfer-mode="import"]').textContent).toContain("Import");
     expect(getButton(app, '.editor-nav-entry[data-transfer-mode="svg"]').textContent).toContain("SVG");
     expect(getButton(app, '.editor-nav-entry[data-transfer-mode="export"]').textContent).toContain("Export");
-    expect(getButton(app, '.editor-nav-entry[data-transfer-mode="theme"]').textContent).toContain("Theme");
+    expect(getButton(app, '.editor-nav-entry[data-open-panel="app-theme"]').textContent).toContain("Theme");
+    expect(getButton(app, '.editor-nav-entry[data-transfer-mode="theme"]').textContent).toContain("HA Preview");
     expect(app.querySelector(".sidebar")?.classList.contains("hidden")).toBe(false);
 
     toggleButton.click();
@@ -106,7 +111,7 @@ describe("editor app", () => {
     const app = createEditorApp(documentRef);
     const inspectorPanel = getFloatingPanel(app, "inspector");
 
-    expect(app.querySelectorAll(".floating-panel").length).toBe(4);
+    expect(app.querySelectorAll(".floating-panel").length).toBe(10);
     getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="inspector"]').click();
     expect(inspectorPanel.dataset.panelState).toBe("open");
 
@@ -392,6 +397,12 @@ describe("editor app", () => {
     expect(jsonPanel.dataset.panelState).toBe("closed");
     expect(itemsPanel.dataset.panelState).toBe("closed");
 
+    getButton(app, '.editor-nav-entry[data-open-panel="symbol-parts"]').click();
+    const symbolPartsPanel = getFloatingPanel(app, "symbol-parts");
+    dockPanelByDrag(documentRef, layer, symbolPartsPanel, { left: 360, top: 118, width: 340, height: 280 }, 1190, 300);
+    expect(symbolPartsPanel.dataset.panelState).toBe("docked");
+    expect(symbolPartsPanel.parentElement).toBe(rightZone);
+
     getButton(app, '.editor-nav-entry[data-workspace-mode="card"]').click();
     expect(app.dataset.workspace).toBe("card");
     expect(jsonPanel.dataset.panelState).toBe("docked");
@@ -399,6 +410,13 @@ describe("editor app", () => {
     expect(itemsPanel.dataset.panelState).toBe("open");
     expect(itemsPanel.style.left).toBe("76px");
     expect(itemsPanel.style.top).toBe("540px");
+    expect(symbolPartsPanel.dataset.panelState).toBe("closed");
+
+    getButton(app, '.editor-nav-entry[data-workspace-mode="symbol"]').click();
+    expect(app.dataset.workspace).toBe("symbol");
+    expect(jsonPanel.dataset.panelState).toBe("closed");
+    expect(symbolPartsPanel.dataset.panelState).toBe("docked");
+    expect(symbolPartsPanel.parentElement).toBe(rightZone);
   });
 
   it("opens item and inspector panels from the navigation launchers", () => {
@@ -545,16 +563,26 @@ describe("editor app", () => {
     expect(app.querySelector<HTMLElement>(".symbol-start-dialog")?.hidden).toBe(true);
     expect(symbolSelect?.value).toBe("demo-generic-unit");
     expect(app.querySelector(".symbol-preview-surface svg")).not.toBeNull();
+    expect(app.querySelector(".symbol-tabs")).toBeNull();
+    expect(app.querySelector(".symbol-tab-drop-zone")).toBeNull();
+    expect(getFloatingPanel(app, "symbol-items").querySelector(".symbol-items-section")).not.toBeNull();
+    expect(getFloatingPanel(app, "symbol-parts").querySelector(".symbol-parts-section")).not.toBeNull();
+    expect(getFloatingPanel(app, "symbol-slots").querySelector(".symbol-slots-section")).not.toBeNull();
+    expect(getFloatingPanel(app, "symbol-inspector").querySelector(".symbol-editor-inspector")).not.toBeNull();
     expect(getButton(app, '[data-symbol-item-id="unit-box"]').textContent).toContain("unit-box (rect, body)");
     expect(app.querySelector<HTMLElement>(".symbol-parts-list")?.textContent).toContain("body - Symbol body");
     expect(app.querySelector<HTMLElement>(".symbol-slots-list")?.textContent).toContain("running - Running state");
 
-    getButton(app, ".symbol-file-menu-button").click();
-    expect(app.querySelector<HTMLElement>(".symbol-file-menu")?.hidden).toBe(false);
-    getButton(app, ".open-symbol-svg-import-dialog-button").click();
-    expect(app.querySelector<HTMLElement>(".symbol-import-dialog")?.hidden).toBe(false);
+    getButton(app, ".open-symbol-items-panel-button").click();
+    expect(getFloatingPanel(app, "symbol-items").hidden).toBe(false);
+    getButton(app, ".open-symbol-items-panel-button").click();
+    expect(getFloatingPanel(app, "symbol-items").hidden).toBe(true);
+
+    getButton(app, ".open-symbol-import-panel-button").click();
+    expect(getFloatingPanel(app, "symbol-import").hidden).toBe(false);
+    expect(getFloatingPanel(app, "symbol-import").querySelector(".symbol-import-dialog")).not.toBeNull();
     getButton(app, ".cancel-symbol-import-button").click();
-    expect(app.querySelector<HTMLElement>(".symbol-import-dialog")?.hidden).toBe(true);
+    expect(getFloatingPanel(app, "symbol-import").hidden).toBe(true);
 
     getButton(app, ".close-symbol-workspace-button").click();
     expect(workspace?.hidden).toBe(true);
@@ -580,8 +608,7 @@ describe("editor app", () => {
 
     getButton(app, ".open-symbol-editor-button").click();
     getButton(app, ".symbol-start-edit-button").click();
-    getButton(app, ".symbol-file-menu-button").click();
-    getButton(app, ".open-symbol-svg-import-dialog-button").click();
+    getButton(app, ".open-symbol-import-panel-button").click();
     getTextarea(app, ".symbol-svg-import-input").value = `
       <svg viewBox="0 0 100 80">
         <path id="symbol-import-body" d="M 10 10 H 90 V 60 H 10 Z" fill="#000000" />
@@ -831,7 +858,7 @@ describe("editor app", () => {
     expect(app.querySelector(".symbol-preview-surface [data-id='symbol-import-body']")).not.toBeNull();
     expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
     expect(app.querySelector<HTMLElement>(".symbol-workspace-status")?.textContent).toContain("Imported 1 SVG item(s) into imported-symbol-1");
-    expect(app.querySelector<HTMLElement>(".symbol-import-dialog")?.hidden).toBe(true);
+    expect(getFloatingPanel(app, "symbol-import").hidden).toBe(true);
   });
 
   it("does not change JSON when Symbol Editor SVG import is unsafe", () => {
@@ -842,8 +869,7 @@ describe("editor app", () => {
 
     getButton(app, ".open-symbol-editor-button").click();
     getButton(app, ".symbol-start-edit-button").click();
-    getButton(app, ".symbol-file-menu-button").click();
-    getButton(app, ".open-symbol-svg-import-dialog-button").click();
+    getButton(app, ".open-symbol-import-panel-button").click();
     getTextarea(app, ".symbol-svg-import-input").value = `
       <svg>
         <script>alert(1)</script>
@@ -2102,10 +2128,11 @@ describe("editor app", () => {
     expect(app.querySelector<HTMLElement>(".inspector-status")?.textContent).toBe("Polyline drawing cancelled");
   });
 
-  it("opens and closes import, SVG import, export, and theme side panels from the sidebar", () => {
+  it("opens and closes import, SVG import, export, HA preview, and app theme panels from the sidebar", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
     const panel = app.querySelector<HTMLElement>(".transfer-panel");
+    const appThemePanel = getFloatingPanel(app, "app-theme");
     const importSection = app.querySelector<HTMLElement>(".import-section");
     const svgImportSection = app.querySelector<HTMLElement>(".svg-import-section");
     const themeSection = app.querySelector<HTMLElement>(".theme-section");
@@ -2116,6 +2143,7 @@ describe("editor app", () => {
     }
 
     expect(panel.hidden).toBe(true);
+    expect(appThemePanel.hidden).toBe(true);
 
     getButton(app, '.editor-nav-entry[data-transfer-mode="import"]').click();
     expect(panel.hidden).toBe(false);
@@ -2145,6 +2173,11 @@ describe("editor app", () => {
     expect(svgImportSection.hidden).toBe(true);
     expect(themeSection.hidden).toBe(false);
     expect(exportSection.hidden).toBe(true);
+
+    getButton(app, '.editor-nav-entry[data-open-panel="app-theme"]').click();
+    expect(appThemePanel.hidden).toBe(false);
+    expect(appThemePanel.dataset.panelState).toBe("open");
+    expect(app.querySelector<HTMLElement>(".theme-section")?.hidden).toBe(false);
 
     getButton(app, ".transfer-panel-close").click();
     expect(panel.hidden).toBe(true);
@@ -2235,18 +2268,18 @@ describe("editor app", () => {
 
     expect(panel.dataset.panelState).toBe("docked");
     expect(panel.parentElement).toBe(rightZone);
-    expect(rightZone.style.width).toBe("456px");
-    expect(app.style.getPropertyValue("--workspace-right-dock-w")).toBe("456px");
+    expect(rightZone.style.width).toBe("228px");
+    expect(app.style.getPropertyValue("--workspace-right-dock-w")).toBe("228px");
 
-    setElementBounds(rightZone, { left: 744, top: 0, width: 456, height: 800 });
-    setElementBounds(panel, { left: 744, top: 0, width: 456, height: 800 });
-    Object.defineProperty(panel, "offsetWidth", { configurable: true, value: 456 });
+    setElementBounds(rightZone, { left: 972, top: 0, width: 228, height: 800 });
+    setElementBounds(panel, { left: 972, top: 0, width: 228, height: 800 });
+    Object.defineProperty(panel, "offsetWidth", { configurable: true, value: 228 });
     Object.defineProperty(panel, "offsetHeight", { configurable: true, value: 800 });
 
     panel.dispatchEvent(new MouseEvent("mousedown", {
       bubbles: true,
       button: 0,
-      clientX: 744,
+      clientX: 972,
       clientY: 220
     }));
     documentRef.dispatchEvent(new MouseEvent("mousemove", { clientX: 700, clientY: 220 }));
@@ -2667,6 +2700,63 @@ describe("editor app", () => {
     expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
   });
 
+  it("applies editor app theme presets separately from HA preview theme variables", () => {
+    const windowRef = new Window();
+    const documentRef = windowRef.document as unknown as Document;
+    const app = createEditorApp(documentRef);
+    const themeInput = getTextarea(app, ".theme-input");
+    const applyThemeButton = getButton(app, ".apply-theme-button");
+    const previewSurface = app.querySelector<HTMLElement>(".preview-surface");
+    const symbolPreviewSurface = app.querySelector<HTMLElement>(".symbol-preview-surface");
+
+    if (!previewSurface || !symbolPreviewSurface) {
+      throw new Error("preview surfaces missing");
+    }
+
+    getButton(app, '.editor-nav-entry[data-open-panel="app-theme"]').click();
+    getButton(getFloatingPanel(app, "app-theme"), '[data-editor-theme-preset="paper"]').click();
+
+    expect(documentRef.documentElement.dataset.editorTheme).toBe("paper");
+    expect(app.dataset.editorTheme).toBe("paper");
+    expect(documentRef.documentElement.style.getPropertyValue("--bg")).toBe("#faf8f5");
+    expect(windowRef.localStorage.getItem("ha-schematic-card-editor-app-theme")).toBe("paper");
+    expect(previewSurface.style.getPropertyValue("--ha-card-background")).toBe("");
+
+    themeInput.value = JSON.stringify({
+      type: "ha-schematic-card-theme-variables",
+      version: 1,
+      capturedAt: "2026-05-30T00:00:00.000Z",
+      variables: {
+        "--ha-card-background": "rgb(15, 16, 17)"
+      }
+    });
+    applyThemeButton.click();
+    expect(previewSurface.style.getPropertyValue("--ha-card-background")).toBe("rgb(15, 16, 17)");
+    expect(symbolPreviewSurface.style.getPropertyValue("--ha-card-background")).toBe("rgb(15, 16, 17)");
+
+    getButton(getFloatingPanel(app, "app-theme"), '[data-editor-theme-preset="terminal"]').click();
+    expect(documentRef.documentElement.dataset.editorTheme).toBe("terminal");
+    expect(documentRef.documentElement.style.getPropertyValue("--bg")).toBe("#000000");
+    expect(previewSurface.style.getPropertyValue("--ha-card-background")).toBe("rgb(15, 16, 17)");
+    expect(symbolPreviewSurface.style.getPropertyValue("--ha-card-background")).toBe("rgb(15, 16, 17)");
+  });
+
+  it("loads stored editor app theme on startup", () => {
+    const windowRef = new Window();
+    const documentRef = windowRef.document as unknown as Document;
+
+    windowRef.localStorage.setItem("ha-schematic-card-editor-app-theme", "claude");
+
+    const app = createEditorApp(documentRef);
+
+    expect(documentRef.documentElement.dataset.editorTheme).toBe("claude");
+    expect(app.dataset.editorTheme).toBe("claude");
+    expect(documentRef.documentElement.style.getPropertyValue("--bg")).toBe("#262624");
+    expect(getFloatingPanel(app, "app-theme").querySelector<HTMLElement>(".app-theme-status")?.textContent).toBe(
+      "Editor theme: Claude"
+    );
+  });
+
   it("applies pasted theme variables to the preview surface", () => {
     const documentRef = createDocument();
     const app = createEditorApp(documentRef);
@@ -2674,9 +2764,10 @@ describe("editor app", () => {
     const applyThemeButton = getButton(app, ".apply-theme-button");
     const themePreviewToggle = getInput(app, ".theme-preview-toggle");
     const previewSurface = app.querySelector<HTMLElement>(".preview-surface");
+    const symbolPreviewSurface = app.querySelector<HTMLElement>(".symbol-preview-surface");
 
-    if (!previewSurface) {
-      throw new Error("preview surface missing");
+    if (!previewSurface || !symbolPreviewSurface) {
+      throw new Error("preview surfaces missing");
     }
 
     themeInput.value = JSON.stringify({
@@ -2694,6 +2785,9 @@ describe("editor app", () => {
     expect(previewSurface.style.getPropertyValue("--primary-text-color")).toBe("rgb(10, 20, 30)");
     expect(previewSurface.style.getPropertyValue("--accent-color")).toBe("rgb(40, 50, 60)");
     expect(previewSurface.style.getPropertyValue("--ha-card-background")).toBe("rgb(5, 6, 7)");
+    expect(symbolPreviewSurface.style.getPropertyValue("--primary-text-color")).toBe("rgb(10, 20, 30)");
+    expect(symbolPreviewSurface.style.getPropertyValue("--accent-color")).toBe("rgb(40, 50, 60)");
+    expect(symbolPreviewSurface.style.getPropertyValue("--ha-card-background")).toBe("rgb(5, 6, 7)");
     expect(themePreviewToggle.checked).toBe(true);
     expect(app.querySelector<HTMLElement>(".theme-status")?.textContent).toBe("Applied 3 theme variables");
   });
@@ -2705,9 +2799,10 @@ describe("editor app", () => {
     const applyThemeButton = getButton(app, ".apply-theme-button");
     const themePreviewToggle = getInput(app, ".theme-preview-toggle");
     const previewSurface = app.querySelector<HTMLElement>(".preview-surface");
+    const symbolPreviewSurface = app.querySelector<HTMLElement>(".symbol-preview-surface");
 
-    if (!previewSurface) {
-      throw new Error("preview surface missing");
+    if (!previewSurface || !symbolPreviewSurface) {
+      throw new Error("preview surfaces missing");
     }
 
     themeInput.value = JSON.stringify({
@@ -2720,15 +2815,18 @@ describe("editor app", () => {
     });
     applyThemeButton.click();
     expect(previewSurface.style.getPropertyValue("--ha-card-background")).toBe("rgb(15, 16, 17)");
+    expect(symbolPreviewSurface.style.getPropertyValue("--ha-card-background")).toBe("rgb(15, 16, 17)");
 
     themePreviewToggle.checked = false;
     themePreviewToggle.dispatchEvent(new Event("change"));
     expect(previewSurface.style.getPropertyValue("--ha-card-background")).toBe("");
+    expect(symbolPreviewSurface.style.getPropertyValue("--ha-card-background")).toBe("");
     expect(app.querySelector<HTMLElement>(".theme-status")?.textContent).toBe("Using editor theme");
 
     themePreviewToggle.checked = true;
     themePreviewToggle.dispatchEvent(new Event("change"));
     expect(previewSurface.style.getPropertyValue("--ha-card-background")).toBe("rgb(15, 16, 17)");
+    expect(symbolPreviewSurface.style.getPropertyValue("--ha-card-background")).toBe("rgb(15, 16, 17)");
     expect(app.querySelector<HTMLElement>(".theme-status")?.textContent).toBe("Previewing 1 imported theme variables");
   });
 
@@ -2748,9 +2846,11 @@ describe("editor app", () => {
 
     const app = createEditorApp(documentRef);
     const previewSurface = app.querySelector<HTMLElement>(".preview-surface");
+    const symbolPreviewSurface = app.querySelector<HTMLElement>(".symbol-preview-surface");
 
     expect(getTextarea(app, ".theme-input").value).toBe(storedTheme);
     expect(previewSurface?.style.getPropertyValue("--ha-card-background")).toBe("rgb(1, 2, 3)");
+    expect(symbolPreviewSurface?.style.getPropertyValue("--ha-card-background")).toBe("rgb(1, 2, 3)");
     expect(app.querySelector<HTMLElement>(".theme-status")?.textContent).toBe("Applied 1 theme variables");
   });
 
