@@ -42,6 +42,7 @@ describe("editor app", () => {
     expect(getFloatingPanel(app, "items").querySelector(".item-list-section")).not.toBeNull();
     expect(getFloatingPanel(app, "inspector").querySelector(".inspector-section")).not.toBeNull();
     expect(getFloatingPanel(app, "json").querySelector(".json-editor-section")).not.toBeNull();
+    expect(getFloatingPanel(app, "simulation").querySelector(".simulation-panel")).not.toBeNull();
     expect(getButton(app, ".select-tool-button").getAttribute("aria-pressed")).toBe("true");
     expect(app.querySelector<HTMLTextAreaElement>(".json-input")?.value).toBe(formatPayloadJson());
     expect(app.querySelector("svg")).not.toBeNull();
@@ -114,7 +115,7 @@ describe("editor app", () => {
     const app = createEditorApp(documentRef);
     const inspectorPanel = getFloatingPanel(app, "inspector");
 
-    expect(app.querySelectorAll(".floating-panel").length).toBe(10);
+    expect(app.querySelectorAll(".floating-panel").length).toBe(11);
     getButton(app, '.editor-nav-entry[data-editor-tab-shortcut="inspector"]').click();
     expect(inspectorPanel.dataset.panelState).toBe("open");
 
@@ -548,6 +549,79 @@ describe("editor app", () => {
 
     expect(getPayloadItem(app, "demo-component-a")?.slotBindings).toEqual({
       running: "input_boolean.schematic_demo_flow"
+    });
+  });
+
+  it("opens symbol slot simulation from the sidebar and previews bound values", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, '.editor-nav-entry[data-open-panel="simulation"]').click();
+
+    const simulationPanel = getFloatingPanel(app, "simulation");
+    const alarmCard = getSimulationEntityCard(simulationPanel, "input_boolean.schematic_demo_alarm");
+
+    expect(simulationPanel.hidden).toBe(false);
+    expect(simulationPanel.dataset.panelState).toBe("open");
+    expect(alarmCard.textContent).toContain("Slot binding: demo-component-a / alarm - Alarm state");
+    expect(alarmCard.textContent).toContain("Direct entity: demo-status-dot / style condition");
+    expect(getButton(alarmCard, ".simulation-binary-on-button").getAttribute("aria-pressed")).toBe("true");
+    expect(app.querySelector('[data-id="demo-component-a"] [data-id="unit-box"]')?.getAttribute("fill")).toBe("var(--error-color)");
+
+    getButton(alarmCard, ".simulation-binary-off-button").click();
+
+    expect(getButton(getSimulationEntityCard(simulationPanel, "input_boolean.schematic_demo_alarm"), ".simulation-binary-off-button").getAttribute("aria-pressed")).toBe("true");
+    expect(app.querySelector('[data-id="demo-component-a"] [data-id="unit-box"]')?.getAttribute("fill")).not.toBe("var(--error-color)");
+    expect(getPayloadItem(app, "demo-component-a")?.slotBindings).toMatchObject({
+      alarm: "input_boolean.schematic_demo_alarm"
+    });
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+  });
+
+  it("simulates direct payload entity values in the card preview", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, '.editor-nav-entry[data-open-panel="simulation"]').click();
+
+    const temperatureCard = getSimulationEntityCard(getFloatingPanel(app, "simulation"), "input_number.schematic_demo_temperature");
+    const valueText = app.querySelector('[data-id="demo-temperature"] [data-role="value"]');
+
+    expect(temperatureCard.textContent).toContain("Direct entity: demo-temperature / entity value");
+    expect(temperatureCard.querySelector(".simulation-temperature-slider")).not.toBeNull();
+    expect(getInput(temperatureCard, ".simulation-temperature-input").value).toBe("21.26");
+    expect(valueText?.textContent).toBe("21.3 C");
+
+    getInput(temperatureCard, ".simulation-temperature-input").value = "42.5";
+    getInput(temperatureCard, ".simulation-temperature-input").dispatchEvent(new Event("change"));
+
+    const refreshedTemperatureCard = getSimulationEntityCard(getFloatingPanel(app, "simulation"), "input_number.schematic_demo_temperature");
+    expect(getInput(refreshedTemperatureCard, ".simulation-temperature-input").value).toBe("42.5");
+    expect(app.querySelector('[data-id="demo-temperature"] [data-role="value"]')?.textContent).toBe("42.5 C");
+    expect(getPayloadItem(app, "demo-temperature")?.type).toBe("entityValue");
+    expect(getTextarea(app, ".payload-output").value.startsWith("hsc1.")).toBe(true);
+  });
+
+  it("updates simulation entries when a selected symbol instance binding changes", () => {
+    const documentRef = createDocument();
+    const app = createEditorApp(documentRef);
+
+    getButton(app, '.editor-nav-entry[data-open-panel="simulation"]').click();
+    getButton(app, '[data-item-id="demo-component-a"]').click();
+    getSymbolSlotBindingInput(app, "alarm").value = "binary_sensor.demo_alarm";
+    getSymbolSlotBindingInput(app, "alarm").dispatchEvent(new Event("change"));
+
+    const simulationPanel = getFloatingPanel(app, "simulation");
+    expect(getSimulationEntityCard(simulationPanel, "binary_sensor.demo_alarm").textContent).toContain("Slot binding: demo-component-a / alarm - Alarm state");
+    expect(getSimulationEntityCard(simulationPanel, "input_boolean.schematic_demo_alarm").textContent).toContain("Direct entity:");
+    expect(getSimulationEntityCard(simulationPanel, "input_boolean.schematic_demo_alarm").textContent).not.toContain("Slot binding: demo-component-a / alarm");
+    expect(getButton(getSimulationEntityCard(simulationPanel, "binary_sensor.demo_alarm"), ".simulation-binary-off-button").getAttribute("aria-pressed")).toBe("true");
+
+    getButton(getSimulationEntityCard(simulationPanel, "binary_sensor.demo_alarm"), ".simulation-binary-on-button").click();
+
+    expect(app.querySelector('[data-id="demo-component-a"] [data-id="unit-box"]')?.getAttribute("fill")).toBe("var(--error-color)");
+    expect(getPayloadItem(app, "demo-component-a")?.slotBindings).toMatchObject({
+      alarm: "binary_sensor.demo_alarm"
     });
   });
 
@@ -3099,6 +3173,16 @@ function getFloatingPanel(root: ParentNode, panelId: string): HTMLElement {
   }
 
   return element;
+}
+
+function getSimulationEntityCard(root: ParentNode, entityId: string): HTMLElement {
+  for (const element of root.querySelectorAll<HTMLElement>(".simulation-entity-card")) {
+    if (element.dataset.entityId === entityId) {
+      return element;
+    }
+  }
+
+  throw new Error(`simulation entity card missing: ${entityId}`);
 }
 
 function getPanelHeader(panel: HTMLElement): HTMLElement {

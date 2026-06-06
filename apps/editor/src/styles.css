@@ -1712,6 +1712,101 @@ textarea {
   gap: 6px;
 }
 
+.simulation-panel {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--fg, var(--editor-text));
+}
+
+.simulation-helper {
+  margin: 0;
+}
+
+.simulation-list {
+  display: grid;
+  min-height: 0;
+  gap: 8px;
+  overflow: auto;
+}
+
+.simulation-empty-state,
+.simulation-entity-card {
+  border: 1px solid var(--border-color, var(--editor-border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel-bg, var(--editor-panel)) 88%, transparent);
+  padding: 8px;
+}
+
+.simulation-entity-card {
+  display: grid;
+  gap: 8px;
+}
+
+.simulation-entity-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.simulation-entity-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg, var(--editor-text));
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.simulation-entity-type {
+  flex: 0 0 auto;
+  border: 1px solid var(--border-color, var(--editor-border));
+  border-radius: 999px;
+  color: var(--accent-color, var(--editor-cyan));
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  text-transform: uppercase;
+}
+
+.simulation-usage-list {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 16px;
+  color: var(--muted-color, var(--editor-muted));
+  font-size: 11px;
+}
+
+.simulation-controls {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.simulation-controls .inspector-input {
+  min-width: 0;
+}
+
+.simulation-numeric-slider,
+.simulation-percent-slider {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.simulation-numeric-input,
+.simulation-percent-input {
+  flex: 0 0 72px;
+}
+
 .symbol-part-create-controls {
   display: flex;
   gap: 8px;
@@ -3597,6 +3692,11 @@ body.window-resizing-active * {
 .floating-panel-symbol-parts,
 .floating-panel-symbol-slots {
   width: 340px;
+}
+
+.floating-panel-simulation {
+  width: 360px;
+  height: min(430px, 58vh);
 }
 
 .floating-panel-symbol-inspector {
